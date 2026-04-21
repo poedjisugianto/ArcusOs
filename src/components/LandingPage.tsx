@@ -176,10 +176,17 @@ export default function LandingPage({
 
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto px-4 md:px-0">
               <button 
-                onClick={onCreateEvent}
-                className="w-full sm:w-auto px-10 py-3.5 bg-slate-900 text-white rounded-lg font-black font-oswald uppercase italic text-lg hover:bg-arcus-red transition-all shadow-md flex items-center justify-center gap-3 group active:scale-95"
+                onClick={onScorerLogin}
+                className="w-full sm:w-auto px-10 py-3.5 bg-arcus-red text-white border-2 border-arcus-red rounded-lg font-black font-oswald uppercase italic text-lg hover:bg-white hover:text-arcus-red transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 group active:scale-95"
               >
-                DAFTAR AKUN
+                <ShieldCheck className="w-5 h-5" />
+                SCORER ACCESS
+              </button>
+              <button 
+                onClick={onCreateEvent}
+                className="w-full sm:w-auto px-10 py-3.5 bg-slate-900 text-white rounded-lg font-black font-oswald uppercase italic text-lg hover:bg-slate-700 transition-all shadow-md flex items-center justify-center gap-3 group active:scale-95"
+              >
+                IKUT TURNAMEN
                 <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
               </button>
               <button 
@@ -195,6 +202,21 @@ export default function LandingPage({
         {/* Decorative elements */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-arcus-red/5 rounded-full blur-[100px] -z-10" />
       </section>
+
+      {/* Floating Scorer FAB for Mobile */}
+      {!currentUser && (
+        <motion.button 
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={onScorerLogin}
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-slate-900 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-center md:hidden border-2 border-arcus-red/20 group"
+        >
+          <ShieldCheck className="w-6 h-6 text-arcus-red" />
+          <span className="text-[6px] font-black uppercase tracking-tighter mt-1">SCORER</span>
+        </motion.button>
+      )}
 
       {/* Events Section */}
       <section id="events" className="py-20 md:py-24 px-6 lg:px-12 bg-white relative">
@@ -272,13 +294,20 @@ export default function LandingPage({
                         onClick={() => onViewInfo(event.id)}
                         className="py-2.5 bg-slate-50 text-slate-500 border border-slate-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
                       >
-                        INFO EVENT
+                        INFO
                       </button>
                       <button 
                         onClick={() => onViewLive(event.id)}
                         className="py-2.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-sm active:scale-95"
                       >
                         LIVE SCORE
+                      </button>
+                      <button 
+                        onClick={onScorerLogin}
+                        className="col-span-2 py-2 bg-slate-50 text-slate-400 border border-dashed border-slate-200 rounded-lg text-[8px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all flex items-center justify-center gap-2"
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        PETUGAS SCORER
                       </button>
                     </div>
                   </div>

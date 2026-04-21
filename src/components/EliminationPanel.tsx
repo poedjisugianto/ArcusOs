@@ -195,14 +195,14 @@ const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) =
     const data = sortedRounds.filter(r => parseInt(r) > 1).map(r => {
       const roundNum = parseInt(r);
       return {
-        label: roundNum === 2 ? 'FINAL' : roundNum === 4 ? 'SEMI FINAL' : roundNum === 8 ? 'QUARTER FINAL' : `1/${roundNum/2} FINAL`,
+        label: roundNum === 2 ? 'FINAL' : roundNum === 4 ? 'SEMI FINAL (4 BESAR)' : roundNum === 8 ? 'QUARTER FINAL (8 BESAR)' : roundNum === 16 ? '1/8 FINAL (16 BESAR)' : roundNum === 32 ? '1/16 FINAL (32 BESAR)' : roundNum === 64 ? '1/32 FINAL (64 BESAR)' : `1/${roundNum/2} FINAL`,
         round: roundNum,
         matches: rounds[r].sort((a, b) => (a.matchNo || 0) - (b.matchNo || 0))
       };
     });
 
     if (rounds["1"]) {
-      data.push({ label: 'PEREBUTAN JUARA 3', round: 1, matches: rounds["1"] });
+      data.push({ label: 'PEREBUTAN JUARA 3 / PENENTUAN JUARA', round: 1, matches: rounds["1"] });
     }
     return data;
   }, [currentMatches]);
@@ -234,8 +234,8 @@ const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) =
             <ArrowLeft className="w-5 h-5 text-slate-500" />
           </button>
           <div>
-            <h2 className="text-xl font-black font-oswald uppercase italic leading-none">Input Skor Aduan</h2>
-            <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest mt-1">Sistem Input Cepat Juri Lapangan</p>
+            <h2 className="text-xl font-black font-oswald uppercase italic leading-none">Manajemen Bagan Eliminasi / Aduan</h2>
+            <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest mt-1">Sistem Input Cepat & Penentuan Juara</p>
           </div>
         </div>
         
@@ -261,16 +261,22 @@ const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) =
               <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Auto-Seeding Kualifikasi</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {[8, 16, 32].map(s => (
-                    <button key={s} onClick={() => initializeBracket(s, true)} className="px-5 py-3 bg-purple-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-purple-500/20 hover:scale-105 transition-all">Top {s}</button>
+                  {[8, 16, 32, 64].map(s => (
+                    <button key={s} onClick={() => initializeBracket(s, true)} className="px-4 py-3 bg-purple-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-purple-500/20 hover:scale-105 transition-all flex flex-col items-center">
+                      <span>Top {s}</span>
+                      <span className="text-[7px] opacity-70 mt-0.5">{s === 8 ? 'Quarter' : s === 32 ? '1/16' : s === 64 ? '1/32' : ''}</span>
+                    </button>
                   ))}
                 </div>
               </div>
               <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Bagan Manual</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {[8, 16, 32].map(s => (
-                    <button key={s} onClick={() => initializeBracket(s, false)} className="px-5 py-3 bg-white text-slate-600 border rounded-xl font-black text-[10px] uppercase hover:bg-slate-100 transition-all">{s} Besar</button>
+                  {[8, 16, 32, 64].map(s => (
+                    <button key={s} onClick={() => initializeBracket(s, false)} className="px-4 py-3 bg-white text-slate-600 border rounded-xl font-black text-[10px] uppercase hover:bg-slate-100 transition-all flex flex-col items-center">
+                      <span>{s} Besar</span>
+                      <span className="text-[7px] text-slate-400 mt-0.5">{s === 8 ? 'Bagan Aduan' : ''}</span>
+                    </button>
                   ))}
                 </div>
               </div>

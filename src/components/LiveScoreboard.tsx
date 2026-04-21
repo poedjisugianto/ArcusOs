@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Trophy, Clock, X, Swords, Medal, LayoutList, Target, ChevronRight, Info, Activity, Monitor, Search } from 'lucide-react';
+import { Trophy, Clock, X, Swords, Medal, LayoutList, Target, ChevronRight, Info, Activity, Monitor, Search, Check } from 'lucide-react';
 import { ArcheryEvent, CategoryType, Match } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
@@ -50,6 +50,11 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
   const matches = useMemo(() => {
     return state.matches[filterCategory] || [];
   }, [state.matches, filterCategory]);
+
+  const eliminationSize = useMemo(() => {
+    if (matches.length === 0) return 0;
+    return Math.max(...matches.map(m => parseInt(m.round)));
+  }, [matches]);
 
   const leaderBoard = useMemo(() => {
     const data = state.archers
@@ -165,64 +170,112 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100">
-                       {filteredLeaderBoard.map((row, idx) => (
-                         <tr key={row.id} className="broadcast-row group hover:bg-slate-50 transition-all">
-                            <td className="px-12 py-4">
-                               <div className={`w-9 h-9 mx-auto rounded-lg flex items-center justify-center font-black font-oswald text-lg shadow-sm ${idx < 3 ? 'bg-arcus-sun text-black ring-1 ring-yellow-400/20' : 'bg-slate-100 text-slate-400'}`}>
-                                 {idx + 1}
-                               </div>
-                            </td>
-                            <td className="px-6 py-4">
-                               <span className="text-xl font-black font-oswald text-blue-600 italic tracking-tighter">{row.targetNo > 0 ? `${row.targetNo}${row.position}` : 'TBA'}</span>
-                            </td>
-                            <td className="px-6 py-4 min-w-[200px]">
-                               <p className="text-xl font-black font-oswald italic uppercase leading-none tracking-tighter">{row.name}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest opacity-60 italic">{row.club}</p>
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                               <span className="text-lg font-black font-oswald text-slate-300">{row.sixes}</span>
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                               <span className="text-lg font-black font-oswald text-slate-300">{row.fives}</span>
-                            </td>
-                            <td className="px-12 py-4 text-right">
-                               <span className="text-4xl font-black font-oswald tabular-nums text-slate-900 tracking-tighter italic">{row.total}</span>
-                            </td>
-                         </tr>
-                       ))}
+                       {filteredLeaderBoard.map((row, idx) => {
+                         const isLastQualified = eliminationSize > 0 && (idx + 1) === eliminationSize;
+                         const isQualified = eliminationSize > 0 && (idx + 1) <= eliminationSize;
+                         
+                         return (
+                           <React.Fragment key={row.id}>
+                             <tr className={`broadcast-row group hover:bg-slate-50 transition-all ${isQualified ? 'bg-emerald-50/10' : ''}`}>
+                                <td className="px-12 py-4">
+                                   <div className="relative">
+                                     <div className={`w-9 h-9 mx-auto rounded-lg flex items-center justify-center font-black font-oswald text-lg shadow-sm ${idx < 3 ? 'bg-arcus-sun text-black ring-1 ring-yellow-400/20' : 'bg-slate-100 text-slate-400'} ${isQualified && idx >= 3 ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200' : ''}`}>
+                                       {idx + 1}
+                                     </div>
+                                     {isQualified && (
+                                       <div className="absolute -top-1 -right-1">
+                                         <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
+                                       </div>
+                                     )}
+                                   </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                   <span className="text-xl font-black font-oswald text-blue-600 italic tracking-tighter">{row.targetNo > 0 ? `${row.targetNo}${row.position}` : 'TBA'}</span>
+                                </td>
+                                <td className="px-6 py-4 min-w-[200px]">
+                                   <div className="flex items-center gap-3">
+                                     <p className="text-xl font-black font-oswald italic uppercase leading-none tracking-tighter">{row.name}</p>
+                                     {isQualified && (
+                                       <span className="px-1.5 py-0.5 bg-emerald-500 text-[6px] font-black text-white rounded uppercase tracking-widest leading-none">Qualified</span>
+                                     )}
+                                   </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest opacity-60 italic">{row.club}</p>
+                                </td>
+                                <td className="px-4 py-4 text-center">
+                                   <span className="text-lg font-black font-oswald text-slate-300">{row.sixes}</span>
+                                </td>
+                                <td className="px-4 py-4 text-center">
+                                   <span className="text-lg font-black font-oswald text-slate-300">{row.fives}</span>
+                                </td>
+                                <td className="px-12 py-4 text-right">
+                                   <span className="text-4xl font-black font-oswald tabular-nums text-slate-900 tracking-tighter italic">{row.total}</span>
+                                </td>
+                             </tr>
+                             {isLastQualified && (
+                               <tr>
+                                 <td colSpan={7} className="px-0 py-0">
+                                   <div className="bg-emerald-500 py-1.5 flex items-center justify-center gap-4 shadow-inner">
+                                      <div className="h-px bg-white/30 flex-1 ml-10" />
+                                      <div className="flex items-center gap-2">
+                                         <Trophy className="w-3 h-3 text-white" />
+                                         <span className="text-[9px] font-black text-white uppercase tracking-[0.3em] italic">Batas Kualifikasi Eliminasi {eliminationSize} Besar</span>
+                                      </div>
+                                      <div className="h-px bg-white/30 flex-1 mr-10" />
+                                   </div>
+                                 </td>
+                               </tr>
+                             )}
+                           </React.Fragment>
+                         );
+                       })}
                      </tbody>
                   </table>
                 </div>
 
                 {/* Mobile List View */}
                 <div className="md:hidden divide-y divide-slate-100">
-                   {filteredLeaderBoard.map((row, idx) => (
-                     <div key={row.id} className="p-3 flex items-center gap-3 hover:bg-slate-50 transition-all">
-                        <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center font-black font-oswald text-lg shadow-md ${idx < 3 ? 'bg-arcus-sun text-black' : 'bg-slate-100 text-slate-400'}`}>
-                           {idx + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                           <div className="flex items-center gap-2 mb-0.5">
-                              <span className="px-1 py-0.5 bg-slate-900 rounded text-[8px] font-black text-white font-oswald">
-                                 {row.targetNo > 0 ? `${row.targetNo}${row.position}` : 'TBA'}
-                              </span>
-                              <p className="font-black font-oswald uppercase italic text-base truncate leading-tight">{row.name}</p>
-                           </div>
-                           <div className="flex items-center gap-2">
-                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[100px]">{row.club}</p>
-                              <div className="flex items-center gap-1.5">
-                                 <span className="text-[8px] font-black text-slate-300 uppercase">{labelSix}: {row.sixes}</span>
-                                 <span className="text-[8px] font-black text-slate-300 uppercase">{labelFive}: {row.fives}</span>
-                              </div>
-                           </div>
-                        </div>
-                        <div className="text-right">
-                           <p className="text-2xl font-black font-oswald text-slate-900 italic tracking-tighter">{row.total}</p>
-                        </div>
-                     </div>
-                   ))}
+                   {filteredLeaderBoard.map((row, idx) => {
+                     const isLastQualified = eliminationSize > 0 && (idx + 1) === eliminationSize;
+                     const isQualified = eliminationSize > 0 && (idx + 1) <= eliminationSize;
+
+                     return (
+                       <React.Fragment key={row.id}>
+                         <div className={`p-3 flex items-center gap-3 hover:bg-slate-50 transition-all ${isQualified ? 'bg-emerald-50/10' : ''}`}>
+                            <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center font-black font-oswald text-lg shadow-md ${idx < 3 ? 'bg-arcus-sun text-black' : isQualified ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                               {idx + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                               <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="px-1 py-0.5 bg-slate-900 rounded text-[8px] font-black text-white font-oswald">
+                                     {row.targetNo > 0 ? `${row.targetNo}${row.position}` : 'TBA'}
+                                  </span>
+                                  <p className="font-black font-oswald uppercase italic text-base truncate leading-tight flex items-center gap-2">
+                                    {row.name}
+                                    {isQualified && <Check className="w-3 h-3 text-emerald-500" />}
+                                  </p>
+                               </div>
+                               <div className="flex items-center gap-2">
+                                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[100px]">{row.club}</p>
+                                  <div className="flex items-center gap-1.5">
+                                     <span className="text-[8px] font-black text-slate-300 uppercase">{labelSix}: {row.sixes}</span>
+                                     <span className="text-[8px] font-black text-slate-300 uppercase">{labelFive}: {row.fives}</span>
+                                  </div>
+                               </div>
+                            </div>
+                            <div className="text-right">
+                               <p className="text-2xl font-black font-oswald text-slate-900 italic tracking-tighter">{row.total}</p>
+                            </div>
+                         </div>
+                         {isLastQualified && (
+                            <div className="bg-emerald-500 py-1.5 flex items-center justify-center gap-2 shadow-inner">
+                               <span className="text-[7px] font-black text-white uppercase tracking-[0.2em] italic">BATAS ELIMINASI {eliminationSize} BESAR</span>
+                            </div>
+                         )}
+                       </React.Fragment>
+                     );
+                   })}
                 </div>
 
                 {leaderBoard.length === 0 && (

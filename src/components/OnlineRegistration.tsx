@@ -18,6 +18,8 @@ interface Props {
 
 export default function OnlineRegistration({ event, globalSettings, onRegister, onBack, onViewParticipants }: Props) {
   const [step, setStep] = useState(1);
+  const isRegistrationClosed = event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline);
+
   const [formData, setFormData] = useState<{
     name: string;
     email: string;
@@ -199,8 +201,29 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-4 md:py-8 relative z-10">
-        {/* Progress Bar */}
-        <div className="flex items-center justify-center gap-2 md:gap-6 mb-4 md:mb-10">
+        {isRegistrationClosed && step !== 3 && (
+          <div className="mb-6 bg-red-50 border-2 border-red-100 p-6 rounded-[2rem] text-center animate-in zoom-in duration-500">
+             <div className="w-16 h-16 bg-arcus-red text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-red-200">
+                <AlertCircle className="w-8 h-8" />
+             </div>
+             <h3 className="text-xl font-black font-oswald uppercase italic text-slate-900 leading-none mb-2">Pendaftaran Ditutup</h3>
+             <p className="text-[10px] font-black text-arcus-red uppercase tracking-widest leading-loose">
+               Waktu pendaftaran untuk event ini telah berakhir pada:<br/>
+               {new Date(event.settings.registrationDeadline!).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}
+             </p>
+             <button 
+               onClick={onBack}
+               className="mt-6 px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all active:scale-95 shadow-lg"
+             >
+               Kembali ke Beranda
+             </button>
+          </div>
+        )}
+
+        {!isRegistrationClosed && (
+          <>
+            {/* Progress Bar */}
+            <div className="flex items-center justify-center gap-2 md:gap-6 mb-4 md:mb-10">
           {[1, 2, 3].map(i => (
             <React.Fragment key={i}>
               <div className="flex flex-col items-center gap-1 md:gap-2">
@@ -538,8 +561,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             </div>
           </div>
         )}
+        </>
+      )}
       </div>
     </div>
-
   );
 }

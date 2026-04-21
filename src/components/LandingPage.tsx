@@ -18,7 +18,9 @@ interface Props {
   onViewLive: (eventId: string) => void;
   onViewParticipants: (eventId: string) => void;
   onViewInfo: (eventId: string) => void;
+  onRegister: (eventId: string) => void;
   onLogin: () => void;
+  onScorerLogin: () => void;
   onCreateEvent: () => void;
   onShare: (eventId: string) => void;
   currentUser?: User | null;
@@ -30,7 +32,9 @@ export default function LandingPage({
   onViewLive, 
   onViewParticipants, 
   onViewInfo,
+  onRegister,
   onLogin, 
+  onScorerLogin,
   onCreateEvent,
   onShare,
   currentUser,
@@ -63,6 +67,18 @@ export default function LandingPage({
               <a href="#events" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-slate-900 transition-colors">Event</a>
               <a href="#features" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-slate-900 transition-colors">Fitur</a>
               
+              <div className="h-4 w-px bg-slate-200" />
+
+              <button 
+                onClick={onScorerLogin}
+                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-arcus-red transition-all group"
+              >
+                <div className="p-1 px-2 border-2 border-slate-100 rounded-lg group-hover:border-arcus-red transition-all">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                </div>
+                Akses Scorer
+              </button>
+
               <div className="h-4 w-px bg-slate-200" />
 
               {currentUser ? (
@@ -111,6 +127,13 @@ export default function LandingPage({
             <a href="#events" onClick={() => setIsMenuOpen(false)} className="block text-sm font-black uppercase tracking-widest text-slate-900">Event Terkini</a>
             <a href="#features" onClick={() => setIsMenuOpen(false)} className="block text-sm font-black uppercase tracking-widest text-slate-900">Fitur Sistem</a>
             <div className="pt-6 border-t border-slate-50 flex flex-col gap-4">
+              <button 
+                onClick={() => { onScorerLogin(); setIsMenuOpen(false); }}
+                className="w-full py-4 bg-slate-50 border border-slate-100 rounded-lg text-xs font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-all flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                AKSES SCORER
+              </button>
               {currentUser ? (
                 <>
                   <button onClick={onCreateEvent} className="w-full py-4 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest">Dashboard Saya</button>
@@ -220,19 +243,44 @@ export default function LandingPage({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2.5">
+                    {event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline) ? (
+                      <div className="w-full py-3.5 bg-slate-100 text-slate-400 flex items-center justify-center gap-3 rounded-xl text-[11px] font-black uppercase tracking-widest cursor-not-allowed border border-slate-200">
+                        <X className="w-4 h-4" />
+                        PENDAFTARAN TUTUP
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => onRegister(event.id)}
+                        className="w-full py-3.5 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg active:scale-95 group"
+                      >
+                        <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
+                        PENDAFTARAN ONLINE
+                      </button>
+                    )}
+                    
                     <button 
-                      onClick={() => onViewLive(event.id)}
-                      className="py-2.5 bg-slate-900 text-white rounded text-[9px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-sm active:scale-95"
+                      onClick={() => onViewParticipants(event.id)}
+                      className="w-full py-3 bg-white text-slate-900 border-2 border-slate-100 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all shadow-sm active:scale-95"
                     >
-                      LIVE SCORE
+                      <Users className="w-4 h-4" />
+                      DAFTAR PESERTA
                     </button>
-                    <button 
-                      onClick={() => onViewInfo(event.id)}
-                      className="py-2.5 bg-white text-slate-900 rounded text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all border border-slate-200 shadow-sm active:scale-95"
-                    >
-                      LIHAT INFO
-                    </button>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => onViewInfo(event.id)}
+                        className="py-2.5 bg-slate-50 text-slate-500 border border-slate-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
+                      >
+                        INFO EVENT
+                      </button>
+                      <button 
+                        onClick={() => onViewLive(event.id)}
+                        className="py-2.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-sm active:scale-95"
+                      >
+                        LIVE SCORE
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ))}

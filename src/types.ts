@@ -163,6 +163,7 @@ export interface TournamentSettings {
   isConfirmed?: boolean;
   activationCode?: string;
   description?: string;
+  registrationDeadline?: string;
   createdAt?: number;
   paymentMethods?: any[];
   pamphletUrl?: string;

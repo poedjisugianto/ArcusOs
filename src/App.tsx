@@ -565,6 +565,8 @@ export function App() {
             onViewLive={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_LIVE'); }} 
             onViewParticipants={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_ENTRY_LIST'); }} 
             onViewInfo={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_EVENT_INFO'); }} 
+            onRegister={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('REGISTER_PARTICIPANT'); }}
+            onScorerLogin={() => setView('SCORER_LOGIN')}
             onShare={(id) => {
               const event = appState.events.find(e => e.id === id);
               setShareData({ isOpen: true, name: event?.settings.tournamentName || 'Event', url: `${window.location.origin}?event=${id}` });
@@ -1086,6 +1088,7 @@ export function App() {
             onBack={() => setView('LANDING')} 
             onRegister={() => setView('REGISTER_PARTICIPANT')} 
             onShare={() => setShareData({ isOpen: true, name: activeEvent.settings.tournamentName, url: `${window.location.origin}?event=${appState.activeEventId}` })} 
+            onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')}
           />
         )}
         {(view === 'PRIVACY' || view === 'TERMS' || view === 'DOCUMENTATION') && (

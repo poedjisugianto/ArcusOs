@@ -13,10 +13,13 @@ interface Props {
   onBack: () => void;
   onRegister: () => void;
   onShare: () => void;
+  onViewParticipants: () => void;
 }
 
-export default function EventInfo({ event, onBack, onRegister, onShare }: Props) {
-  const isRegistrationOpen = event.status === 'DRAFT' || event.status === 'UPCOMING';
+export default function EventInfo({ event, onBack, onRegister, onShare, onViewParticipants }: Props) {
+  const isExpired = event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline);
+  const isRegistrationOpen = (event.status === 'DRAFT' || event.status === 'UPCOMING') && !isExpired;
+  const verifiedArchers = event.archers.filter(a => a.status === 'APPROVED' && a.category !== CategoryType.OFFICIAL);
   const totalParticipants = event.archers.filter(a => a.category !== CategoryType.OFFICIAL).length;
 
   return (
@@ -124,6 +127,60 @@ export default function EventInfo({ event, onBack, onRegister, onShare }: Props)
                 )}
               </div>
             </div>
+
+            {/* Verified Participants List */}
+            <div className="bg-white rounded-3xl p-6 md:p-10 border border-slate-100 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-lg md:text-2xl font-black font-oswald uppercase italic text-slate-900 flex items-center gap-3">
+                  <Users className="w-4 h-4 md:w-6 md:h-6 text-arcus-red" />
+                  Peserta Terverifikasi
+                </h3>
+                <button 
+                  onClick={onViewParticipants}
+                  className="text-[10px] font-black uppercase tracking-widest text-arcus-red hover:text-slate-900 transition-colors flex items-center gap-2"
+                >
+                  Lihat Semua <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {verifiedArchers.length > 0 ? (
+                <div className="space-y-3">
+                  {verifiedArchers.slice(0, 10).map((archer) => (
+                    <div key={archer.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-emerald-500 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-xs md:text-sm font-black font-oswald italic text-slate-400 group-hover:text-emerald-500 transition-all">
+                          <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
+                        </div>
+                        <div>
+                          <p className="text-sm md:text-lg font-black font-oswald uppercase italic text-slate-900 leading-none">{archer.name}</p>
+                          <p className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{archer.club}</p>
+                        </div>
+                      </div>
+                      <div className="hidden md:block">
+                        <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                          {CATEGORY_LABELS[archer.category as CategoryType] || archer.category}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {verifiedArchers.length > 10 && (
+                    <button 
+                      onClick={onViewParticipants}
+                      className="w-full py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors"
+                    >
+                      + {verifiedArchers.length - 10} Peserta Lainnya
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="p-12 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">
+                     Belum ada peserta yang diverifikasi.<br/>
+                     Daftarkan diri Anda sekarang untuk menjadi yang pertama.
+                   </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Sidebar */}
@@ -138,15 +195,29 @@ export default function EventInfo({ event, onBack, onRegister, onShare }: Props)
               
               <div className="space-y-4">
                 {isRegistrationOpen ? (
-                  <button 
-                    onClick={onRegister}
-                    className="w-full py-5 bg-arcus-red text-white rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:bg-slate-900 transition-all shadow-xl shadow-arcus-red/20 flex items-center justify-center gap-3"
-                  >
-                    Daftar Sekarang
-                  </button>
+                  <>
+                    <button 
+                      onClick={onRegister}
+                      className="w-full py-5 bg-arcus-red text-white rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:bg-slate-900 transition-all shadow-xl shadow-arcus-red/20 flex items-center justify-center gap-3"
+                    >
+                      Daftar Sekarang
+                    </button>
+                    {event.settings.registrationDeadline && (
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
+                        Batas Akhir: {new Date(event.settings.registrationDeadline).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}
+                      </p>
+                    )}
+                  </>
                 ) : (
-                  <div className="w-full py-5 bg-slate-100 text-slate-400 rounded-[2rem] font-black font-oswald uppercase italic text-xl text-center">
-                    Pendaftaran Tutup
+                  <div className="space-y-3">
+                    <div className="w-full py-5 bg-slate-100 text-slate-400 rounded-[2rem] font-black font-oswald uppercase italic text-xl text-center">
+                      Pendaftaran Tutup
+                    </div>
+                    {isExpired && (
+                      <p className="text-[9px] font-black text-arcus-red uppercase tracking-widest text-center">
+                        Waktu pendaftaran sudah berakhir
+                      </p>
+                    )}
                   </div>
                 )}
                 <button className="w-full py-5 bg-white text-slate-900 border-2 border-slate-100 rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:border-slate-900 transition-all flex items-center justify-center gap-3">

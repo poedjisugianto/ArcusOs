@@ -6,7 +6,7 @@ import {
   Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
   Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
   Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
-  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone
+  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -329,6 +329,26 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                         <input type="text" placeholder="Tanggal..." value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
                     </div>
+
+                    {!isPractice && (
+                      <div className="pt-4 border-t border-slate-100">
+                        <label className="block group">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Clock className="w-3.5 h-3.5 text-arcus-red" />
+                            <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Batas Akhir Pendaftaran Online</span>
+                          </div>
+                          <input 
+                            type="datetime-local" 
+                            value={localSettings.registrationDeadline || ''} 
+                            onChange={e => updateSettings({ registrationDeadline: e.target.value })} 
+                            className="block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-arcus-red transition-all text-slate-900" 
+                          />
+                          <p className="mt-1.5 text-[8px] font-bold text-slate-400 uppercase tracking-wider italic">
+                            * Peserta tidak akan bisa mendaftar setelah waktu yang ditentukan. Kosongkan jika tidak ada batas.
+                          </p>
+                        </label>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <label className="block group">

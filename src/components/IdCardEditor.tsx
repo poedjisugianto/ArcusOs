@@ -22,7 +22,7 @@ interface Logo {
   size: number;
 }
 
-type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON';
+type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON' | 'HERITAGE_PAPER' | 'BAMBOO_WEAVE' | 'ETHNIC_MODERN';
 
 const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [logos, setLogos] = useState<Logo[]>([]);
@@ -97,6 +97,24 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           backgroundImage: `linear-gradient(45deg, ${color}05 25%, transparent 25%, transparent 75%, ${color}05 75%, ${color}05), linear-gradient(45deg, ${color}05 25%, transparent 25%, transparent 75%, ${color}05 75%, ${color}05)`,
           backgroundSize: '20px 20px',
           backgroundPosition: '0 0, 10px 10px'
+        };
+      case 'HERITAGE_PAPER':
+        return {
+          backgroundColor: '#fdf6e3',
+          backgroundImage: `url("https://www.transparenttextures.com/patterns/pinstripe-light.png"), radial-gradient(${color}11 1px, transparent 1px)`,
+          backgroundSize: 'auto, 20px 20px'
+        };
+      case 'BAMBOO_WEAVE':
+        return {
+          backgroundColor: '#f4f4f5',
+          backgroundImage: `linear-gradient(90deg, ${color}08 1px, transparent 1px), linear-gradient(${color}08 1px, transparent 1px)`,
+          backgroundSize: '15px 15px'
+        };
+      case 'ETHNIC_MODERN':
+        return {
+          backgroundColor: '#ffffff',
+          backgroundImage: `repeating-linear-gradient(45deg, ${color}05 0px, ${color}05 2px, transparent 2px, transparent 8px), repeating-linear-gradient(-45deg, ${color}05 0px, ${color}05 2px, transparent 2px, transparent 8px)`,
+          backgroundSize: '20px 20px'
         };
       default:
         return {};
@@ -268,7 +286,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                   <div className="space-y-3">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Sporty Background Pattern</span>
                     <div className="grid grid-cols-2 gap-2">
-                       {(['CLEAN', 'SPORTY_MESH', 'DIAGONAL_SPEED', 'DYNAMIC_WAVES', 'CARBON'] as BgPattern[]).map(p => (
+                       {(['CLEAN', 'SPORTY_MESH', 'DIAGONAL_SPEED', 'DYNAMIC_WAVES', 'CARBON', 'HERITAGE_PAPER', 'BAMBOO_WEAVE', 'ETHNIC_MODERN'] as BgPattern[]).map(p => (
                          <button 
                            key={p}
                            onClick={() => setBgPattern(p)}
@@ -308,7 +326,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                   <div className="space-y-3">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Theme Visual Identity</span>
                     <div className="flex flex-wrap gap-2">
-                      {['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#000000'].map(color => (
+                      {['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#000000', '#78350f', '#166534', '#991b1b'].map(color => (
                         <button 
                           key={color}
                           onClick={() => setAccentColor(color)}

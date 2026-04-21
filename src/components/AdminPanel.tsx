@@ -1,0 +1,895 @@
+
+import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Save, Calendar, ImageIcon, FileText, Trophy, Target as TargetIcon, 
+  Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
+  Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
+  Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
+  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone
+} from 'lucide-react';
+import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
+import { CATEGORY_LABELS } from '../constants';
+
+interface Props {
+  settings: TournamentSettings;
+  scorerAccess?: ScorerAccess[];
+  onSave: (settings: TournamentSettings) => void;
+  onUpdateScorers?: (scorers: ScorerAccess[]) => void;
+  onClear: () => void;
+  onDelete?: () => void;
+  onBack: () => void;
+  isSuperAdmin?: boolean;
+}
+
+const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, isSuperAdmin = false }) => {
+  const [localSettings, setLocalSettings] = useState<TournamentSettings>({
+    ...settings,
+    categoryConfigs: settings.categoryConfigs || {}
+  });
+  const isPractice = localSettings.isPractice;
+  const [localScorers, setLocalScorers] = useState<ScorerAccess[]>(scorerAccess);
+  const [activeTab, setActiveTab] = useState<'GENERAL' | 'PAYMENT' | 'SCORERS'>('GENERAL');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showUploadGuide, setShowUploadGuide] = useState(false);
+  const [showSavedFlag, setShowSavedFlag] = useState(false);
+  const [showDraftConfirm, setShowDraftConfirm] = useState(false);
+  const [showModeConfirm, setShowModeConfirm] = useState<{ isOpen: boolean; next: boolean; msg: string }>({ isOpen: false, next: false, msg: '' });
+  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  
+  // Only sync from props if the tournament name changes (indicating a different event)
+  // or if we're not currently editing (not dirty)
+  useEffect(() => {
+    if (!isDirty) {
+      setLocalSettings(settings);
+      setLocalScorers(scorerAccess);
+    }
+  }, [settings, scorerAccess, isDirty]);
+
+  const updateSettings = (updates: Partial<TournamentSettings>) => {
+    setLocalSettings(prev => ({ ...prev, ...updates }));
+    setIsDirty(true);
+  };
+
+  const updateCategoryConfig = (cat: CategoryType, field: keyof CategoryConfig, value: any) => {
+    setLocalSettings(prev => ({
+      ...prev,
+      categoryConfigs: {
+        ...prev.categoryConfigs,
+        [cat]: { 
+          ...(prev.categoryConfigs?.[cat] as CategoryConfig), 
+          [field]: value 
+        }
+      }
+    }));
+    setIsDirty(true);
+  };
+
+  const addCategory = (cat: CategoryType) => {
+    if (localSettings.categoryConfigs?.[cat]) return;
+    setLocalSettings(prev => ({
+      ...prev,
+      categoryConfigs: {
+        ...(prev.categoryConfigs || {}),
+        [cat]: {
+          registrationFee: 0,
+          distance: '20m',
+          arrows: 36,
+          ends: 6,
+          targetType: TargetType.STANDARD
+        }
+      }
+    }));
+    setIsDirty(true);
+  };
+
+  const removeCategory = (cat: CategoryType) => {
+    setLocalSettings(prev => {
+      const newConfigs = { ...(prev.categoryConfigs || {}) };
+      delete newConfigs[cat];
+      return { ...prev, categoryConfigs: newConfigs };
+    });
+    setIsDirty(true);
+  };
+
+  const addPaymentMethod = () => {
+    const newPm: PaymentMethod = {
+      id: 'pm_' + Math.random().toString(36).substr(2, 9),
+      provider: 'BCA',
+      accountName: 'Bendahara',
+      accountNumber: ''
+    };
+    setLocalSettings(prev => ({ ...prev, paymentMethods: [...(prev.paymentMethods || []), newPm] }));
+    setIsDirty(true);
+  };
+
+  const removePaymentMethod = (id: string) => {
+    setLocalSettings(prev => ({ ...prev, paymentMethods: (prev.paymentMethods || []).filter(pm => pm.id !== id) }));
+    setIsDirty(true);
+  };
+
+  const updatePaymentMethod = (id: string, field: keyof PaymentMethod, value: string) => {
+    setLocalSettings(prev => ({
+      ...prev,
+      paymentMethods: (prev.paymentMethods || []).map(pm => pm.id === id ? { ...pm, [field]: value } : pm)
+    }));
+    setIsDirty(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowConfirmModal(true);
+  };
+
+  const handleFinalSave = () => {
+    // Validation for Tournament (not practice)
+    if (!localSettings.isPractice) {
+      const missingFields = [];
+      if (!localSettings.tournamentName) missingFields.push('Nama Turnamen');
+      if (!localSettings.description) missingFields.push('Keterangan');
+      if (!localSettings.location) missingFields.push('Lokasi');
+      if (!localSettings.eventDate) missingFields.push('Tanggal');
+      if (!localSettings.pamphletUrl) missingFields.push('Link Pamflet');
+      if (!localSettings.thbUrl) missingFields.push('Link THB');
+      if ((localSettings.paymentMethods || []).length === 0) missingFields.push('Metode Pembayaran');
+
+      if (missingFields.length > 0) {
+        setShowDraftConfirm(true);
+        setShowConfirmModal(false);
+        return;
+      }
+    }
+
+    executeFinalSave();
+  };
+
+  const executeFinalSave = () => {
+    onSave(localSettings);
+    if (onUpdateScorers) onUpdateScorers(localScorers);
+    setShowConfirmModal(false);
+    setShowDraftConfirm(false);
+    setShowSavedFlag(true);
+    setIsDirty(false);
+    setTimeout(() => setShowSavedFlag(false), 3000);
+  };
+
+  const addScorer = () => {
+    const newScorer: ScorerAccess = {
+      id: 'scr_' + Math.random().toString(36).substr(2, 9),
+      name: '',
+      pin: Math.floor(1000 + Math.random() * 9000).toString(),
+      accessCode: Math.floor(1000 + Math.random() * 9000).toString(),
+      eventId: '', // Filled by parent
+      permissions: ['INPUT_SCORE']
+    };
+    setLocalScorers([...localScorers, newScorer]);
+    setIsDirty(true);
+  };
+
+  const removeScorer = (id: string) => {
+    setLocalScorers(localScorers.filter(s => s.id !== id));
+    setIsDirty(true);
+  };
+
+  const updateScorer = (id: string, field: keyof ScorerAccess, value: any) => {
+    setLocalScorers(localScorers.map(s => s.id === id ? { ...s, [field]: value } : s));
+    setIsDirty(true);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowDeleteConfirm(true);
+  };
+
+  const executeDelete = () => {
+    if (onDelete) onDelete();
+    setShowDeleteConfirm(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50" id="settings-form">
+      {/* Saved Success Flag */}
+      {showSavedFlag && (
+        <div className="fixed top-32 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top-4 duration-300">
+          <div className="bg-emerald-600 text-white px-8 py-4 rounded-[2rem] shadow-2xl flex items-center gap-4 border border-white/20">
+            <Check className="w-6 h-6" />
+            <span className="text-sm font-black uppercase tracking-widest">Pengaturan Berhasil Disimpan</span>
+          </div>
+        </div>
+      )}
+
+      <div className="sticky top-0 z-[100] bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => {
+                if (isDirty) {
+                  setShowUnsavedConfirm(true);
+                } else {
+                  onBack();
+                }
+              }}
+              className="w-9 h-9 md:w-11 md:h-11 flex items-center justify-center bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-arcus-red transition-all shadow-sm"
+            >
+              <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
+            </button>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg md:text-xl font-black font-oswald uppercase italic leading-none tracking-tighter text-slate-900">
+                  {isPractice ? 'KONFIGURASI' : 'KONTROL'}
+                </h1>
+                {isDirty && (
+                  <span className="bg-amber-100 text-amber-700 text-[6px] md:text-[7px] font-black px-1 py-0.5 rounded uppercase tracking-widest border border-amber-200 animate-pulse">
+                    UNSAVED
+                  </span>
+                )}
+                {!isPractice && (
+                  <div className={`px-1.5 py-0.5 rounded text-[6px] md:text-[7px] font-black uppercase tracking-widest border ${localSettings.isActivated !== false ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-orange-100 text-orange-700 border-orange-200'}`}>
+                    {localSettings.isActivated !== false ? 'AKTIF' : 'PENDING'}
+                  </div>
+                )}
+              </div>
+              <p className="text-[7px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 italic truncate max-w-[120px] md:max-w-none">
+                {isPractice ? 'Sesi Scoring' : `EVENT: ${localSettings.tournamentName || 'Untitled'}`}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onClear}
+              className="hidden sm:flex px-4 py-2.5 text-[8px] font-black uppercase tracking-widest text-slate-400 hover:text-red-600 transition-all font-sans"
+            >
+              RESET
+            </button>
+            <button 
+              onClick={handleSubmit}
+              disabled={!isDirty}
+              className={`flex-1 md:flex-none px-6 md:px-8 py-2.5 md:py-3 rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 md:gap-3 transition-all active:scale-95 ${isDirty ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+            >
+              <Save className="w-3.5 h-3.5 md:w-4 md:h-4" /> SIMPAN <span className="hidden sm:inline">KONFIGURASI</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 md:px-8 pb-2 overflow-x-auto no-scrollbar">
+          <div className="flex self-start w-fit border-b border-slate-100">
+            <button 
+              type="button"
+              onClick={() => setActiveTab('GENERAL')}
+              className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'GENERAL' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Trophy className={`w-3.5 h-3.5 ${activeTab === 'GENERAL' ? 'text-arcus-red' : ''}`} /> INFO & KATEGORI
+              {activeTab === 'GENERAL' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
+            </button>
+            {!isPractice && (
+              <button 
+                type="button"
+                onClick={() => setActiveTab('PAYMENT')}
+                className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'PAYMENT' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Landmark className={`w-3.5 h-3.5 ${activeTab === 'PAYMENT' ? 'text-arcus-red' : ''}`} /> PEMBAYARAN
+                {activeTab === 'PAYMENT' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
+              </button>
+            )}
+            <button 
+              type="button"
+              onClick={() => setActiveTab('SCORERS')}
+              className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'SCORERS' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Smartphone className={`w-3.5 h-3.5 ${activeTab === 'SCORERS' ? 'text-arcus-red' : ''}`} /> AKSES PANITIA
+              {activeTab === 'SCORERS' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-6 md:p-10 pb-32">
+        <form onSubmit={handleSubmit} className="space-y-16">
+          
+          {activeTab === 'GENERAL' && (
+            <div className="space-y-16 animate-in fade-in duration-500">
+              {/* Section: Basic Identity */}
+              <div className="space-y-8">
+             <div className="flex items-center gap-4 border-b border-slate-100 pb-4">
+                <div className={`p-2 rounded-xl ${isPractice ? 'bg-teal-50' : 'bg-red-50'}`}>
+                  <Info className={`w-5 h-5 ${isPractice ? 'text-teal-600' : 'text-arcus-red'}`} />
+                </div>
+                <h3 className="text-xl font-black font-oswald uppercase italic text-slate-800">Identitas & Sesi</h3>
+             </div>
+             
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                <div className="lg:col-span-2 space-y-8">
+                    <label className="block group">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Sesi / Turnamen</span>
+                      <input type="text" value={localSettings.tournamentName} onChange={e => updateSettings({ tournamentName: e.target.value })} className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-base outline-none focus:border-arcus-red transition-all" required />
+                    </label>
+
+                    <label className="block group">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Keterangan Singkat</span>
+                      <textarea 
+                        value={localSettings.description} 
+                        onChange={e => updateSettings({ description: e.target.value })} 
+                        className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-arcus-red transition-all h-24 resize-none" 
+                        placeholder="Deskripsi turnamen..."
+                      />
+                    </label>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label className="block group">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Lokasi</span>
+                        <input type="text" placeholder="Lokasi..." value={localSettings.location} onChange={e => updateSettings({ location: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" />
+                      </label>
+
+                      <label className="block group">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 italic">Tanggal</span>
+                        <input type="text" placeholder="Tanggal..." value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label className="block group">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Total Bantalan</span>
+                        <input type="number" value={localSettings.totalTargets} onChange={e => updateSettings({ totalTargets: parseInt(e.target.value) || 1 })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" min="1" />
+                      </label>
+
+                      <label className="block group">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 italic">Archer per Target Face</span>
+                        <input type="number" value={localSettings.archersPerTarget || 2} onChange={e => updateSettings({ archersPerTarget: parseInt(e.target.value) || 1 })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" min="1" max="4" />
+                      </label>
+                    </div>
+
+                    {/* Mode Toggle */}
+                    <div className="pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 border-l-4 border-l-arcus-red">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-lg ${localSettings.isPractice ? 'bg-teal-100 text-teal-600' : 'bg-amber-100 text-amber-600'}`}>
+                            {localSettings.isPractice ? <Zap className="w-5 h-5" /> : <Trophy className="w-5 h-5" />}
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-slate-900 leading-none">Mode Turnamen</p>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">
+                              {localSettings.isPractice ? 'Latihan' : 'Turnamen'}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            const next = !localSettings.isPractice;
+                            const msg = next 
+                              ? "Ubah ke Mode Latihan? Fitur pendaftaran online akan dinonaktifkan." 
+                              : "Ubah ke Mode Turnamen? Fitur pendaftaran online akan diaktifkan.";
+                            setShowModeConfirm({ isOpen: true, next, msg });
+                          }}
+                          className="transition-all active:scale-90"
+                        >
+                           {!localSettings.isPractice ? <ToggleRight className="w-10 h-10 text-arcus-red" /> : <ToggleLeft className="w-10 h-10 text-slate-300" />}
+                        </button>
+                      </div>
+                    </div>
+                </div>
+
+                {!isPractice && (
+                  <div className="space-y-6">
+                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 space-y-4">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Fitur Pendaftaran</p>
+                       <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                             <div className={`p-2 rounded-lg ${localSettings.enableGateway ? 'bg-blue-100 text-blue-600' : 'bg-slate-200 text-slate-400'}`}>
+                                <Zap className="w-5 h-5" />
+                             </div>
+                             <div>
+                                <p className="text-xs font-black uppercase text-slate-900 leading-none">Payment Gateway</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Otomatisasi Status Lunas</p>
+                             </div>
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={() => updateSettings({ enableGateway: !localSettings.enableGateway })}
+                            className="transition-all active:scale-90"
+                          >
+                             {localSettings.enableGateway ? <ToggleRight className="w-10 h-10 text-blue-600" /> : <ToggleLeft className="w-10 h-10 text-slate-300" />}
+                          </button>
+                       </div>
+                       <div className="pt-4 border-t border-slate-200">
+                         <label className="block space-y-2">
+                            <div className="flex items-center gap-2">
+                               <UsersIcon className="w-4 h-4 text-slate-400" />
+                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Biaya Registrasi Official (Pusat)</span>
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 italic">Rp</span>
+                              <input 
+                                type="number" 
+                                value={localSettings.officialFee || 0} 
+                                onChange={e => updateSettings({ officialFee: parseInt(e.target.value) || 0 })} 
+                                className="w-full pl-12 pr-6 py-3 bg-white border border-slate-200 rounded-xl font-black italic text-lg text-slate-900 outline-none focus:border-blue-500 transition-all shadow-sm" 
+                                placeholder="Biaya Official" 
+                              />
+                            </div>
+                         </label>
+                       </div>
+                    </div>
+                  </div>
+                )}
+             </div>
+          </div>
+
+          {/* Section: Media & Documents */}
+          {!isPractice && (
+            <div className="space-y-8 animate-in fade-in">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <ImageIcon className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <h3 className="text-xl font-black font-oswald uppercase text-slate-800 italic">Media & Publikasi</h3>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setShowUploadGuide(!showUploadGuide)}
+                  className="flex items-center gap-2 text-blue-600 text-[9px] font-black uppercase tracking-widest hover:underline"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" /> Cara Upload
+                </button>
+              </div>
+
+              {showUploadGuide && (
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-6 space-y-4 animate-in slide-in-from-top-4">
+                  <h4 className="font-black text-blue-900 uppercase text-xs">Langkah Mendapatkan Link Gambar:</h4>
+                  <ol className="text-xs text-blue-700 space-y-2 list-decimal pl-4 font-medium italic">
+                    <li>Gunakan layanan gratis seperti Imgur.com atau Postimages.org.</li>
+                    <li>Upload foto pamflet dari HP/Komputer Anda ke situs tersebut.</li>
+                    <li>Setelah terupload, salin "Direct Link" (link yang berakhiran .jpg, .jpeg, atau .png).</li>
+                    <li>Tempelkan link tersebut pada kolom input di bawah ini.</li>
+                  </ol>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="space-y-6">
+                   <label className="block group">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Link Gambar Pamflet / Poster (URL)</span>
+                      <div className="relative mt-2">
+                        <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                        <input 
+                          type="url" 
+                          placeholder="https://i.imgur.com/xyz123.jpg"
+                          value={localSettings.pamphletUrl} 
+                          onChange={e => updateSettings({ pamphletUrl: e.target.value })} 
+                          className="w-full pl-10 pr-5 py-3 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none focus:border-arcus-red transition-all" 
+                        />
+                      </div>
+                   </label>
+
+                   <label className="block group">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Link Technical Hand Book (THB / PDF URL)</span>
+                      <div className="relative mt-2">
+                        <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                        <input 
+                          type="url" 
+                          placeholder="https://drive.google.com/your-pdf"
+                          value={localSettings.thbUrl} 
+                          onChange={e => updateSettings({ thbUrl: e.target.value })} 
+                          className="w-full pl-10 pr-5 py-3 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none focus:border-arcus-red transition-all" 
+                        />
+                      </div>
+                   </label>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-4 flex flex-col items-center justify-center gap-4 min-h-[300px] overflow-hidden relative group">
+                   {localSettings.pamphletUrl ? (
+                     <div className="relative w-full h-full flex items-center justify-center">
+                        <img 
+                          src={localSettings.pamphletUrl} 
+                          alt="" 
+                          className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-30 scale-110"
+                        />
+                        <div className="relative z-10 p-6 flex flex-col items-center gap-4">
+                           <p className="text-[9px] font-black text-white/50 uppercase tracking-[0.3em]">Live Preview</p>
+                           <img 
+                            src={localSettings.pamphletUrl} 
+                            alt="Preview" 
+                            className="max-h-72 object-contain rounded-xl shadow-2xl border-4 border-white/10" 
+                           />
+                        </div>
+                     </div>
+                   ) : (
+                     <div className="text-center space-y-4 text-slate-700">
+                        <div className="p-8 bg-white/5 rounded-full border border-white/5">
+                           <ImageIcon className="w-16 h-16 mx-auto opacity-10" />
+                        </div>
+                        <p className="text-[10px] font-black uppercase italic tracking-[0.2em]">Belum Ada Preview Pamflet</p>
+                     </div>
+                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Section: Category Rules */}
+          <div className="space-y-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+                <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl ${isPractice ? 'bg-teal-50' : 'bg-red-50'}`}>
+                      <Trophy className={`w-6 h-6 ${isPractice ? 'text-teal-600' : 'text-arcus-red'}`} />
+                    </div>
+                    <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Aturan Skor Kategori</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select 
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        addCategory(e.target.value as CategoryType);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="bg-slate-50 border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest"
+                  >
+                    <option value="">+ Tambah Kategori</option>
+                    {(Object.keys(CategoryType) as CategoryType[])
+                      .filter(cat => !localSettings.categoryConfigs?.[cat])
+                      .map(cat => (
+                        <option key={cat} value={cat}>{CATEGORY_LABELS[cat] || cat}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 bg-white border-y border-slate-100 p-6 md:p-10">
+              {Object.keys(localSettings.categoryConfigs || {}).length > 0 ? (
+                (Object.keys(localSettings.categoryConfigs || {}) as CategoryType[]).map(cat => (
+                  <div key={cat} className="p-6 md:p-8 bg-slate-50 border-l-4 border-arcus-red space-y-6 relative group transition-all hover:bg-white shadow-sm">
+                    <button 
+                      type="button"
+                      onClick={() => removeCategory(cat)}
+                      className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-all"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-4 gap-4">
+                      <p className="font-bold text-slate-800 text-xl uppercase font-oswald italic">{CATEGORY_LABELS[cat] || cat}</p>
+                      {!isPractice && (
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-arcus-red opacity-50">Rp</span>
+                          <input 
+                            type="number" 
+                            value={localSettings.categoryConfigs?.[cat]?.registrationFee || 0} 
+                            onChange={e => updateCategoryConfig(cat, 'registrationFee', parseInt(e.target.value) || 0)} 
+                            className="w-full rounded-lg border-slate-200 p-2.5 pl-8 border font-black text-right shadow-sm focus:border-arcus-red transition-all" 
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {cat !== CategoryType.OFFICIAL && (
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <input 
+                          type="text" 
+                          value={localSettings.categoryConfigs?.[cat]?.distance || ''} 
+                          onChange={e => updateCategoryConfig(cat, 'distance', e.target.value)} 
+                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all" 
+                          placeholder="Jarak" 
+                        />
+                        <input 
+                          type="number" 
+                          value={localSettings.categoryConfigs?.[cat]?.arrows || 0} 
+                          onChange={e => updateCategoryConfig(cat, 'arrows', parseInt(e.target.value) || 0)} 
+                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all" 
+                          placeholder="Arrows" 
+                        />
+                        <input 
+                          type="number" 
+                          value={localSettings.categoryConfigs?.[cat]?.ends || 0} 
+                          onChange={e => updateCategoryConfig(cat, 'ends', parseInt(e.target.value) || 0)} 
+                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all" 
+                          placeholder="Ends" 
+                        />
+                        <select 
+                          value={localSettings.categoryConfigs?.[cat]?.targetType || TargetType.STANDARD} 
+                          onChange={e => updateCategoryConfig(cat, 'targetType', e.target.value as TargetType)} 
+                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all"
+                        >
+                          {Object.values(TargetType).map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {cat === CategoryType.OFFICIAL && (
+                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex items-center gap-3">
+                        <Info className="w-4 h-4 text-blue-500" />
+                        <p className="text-[10px] font-bold text-blue-700 uppercase italic">Hanya biaya pendaftaran.</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full p-12 text-center bg-slate-50 border border-dashed border-slate-200">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Belum Ada Kategori.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+            </div>
+          )}
+
+          {activeTab === 'PAYMENT' && !isPractice && (
+            <div className="space-y-16 animate-in fade-in duration-500">
+              {/* Section: Manual Payment Target */}
+              <div className="space-y-8">
+              <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-green-50 rounded-2xl">
+                      <Landmark className="w-6 h-6 text-green-600" />
+                    </div>
+                    <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Metode Pembayaran Transfer</h3>
+                </div>
+                {isSuperAdmin && (
+                  <button type="button" onClick={addPaymentMethod} className="bg-arcus-dark text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                    <Plus className="w-3.5 h-3.5" /> Tambah Rekening
+                  </button>
+                )}
+              </div>
+
+              {!isSuperAdmin ? (
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm space-y-6 text-center max-w-2xl mx-auto">
+                   <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto shadow-sm">
+                      <ShieldCheck className="w-10 h-10" />
+                   </div>
+                   <div className="space-y-2">
+                      <h4 className="text-xl font-black font-oswald uppercase italic text-slate-900 tracking-tight">Manajemen Rekening Terpusat</h4>
+                      <p className="text-sm text-slate-500 font-medium leading-relaxed italic">
+                        Pengaturan nomor rekening dan gateway pembayaran dikelola sepenuhnya oleh Super Admin (Pusat). Seluruh uang pendaftaran akan masuk ke rekening pusat untuk proses verifikasi otomatis dan keamanan transaksi.
+                      </p>
+                   </div>
+                   <div className="pt-4">
+                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-400 rounded-full border border-slate-100">
+                         <Info className="w-3 h-3" /> Silakan hubungi pusat jika ada kendala
+                      </div>
+                   </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                  {(localSettings.paymentMethods || []).map((pm) => (
+                    <div key={pm.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 relative group transition-all shadow-sm">
+                      <button type="button" onClick={() => removePaymentMethod(pm.id)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 rounded-xl transition-all"><X className="w-5 h-5" /></button>
+                      <div className="grid grid-cols-1 gap-4">
+                        <input type="text" placeholder="Provider" value={pm.provider} onChange={e => updatePaymentMethod(pm.id, 'provider', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" />
+                        <input type="text" placeholder="No. Rekening" value={pm.accountNumber} onChange={e => updatePaymentMethod(pm.id, 'accountNumber', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-black" />
+                        <input type="text" placeholder="Nama Pemilik" value={pm.accountName} onChange={e => updatePaymentMethod(pm.id, 'accountName', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+          {activeTab === 'SCORERS' && (
+            <div className="space-y-16 animate-in fade-in duration-500">
+              <div className="space-y-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+                  <div className="flex items-center gap-4">
+                      <div className="p-3 bg-purple-50 rounded-2xl">
+                        <UsersIcon className="w-6 h-6 text-purple-600" />
+                      </div>
+                      <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Tim Lapangan (Scorer)</h3>
+                  </div>
+                  <button type="button" onClick={addScorer} className="bg-purple-600 text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                    <Plus className="w-3.5 h-3.5" /> Tambah Scorer
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {localScorers.map((scorer) => (
+                    <div key={scorer.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 relative group transition-all shadow-sm space-y-6">
+                      <button type="button" onClick={() => removeScorer(scorer.id)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 rounded-xl transition-all"><X className="w-5 h-5" /></button>
+                      
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Petugas</span>
+                        <input 
+                          type="text" 
+                          value={scorer.name} 
+                          onChange={e => updateScorer(scorer.id, 'name', e.target.value)} 
+                          className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" 
+                          placeholder="Contoh: Scorer Lapangan 1"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-900 p-6 rounded-2xl">
+                        <div>
+                          <span className="text-[9px] font-black text-white/50 uppercase tracking-widest block">Kode Akses</span>
+                          <span className="text-2xl font-black font-mono tracking-[0.3em] text-arcus-red">{scorer.accessCode}</span>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => updateScorer(scorer.id, 'accessCode', Math.floor(1000 + Math.random() * 9000).toString())}
+                          className="p-3 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-all"
+                        >
+                          <Repeat className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block px-1">Izin Akses</span>
+                         <div className="flex flex-wrap gap-2">
+                            {['INPUT_SCORE', 'EDIT_ARCHER', 'MANAGE_MATCHES'].map(perm => (
+                              <button
+                                key={perm}
+                                type="button"
+                                onClick={() => {
+                                  const current = scorer.permissions || [];
+                                  const next = current.includes(perm as any) 
+                                    ? current.filter(p => p !== perm)
+                                    : [...current, perm as any];
+                                  updateScorer(scorer.id, 'permissions', next);
+                                }}
+                                className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${(scorer.permissions || []).includes(perm as any) ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-slate-200 text-slate-400'}`}
+                              >
+                                {perm.replace('_', ' ')}
+                              </button>
+                            ))}
+                         </div>
+                      </div>
+                    </div>
+                  ))}
+                  {localScorers.length === 0 && (
+                    <div className="md:col-span-2 py-20 text-center space-y-4 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
+                      <UsersIcon className="w-12 h-12 mx-auto text-slate-300" />
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Belum ada tim lapangan yang ditambahkan</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DANGER ZONE: DELETE EVENT */}
+          <div className="bg-red-50 rounded-[3rem] p-12 border-2 border-dashed border-red-200 space-y-8">
+             <div className="flex items-center gap-4">
+                <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg">
+                   <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                   <h3 className="text-2xl font-black font-oswald uppercase italic text-red-900 leading-none">Danger Zone</h3>
+                   <p className="text-xs font-bold text-red-700 uppercase tracking-widest mt-2">Gunakan dengan sangat hati-hati!</p>
+                </div>
+             </div>
+             
+             <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                <p className="text-sm font-medium text-red-800 leading-relaxed max-w-2xl italic">
+                   Jika turnamen ini tidak jadi dilaksanakan atau terdapat kesalahan fatal, Anda dapat menghapusnya. <strong>Tindakan ini permanen</strong> dan akan menghapus seluruh database peserta serta skor yang sudah terekam.
+                </p>
+                <button 
+                  type="button" 
+                  onClick={handleDeleteClick}
+                  className="bg-red-600 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all whitespace-nowrap"
+                >
+                   Hapus {isPractice ? 'Latihan' : 'Turnamen'}
+                </button>
+             </div>
+          </div>
+
+          <div className="pt-10 sticky bottom-8 z-40 px-12 pb-12 bg-gradient-to-t from-white via-white/95 to-transparent -mx-12">
+            <button type="submit" className={`w-full text-white font-black py-5 rounded-[2rem] shadow-xl transition-all flex items-center justify-center gap-4 text-xl font-oswald uppercase tracking-[0.2em] italic ${isPractice ? 'bg-teal-700' : 'bg-arcus-red shadow-arcus-red/30'}`}>
+              <Save className="w-6 h-6" /> {isPractice ? 'Simpan Latihan' : 'Simpan Konfigurasi'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {showDraftConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-10 text-center space-y-8 animate-in zoom-in-95">
+            <div className="w-20 h-20 rounded-3xl bg-amber-50 border-2 border-amber-100 flex items-center justify-center mx-auto shadow-xl">
+              <AlertTriangle className="w-10 h-10 text-amber-500" />
+            </div>
+            <div className="space-y-3">
+              <h3 className="text-2xl font-black font-oswald uppercase italic tracking-tight text-slate-900">Pengaturan Belum Lengkap</h3>
+              <p className="text-slate-500 font-medium leading-relaxed">
+                Beberapa informasi penting belum diisi. Tetap simpan sebagai draft?
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => setShowDraftConfirm(false)} className="py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Lengkapi</button>
+              <button onClick={executeFinalSave} className="py-4 bg-arcus-dark text-white rounded-2xl font-black uppercase text-[10px] shadow-xl">Ya, Simpan Draft</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showModeConfirm.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto">
+              <Repeat className="w-8 h-8 text-blue-500" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-slate-900">Ubah Mode?</h3>
+              <p className="text-slate-500 text-sm">{showModeConfirm.msg}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowModeConfirm({ ...showModeConfirm, isOpen: false })} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs">Batal</button>
+              <button 
+                onClick={() => {
+                  updateSettings({ isPractice: showModeConfirm.next });
+                  setShowModeConfirm({ ...showModeConfirm, isOpen: false });
+                }} 
+                className="py-3 bg-blue-600 text-white rounded-xl font-bold text-xs shadow-md"
+              >
+                Ya, Ubah
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUnsavedConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-8 h-8 text-amber-500" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-slate-900">Belum Disimpan</h3>
+              <p className="text-slate-500 text-sm">
+                Perubahan yang Anda buat belum disimpan. Tetap kembali ke dashboard?
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowUnsavedConfirm(false)} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs">Batal</button>
+              <button onClick={onBack} className="py-3 bg-red-600 text-white rounded-xl font-bold text-xs shadow-md">Ya, Keluar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center space-y-6">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto ${isPractice ? 'bg-teal-50' : 'bg-amber-50'}`}>
+              {isPractice ? <Zap className="w-8 h-8 text-teal-500" /> : <AlertTriangle className="w-8 h-8 text-amber-500" />}
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-slate-900">Simpan Perubahan?</h3>
+              <p className="text-slate-500 text-sm">Data konfigurasi akan segera diterapkan.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowConfirmModal(false)} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs">Batal</button>
+              <button onClick={handleFinalSave} className={`py-3 text-white rounded-xl font-bold text-xs shadow-md ${isPractice ? 'bg-teal-700' : 'bg-slate-900'}`}>Ya, Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mx-auto">
+              <Trash2 className="w-8 h-8 text-red-500" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-slate-900">Hapus {isPractice ? 'Latihan' : 'Turnamen'}?</h3>
+              <p className="text-slate-500 text-sm">
+                Tindakan ini permanen. Semua data peserta, skor, dan pengaturan akan dihapus selamanya.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs">Batal</button>
+              <button onClick={executeDelete} className="py-3 bg-red-600 text-white rounded-xl font-bold text-xs shadow-md">Ya, Hapus</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminPanel;

@@ -23,7 +23,7 @@ interface Logo {
 }
 
 type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON' | 'HERITAGE_PAPER' | 'BAMBOO_WEAVE' | 'ETHNIC_MODERN';
-type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_HERITAGE' | 'ELITE_DARK' | 'MINIMAL_PRO';
+type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_LEGACY' | 'STEALTH_ELITE' | 'ASYMETRIC_PRO';
 
 const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [logos, setLogos] = useState<Logo[]>([]);
@@ -125,105 +125,135 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   };
 
   const renderCard = (person: Archer, isOfficial: boolean) => {
-    const isTraditional = cardTheme === 'TRADITIONAL_HERITAGE';
-    const isElite = cardTheme === 'ELITE_DARK';
-    const cardAccent = isElite ? '#facc15' : (isOfficial ? (isTraditional ? '#78350f' : '#2563eb') : accentColor);
-    const textPrimary = isElite ? 'text-white' : 'text-slate-900';
-    const textSecondary = isElite ? 'text-slate-400' : 'text-slate-600';
-    const bgBase = isElite ? 'bg-[#0f172a]' : 'bg-white';
+    const isLegacy = cardTheme === 'TRADITIONAL_LEGACY';
+    const isStealth = cardTheme === 'STEALTH_ELITE';
+    const isAsymmetric = cardTheme === 'ASYMETRIC_PRO';
+    
+    const cardAccent = isStealth ? '#E61E2A' : (isOfficial ? (isLegacy ? '#78350f' : '#2563eb') : accentColor);
+    const textPrimary = isStealth ? 'text-white' : 'text-slate-900';
+    const textSecondary = isStealth ? 'text-slate-400' : 'text-slate-600';
+    const bgBase = isStealth ? 'bg-[#0a0a0a]' : 'bg-white';
 
     return (
-      <div key={person.id} className={`w-full aspect-[2/3] border border-slate-200 overflow-hidden flex flex-col break-inside-avoid shadow-sm print:shadow-none relative transition-all duration-500 ${bgBase}`}>
+      <div key={person.id} className={`w-full aspect-[2/3] border border-slate-200 overflow-hidden flex flex-col break-inside-avoid shadow-sm print:shadow-none relative transition-all duration-700 ${bgBase}`}>
         {/* Pattern Layer */}
-        <div className="absolute inset-0 opacity-40" style={getPatternStyles(bgPattern, cardAccent)} />
+        <div className="absolute inset-0 opacity-40 mix-blend-multiply" style={getPatternStyles(bgPattern, cardAccent)} />
         
-        {/* Frame / Side Bar */}
-        {isTraditional ? (
-          <div className="absolute inset-0 border-[6px] border-double m-2 pointer-events-none z-20" style={{ borderColor: `${cardAccent}22` }} />
+        {/* Target Motif (Faded in Background) */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full border border-slate-200/20 pointer-events-none">
+           <div className="absolute inset-10 rounded-full border border-slate-200/20" />
+           <div className="absolute inset-20 rounded-full border border-slate-200/20" />
+           <div className="absolute inset-30 rounded-full border border-slate-200/20" />
+        </div>
+
+        {/* Framing */}
+        {isLegacy ? (
+          <div className="absolute inset-4 border border-double pointer-events-none z-20" style={{ borderColor: `${cardAccent}33`, borderWidth: '3px' }} />
         ) : (
-          <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: cardAccent }} />
+          !isAsymmetric && <div className="absolute left-0 top-0 bottom-0 w-2" style={{ backgroundColor: cardAccent }} />
         )}
 
-        {/* Header */}
-        <div className={`h-22 p-4 flex items-center justify-center gap-3 relative z-10 ${isElite ? 'bg-slate-900/80' : 'bg-white/80'} backdrop-blur-md border-b border-white/10`}>
-          {logos.map(logo => (
-            <img 
-              key={logo.id} 
-              src={logo.url} 
-              alt="" 
-              style={{ maxHeight: logo.size / 2.2, width: 'auto' }}
-              className="object-contain drop-shadow-sm"
-            />
-          ))}
-          {logos.length === 0 && <div className="w-12 h-12 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-200/50"><ImageIcon className="w-6 h-6 text-slate-300" /></div>}
+        {/* Header - Asymmetric Layout logic */}
+        <div className={`h-24 p-5 flex items-center justify-between relative z-10 ${isAsymmetric ? 'flex-row-reverse' : ''}`}>
+          <div className="flex -space-x-2">
+            {logos.map(logo => (
+              <img 
+                key={logo.id} 
+                src={logo.url} 
+                alt="" 
+                style={{ maxHeight: logo.size / 2, width: 'auto' }}
+                className="object-contain ring-2 ring-white rounded-lg bg-white"
+              />
+            ))}
+            {logos.length === 0 && <div className="w-12 h-12 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 bg-white/50"><ImageIcon className="w-5 h-5 text-slate-300" /></div>}
+          </div>
+          <div className="text-right">
+             <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 leading-none mb-1">Pass ID</div>
+             <div className="text-[12px] font-mono font-black" style={{ color: cardAccent }}>{person.id.substring(0, 8)}</div>
+          </div>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 flex flex-col items-center justify-between flex-1 gap-4 relative z-10">
-          <div className="text-center space-y-1.5">
-            <h2 className={`text-[11px] font-black uppercase tracking-tight leading-tight ${isTraditional ? 'font-serif' : 'font-oswald italic'} ${textPrimary}`}>
+        {/* Main Content Area */}
+        <div className={`p-6 flex flex-col flex-1 relative z-10 ${isAsymmetric ? 'items-start pl-8' : 'items-center'}`}>
+          <div className={`w-full mb-6 ${isAsymmetric ? 'text-left' : 'text-center'}`}>
+            <h2 className={`text-[12px] font-black uppercase tracking-[0.3em] mb-1 scale-y-110 ${isLegacy ? 'font-serif italic' : 'font-oswald'} ${textPrimary}`}>
               {cardTitle}
             </h2>
-            {cardDate && <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em]">{cardDate}</p>}
+            <div className="h-px w-12 bg-slate-200 mx-auto mt-2" style={{ backgroundColor: isAsymmetric ? 'transparent' : `${cardAccent}33` }} />
           </div>
 
-          <div className="flex flex-col items-center gap-2">
-            <div className={`p-2.5 rounded-2xl shadow-xl ${isElite ? 'bg-white' : 'bg-white'}`}>
-              <QRCodeSVG value={person.id} size={75} level="M" />
-            </div>
-            <span className="text-[7px] font-mono font-bold text-slate-400 uppercase tracking-widest">{person.id.substring(0, 8)}</span>
-          </div>
-
-          <div className="text-center space-y-3 w-full">
-            <div className="flex flex-col items-center gap-1.5">
-              <span 
-                className={`text-[8px] font-black px-4 py-1 rounded-full text-white uppercase tracking-[0.15em] ${isTraditional ? 'rounded-lg' : 'italic'}`}
-                style={{ backgroundColor: cardAccent }}
-              >
-                {isOfficial ? 'OFFICIAL PASS' : 'ARCHERY ATHLETE'}
-              </span>
-              <h1 className={`text-xl font-black uppercase leading-none border-b-2 pb-1.5 pt-1 ${isTraditional ? 'font-serif tracking-normal' : 'font-oswald italic tracking-tighter'} ${textPrimary}`} style={{ borderColor: `${cardAccent}44` }}>
-                {person.name}
+          <div className={`flex flex-col gap-6 w-full ${isAsymmetric ? 'items-start' : 'items-center'}`}>
+            {/* Name - Dramatic Typography */}
+            <div className="relative">
+              {isLegacy && <div className="absolute -top-4 left-0 w-full text-center text-[10px] font-serif italic text-slate-400 opacity-50">Grand Athlete</div>}
+              <h1 className={`text-3xl leading-[0.85] font-black uppercase mb-1 ${isLegacy ? 'font-serif tracking-normal text-amber-950' : 'font-oswald italic tracking-tighter'} ${textPrimary}`}>
+                {person.name.split(' ')[0]}<br/>
+                <span style={{ color: isLegacy ? '#78350f' : cardAccent }}>{person.name.split(' ').slice(1).join(' ')}</span>
               </h1>
-            </div>
-            
-            <div className="flex flex-col items-center">
-              <span className={`text-[11px] font-black uppercase ${isTraditional ? 'font-serif' : 'italic'} ${textSecondary}`}>
+              <p className={`text-[12px] font-black mt-2 tracking-widest ${textSecondary}`}>
                 {person.club}
-              </span>
+              </p>
+            </div>
+
+            {/* QR Section */}
+            <div className={`flex items-end gap-6 ${isAsymmetric ? 'flex-row' : 'flex-col'}`}>
+              <div className={`p-3 rounded-[2rem] shadow-2xl ${isStealth ? 'bg-white' : 'bg-white shadow-slate-200'}`}>
+                <QRCodeSVG value={person.id} size={90} level="H" />
+              </div>
               
-              {!isOfficial ? (
-                 <div className="mt-3 flex flex-col items-center gap-2">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                      {person.category}
-                    </span>
-                    <div className="flex items-center gap-2.5">
-                       <div className={`flex flex-col items-center px-4 py-1.5 rounded-xl ${isElite ? 'bg-amber-400 text-slate-900 shadow-lg shadow-amber-400/20' : 'bg-slate-900 text-white'}`}>
-                          <span className="text-[6px] font-black opacity-60 leading-none uppercase tracking-tighter">Target</span>
-                          <span className="text-[12px] font-black leading-none mt-1.5">{person.targetNo}{person.position}</span>
-                       </div>
-                       <div className={`flex flex-col items-center px-4 py-1.5 rounded-xl border ${isElite ? 'border-slate-700 bg-slate-800' : 'border-slate-100 bg-white shadow-sm'}`}>
-                          <span className="text-[6px] font-black text-slate-400 leading-none uppercase tracking-tighter">Session</span>
-                          <span className={`text-[12px] font-black leading-none mt-1.5 ${textPrimary}`}>{person.wave}</span>
-                       </div>
-                    </div>
-                 </div>
-              ) : (
-                 <div className={`mt-3 flex items-center justify-center gap-2 border px-5 py-2 rounded-full ${isElite ? 'border-amber-400/30 text-amber-400 bg-amber-400/5' : 'border-blue-100 text-blue-600 bg-blue-50'}`}>
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span className="text-[9px] font-black uppercase tracking-widest italic">Authorized Personal</span>
-                 </div>
-              )}
+              <div className={`flex flex-col ${isAsymmetric ? 'items-start' : 'items-center'} gap-2`}>
+                <span className={`text-[10px] font-black px-4 py-1.5 rounded-full text-white uppercase tracking-widest shadow-lg ${isLegacy ? 'rounded-none' : 'skew-x-[-10deg]'}`} style={{ backgroundColor: cardAccent }}>
+                  {isOfficial ? 'CREW' : person.category}
+                </span>
+              </div>
             </div>
           </div>
+
+          {/* Technical Data Grid */}
+          {!isOfficial && (
+            <div className="mt-auto w-full grid grid-cols-2 gap-px bg-slate-100 border border-slate-100 rounded-2xl overflow-hidden shadow-inner">
+               <div className={`${isStealth ? 'bg-slate-900' : 'bg-white/50'} p-3 flex flex-col items-center`}>
+                  <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Target</span>
+                  <span className={`text-xl font-black ${textPrimary}`}>{person.targetNo}{person.position}</span>
+               </div>
+               <div className={`${isStealth ? 'bg-slate-900' : 'bg-white/50'} p-3 flex flex-col items-center`}>
+                  <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Session</span>
+                  <span className={`text-xl font-black ${textPrimary}`}>{person.wave}</span>
+               </div>
+            </div>
+          )}
+          
+          {isOfficial && (
+            <div className={`mt-auto w-full p-4 rounded-2xl border flex items-center justify-between ${isStealth ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
+               <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-600 rounded-lg"><ShieldCheck className="w-4 h-4 text-white" /></div>
+                  <div className="text-left">
+                     <p className="text-[10px] font-black text-slate-900 leading-none uppercase">Full Access</p>
+                     <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Verified Personnel</p>
+                  </div>
+               </div>
+               <div className="text-[10px] font-black font-mono rotate-90 opacity-20">STAFF</div>
+            </div>
+          )}
         </div>
 
-        {/* Bottom Banner */}
-        <div className={`h-10 flex items-center justify-center mt-auto relative z-10`} style={{ backgroundColor: cardAccent }}>
-           <span className="text-[9px] font-black text-white uppercase italic tracking-[0.25em] drop-shadow-sm">
-             {isOfficial ? 'STAFF IDENTIFICATION' : 'TOURNAMENT PARTICIPANT'}
-           </span>
-        </div>
+        {/* Side Rail Text (For Asymmetric) */}
+        {isAsymmetric && (
+          <div className="absolute right-0 top-0 bottom-0 w-12 bg-slate-900 flex items-center justify-center p-2">
+             <span className="text-[10px] font-black text-white uppercase tracking-[0.5em] whitespace-nowrap rotate-90" style={{ color: cardAccent }}>
+                {cardSubtitle || 'TOURNAMENT PRESTIGE'}
+             </span>
+          </div>
+        )}
+
+        {/* Global Footer */}
+        {!isAsymmetric && (
+          <div className="h-10 flex items-center justify-center relative z-10 pt-2" style={{ borderTop: `1px solid ${cardAccent}22` }}>
+             <span className={`text-[9px] font-black uppercase tracking-[0.4em] ${textSecondary}`}>
+                • {cardSubtitle} •
+             </span>
+          </div>
+        )}
       </div>
     );
   };
@@ -299,9 +329,9 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                     <div className="grid grid-cols-2 gap-2">
                        {([
                          { id: 'SPORTY_MODERN', name: 'Modern Sporty', icon: Activity, color: '#ef4444', pattern: 'SPORTY_MESH' },
-                         { id: 'TRADITIONAL_HERITAGE', name: 'Heritage Classic', icon: ShieldCheck, color: '#78350f', pattern: 'HERITAGE_PAPER' },
-                         { id: 'ELITE_DARK', name: 'Elite Dark Mode', icon: Maximize, color: '#facc15', pattern: 'CARBON' },
-                         { id: 'MINIMAL_PRO', name: 'Minimal White', icon: Layout, color: '#000000', pattern: 'CLEAN' }
+                         { id: 'TRADITIONAL_LEGACY', name: 'Legacy Heritage', icon: ShieldCheck, color: '#78350f', pattern: 'HERITAGE_PAPER' },
+                         { id: 'STEALTH_ELITE', name: 'Elite Stealth', icon: Maximize, color: '#E61E2A', pattern: 'CARBON' },
+                         { id: 'ASYMETRIC_PRO', name: 'Asymmetric Pro', icon: Layout, color: '#2563eb', pattern: 'BAMBOO_WEAVE' }
                        ] as const).map(t => (
                          <button 
                            key={t.id}

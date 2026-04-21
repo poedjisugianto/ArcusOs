@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, Target, CheckCircle2, ChevronRight, ChevronLeft, 
-  Save, User, Zap, Hash, Trophy, Keyboard
+  Save, User, Zap, Hash, Trophy, Keyboard, Search, X
 } from 'lucide-react';
 import { ArcheryEvent, ScoreEntry, Archer, CategoryType, TargetType, ScoreLog } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -18,6 +18,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
   const [selectedTarget, setSelectedTarget] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'ALL'>('ALL');
   const [currentEnd, setCurrentEnd] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showToast, setShowToast] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -56,7 +57,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     return Array.from(new Set(event.archers.map(a => a.category)));
   }, [event.archers]);
 
-  const archersToDisplay = useMemo(() => {
+  const archersInScope = useMemo(() => {
     if (mode === 'TARGET') {
       return event.archers.filter(a => a.targetNo === selectedTarget);
     } else {
@@ -64,10 +65,25 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     }
   }, [event.archers, selectedTarget, selectedCategory, mode]);
 
-  // Load existing scores into local state when target, category, or end changes
-  useMemo(() => {
+  const archersToDisplay = useMemo(() => {
+    let filtered = [...archersInScope];
+
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(a => 
+        a.name.toLowerCase().includes(term) || 
+        a.club.toLowerCase().includes(term) ||
+        `${a.targetNo}${a.position}`.toLowerCase().includes(term)
+      );
+    }
+
+    return filtered;
+  }, [archersInScope, searchTerm]);
+
+  // Load existing scores into local state when scope or end changes
+  useEffect(() => {
     const initial: Record<string, { total: number; count6: number; count5: number }> = {};
-    archersToDisplay.forEach(a => {
+    archersInScope.forEach(a => {
       const existing = event.scores.find(s => s.archerId === a.id && s.endIndex === currentEnd);
       initial[a.id] = {
         total: existing?.total || 0,
@@ -76,7 +92,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
       };
     });
     setLocalScores(initial);
-  }, [archersToDisplay, currentEnd, event.scores]);
+  }, [archersInScope, currentEnd, event.scores]);
 
   const handleUpdateLocal = (archerId: string, field: 'total' | 'count6' | 'count5', val: number) => {
     setLocalScores(prev => ({
@@ -236,6 +252,28 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
               <span className="px-4 text-xs font-black uppercase font-oswald text-slate-900">Rambahan {currentEnd + 1}</span>
               <button onClick={() => setCurrentEnd(prev => prev + 1)} className="p-2 bg-white rounded-lg text-slate-900"><ChevronRight className="w-4 h-4" /></button>
            </div>
+        </div>
+      </div>
+
+      {/* Quick Search Toolbar */}
+      <div className="px-4 md:px-0">
+        <div className="relative group max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-arcus-red transition-colors" />
+          <input 
+            type="text" 
+            placeholder="Cari nama, klub, atau bantalan (ex: 1A)..." 
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-12 pr-10 py-3.5 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:border-arcus-red focus:ring-4 ring-arcus-red/5 transition-all shadow-sm"
+          />
+          {searchTerm && (
+            <button 
+              onClick={() => setSearchTerm('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-100 rounded-full text-slate-400"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   Search, Trash2, ArrowLeft, Shuffle, 
-  Loader2, QrCode, X, Check, FileDown, Plus, UserPlus, Printer 
+  Loader2, QrCode, X, Check, FileDown, Plus, UserPlus, Printer, Image as ImageIcon 
 } from 'lucide-react';
 import { Archer, CategoryType, TournamentSettings, GlobalSettings } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -14,6 +14,7 @@ interface Props {
   onRemove: (id: string) => void;
   onBack: () => void;
   onBulkUpdate: (updated: Archer[]) => void;
+  onGoToIdCardEditor: () => void;
   archersPerTarget: number;
   totalTargets: number;
   settings: TournamentSettings;
@@ -21,7 +22,7 @@ interface Props {
   globalSettings: GlobalSettings;
 }
 
-const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBack, onBulkUpdate, archersPerTarget, totalTargets, settings, eventId, globalSettings }) => {
+const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBack, onBulkUpdate, onGoToIdCardEditor, archersPerTarget, totalTargets, settings, eventId, globalSettings }) => {
   const [isShuffling, setIsShuffling] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryType>(CategoryType.ADULT_PUTRA);
@@ -171,6 +172,13 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
           <h2 className="text-xl font-black font-oswald uppercase italic tracking-tighter text-slate-900">Manajemen Peserta</h2>
         </div>
         <div className="flex flex-wrap items-center justify-center md:justify-end gap-2">
+          <button 
+            onClick={onGoToIdCardEditor}
+            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-blue-700 transition-all active:scale-95 shadow-xl shadow-blue-600/20"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            Kartu Peserta
+          </button>
           <button 
             onClick={() => handlePrintScoringSheet('ALL')}
             className="bg-purple-100 text-purple-600 px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-purple-200 transition-all active:scale-95"

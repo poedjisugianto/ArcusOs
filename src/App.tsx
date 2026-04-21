@@ -34,8 +34,9 @@ import QuickScoringPanel from './components/QuickScoringPanel';
 import ScorerLogin from './components/ScorerLogin';
 import ActivateTournament from './components/ActivateTournament';
 import OfficialList from './components/OfficialList';
+import IdCardEditor from './components/IdCardEditor';
 
-type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SELF_PRACTICE' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT';
+type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SELF_PRACTICE' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
 
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -947,7 +948,15 @@ export function App() {
             onUpdate={(a) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.map(arc => arc.id === a.id ? a : arc) })} 
             onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.filter(a => a.id !== id) })} 
             onBulkUpdate={(updated) => handleUpdateEvent(activeEvent.id, { archers: updated })} 
+            onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
             onBack={() => setView('EVENT_ADMIN')} 
+          />
+        )}
+        {view === 'ID_CARD_EDITOR' && activeEvent && (
+          <IdCardEditor 
+            archers={activeEvent.archers} 
+            settings={activeEvent.settings} 
+            onBack={() => setView('ARCHERS')} 
           />
         )}
         {view === 'OFFICIALS' && activeEvent && (

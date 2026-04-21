@@ -921,6 +921,13 @@ export function App() {
                     <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-white mb-0.5 md:mb-1 leading-none">LAPORAN</p>
                     <p className="text-[8px] md:text-[9px] font-black text-white/20 uppercase tracking-widest">Ekspor & Data Final</p>
                 </button>
+                <button onClick={() => setView('ID_CARD_EDITOR')} className="group p-5 md:p-8 bg-blue-50 rounded-[1.5rem] md:rounded-[2rem] border border-blue-100 hover:bg-blue-100 transition-all text-left relative overflow-hidden active:scale-95">
+                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-blue-600 transition-all border border-blue-100">
+                      <CreditCard className="w-5 h-5 text-blue-500 group-hover:text-white transition-colors" />
+                    </div>
+                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-blue-900 mb-0.5 md:mb-1 leading-none">ID CARD</p>
+                    <p className="text-[8px] md:text-[9px] font-black text-blue-600/40 uppercase tracking-widest">Desain & Cetak</p>
+                </button>
             </div>
           </div>
         )}

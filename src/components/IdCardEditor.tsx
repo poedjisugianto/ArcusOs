@@ -32,6 +32,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [accentColor, setAccentColor] = useState('#ef4444'); // Default red
   const [bgPattern, setBgPattern] = useState<BgPattern>('SPORTY_MESH');
   const [showEditor, setShowEditor] = useState(true);
+  const [viewMode, setViewMode] = useState<'DESIGNER' | 'FULL_PREVIEW'>('DESIGNER');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -227,6 +228,22 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
             </div>
 
             <div className="flex items-center gap-3">
+              <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                <button 
+                  onClick={() => setViewMode('DESIGNER')}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${viewMode === 'DESIGNER' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Layout className="w-3.5 h-3.5" />
+                  Designer
+                </button>
+                <button 
+                  onClick={() => setViewMode('FULL_PREVIEW')}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${viewMode === 'FULL_PREVIEW' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Preview
+                </button>
+              </div>
               <div className="hidden md:flex items-center gap-2 bg-slate-200/50 p-1 rounded-xl">
                  <div className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">
                    {participants.length} Athletes • {officials.length} Officials
@@ -242,9 +259,10 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* Design Controls */}
-            <div className="space-y-6">
+          {viewMode === 'DESIGNER' ? (
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+              {/* Design Controls */}
+              <div className="space-y-6">
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -389,6 +407,56 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
               </div>
             </div>
           </div>
+          ) : (
+            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 min-h-screen">
+              <div className="flex items-center justify-between mb-12 px-6">
+                 <div>
+                   <h3 className="text-2xl font-black font-oswald uppercase italic text-slate-900">Pre-Print Inspection</h3>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Reviewing {archers.length} generated identifiers</p>
+                 </div>
+                 <div className="flex gap-4">
+                    <div className="flex flex-col items-end">
+                       <span className="text-[10px] font-black text-slate-400 uppercase">Estimated Pages</span>
+                       <span className="text-xl font-black text-slate-900">{Math.ceil(archers.length / 4)} × A4Sheets</span>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="space-y-16">
+                 {participants.length > 0 && (
+                   <div className="space-y-6">
+                      <div className="flex items-center gap-3 border-l-4 border-arcus-red pl-4">
+                         <span className="font-black font-oswald uppercase italic text-slate-900 text-xl">Athletes List</span>
+                         <span className="px-3 py-1 bg-red-50 text-arcus-red text-[10px] font-black rounded-full uppercase italic">{participants.length}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                         {participants.map(p => (
+                            <div key={p.id} className="scale-100 transform transform-gpu origin-top">
+                               {renderCard(p, false)}
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                 )}
+
+                 {officials.length > 0 && (
+                   <div className="space-y-6 pt-12 border-t border-slate-100">
+                      <div className="flex items-center gap-3 border-l-4 border-blue-600 pl-4">
+                         <span className="font-black font-oswald uppercase italic text-slate-900 text-xl">Official Crew</span>
+                         <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-full uppercase italic">{officials.length}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                         {officials.map(o => (
+                            <div key={o.id} className="scale-100 transform transform-gpu origin-top">
+                               {renderCard(o, true)}
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                 )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

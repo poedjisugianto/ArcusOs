@@ -251,50 +251,50 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
                   <div className="space-y-1 md:space-y-2">
-                    <label className="text-[7px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{formData.regType === 'ARCHER' ? 'Nama Lengkap Archer' : 'Nama Lengkap Official'}</label>
+                    <label className="text-[7px] md:text-[9px] font-black text-slate-900 uppercase tracking-widest ml-1">{formData.regType === 'ARCHER' ? 'Nama Lengkap Archer' : 'Nama Lengkap Official'}</label>
                     <div className="relative group/field">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-300 group-focus-within/field:text-arcus-red transition-colors" />
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 group-focus-within/field:text-arcus-red transition-colors" />
                       <input 
                         required
                         value={formData.name}
                         onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
-                        className="w-full pl-10 md:pl-14 pr-4 md:pr-6 py-2.5 md:py-4 bg-slate-50 border border-slate-100 rounded-lg md:rounded-2xl focus:border-arcus-red focus:bg-white transition-all text-xs md:text-base font-black font-oswald uppercase italic text-slate-900 placeholder:text-slate-200 outline-none"
+                        className="w-full pl-10 md:pl-14 pr-4 md:pr-6 py-2.5 md:py-4 bg-slate-50 border border-slate-100 rounded-lg md:rounded-2xl focus:border-arcus-red focus:bg-white transition-all text-xs md:text-base font-black font-oswald uppercase italic text-slate-900 placeholder:text-slate-400 outline-none"
                         placeholder="NAMA LENGKAP"
                       />
                     </div>
                   </div>
                   <div className="space-y-1 md:space-y-2">
-                    <label className="text-[7px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Aktif</label>
+                    <label className="text-[7px] md:text-[9px] font-black text-slate-900 uppercase tracking-widest ml-1">Email Aktif</label>
                     <div className="relative group/field">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-300 group-focus-within/field:text-arcus-red transition-colors" />
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 group-focus-within/field:text-arcus-red transition-colors" />
                       <input 
                         required
                         type="email"
                         value={formData.email}
                         onChange={e => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full pl-10 md:pl-14 pr-4 md:pr-6 py-2.5 md:py-4 bg-slate-50 border border-slate-100 rounded-lg md:rounded-2xl focus:border-arcus-red focus:bg-white transition-all text-xs md:text-base font-black font-oswald italic text-slate-900 placeholder:text-slate-200 outline-none"
+                        className="w-full pl-10 md:pl-14 pr-4 md:pr-6 py-2.5 md:py-4 bg-slate-50 border border-slate-100 rounded-lg md:rounded-2xl focus:border-arcus-red focus:bg-white transition-all text-xs md:text-base font-black font-oswald italic text-slate-900 placeholder:text-slate-400 outline-none"
                         placeholder="email@domain.com"
                       />
                     </div>
                   </div>
                   <div className="space-y-1 md:space-y-2">
-                    <label className="text-[7px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Klub / Pengcab</label>
+                    <label className="text-[7px] md:text-[9px] font-black text-slate-900 uppercase tracking-widest ml-1">Klub / Pengcab</label>
                     <div className="relative group/field">
-                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-300 group-focus-within/field:text-arcus-red transition-colors" />
+                      <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 group-focus-within/field:text-arcus-red transition-colors" />
                       <input 
                         required
                         value={formData.club}
                         onChange={e => setFormData({ ...formData, club: e.target.value.toUpperCase() })}
-                        className="w-full pl-10 md:pl-14 pr-4 md:pr-6 py-2.5 md:py-4 bg-slate-50 border border-slate-100 rounded-lg md:rounded-2xl focus:border-arcus-red focus:bg-white transition-all text-xs md:text-base font-black font-oswald uppercase italic text-slate-900 placeholder:text-slate-200 outline-none"
+                        className="w-full pl-10 md:pl-14 pr-4 md:pr-6 py-2.5 md:py-4 bg-slate-50 border border-slate-100 rounded-lg md:rounded-2xl focus:border-arcus-red focus:bg-white transition-all text-xs md:text-base font-black font-oswald uppercase italic text-slate-900 placeholder:text-slate-400 outline-none"
                         placeholder={formData.regType === 'ARCHER' ? "KLUB ARCHERY" : "ASAL KLUB"}
                       />
                     </div>
                   </div>
                   {formData.regType === 'ARCHER' && (
                     <div className="space-y-1 md:space-y-2">
-                      <label className="text-[7px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Kategori Lomba</label>
+                      <label className="text-[7px] md:text-[9px] font-black text-slate-900 uppercase tracking-widest ml-1">Kategori Lomba</label>
                       <div className="relative group/field">
-                        <Trophy className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-300 pointer-events-none group-focus-within/field:text-arcus-red transition-colors" />
+                        <Trophy className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 pointer-events-none group-focus-within/field:text-arcus-red transition-colors" />
                         <select 
                           required
                           value={formData.category}
@@ -311,7 +311,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                   )}
                   {formData.regType === 'OFFICIAL' && (
                     <div className="space-y-1 md:space-y-2">
-                       <label className="text-[7px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Kategori Khusus</label>
+                       <label className="text-[7px] md:text-[9px] font-black text-slate-900 uppercase tracking-widest ml-1">Kategori Khusus</label>
                        <div className="relative p-2.5 md:p-4 bg-blue-50 border-2 border-blue-100 rounded-lg md:rounded-2xl flex items-center gap-3">
                           <Users className="w-4 h-4 md:w-6 md:h-6 text-blue-500" />
                           <div className="flex flex-col">

@@ -59,7 +59,7 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onBack, 
               placeholder="Cari nama atau klub official..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:border-blue-500 focus:bg-white transition-all text-xs font-bold outline-none"
+              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:border-blue-500 focus:bg-white transition-all text-xs font-bold outline-none text-slate-900"
             />
           </div>
         </div>
@@ -68,11 +68,11 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onBack, 
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Official / Pelatih</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Klub / Pengcab</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">E-Mail</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Official / Pelatih</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Klub / Pengcab</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">E-Mail</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Status</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">

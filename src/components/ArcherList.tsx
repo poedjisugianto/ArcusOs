@@ -241,44 +241,44 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
               </button>
             </div>
 
-            <form onSubmit={handleManualAdd} className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
+            <form onSubmit={handleManualAdd} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Lengkap</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Nama Lengkap</span>
                   <input 
                     type="text" 
                     required
                     value={newArcher.name}
                     onChange={e => setNewArcher({...newArcher, name: e.target.value})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all" 
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900" 
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Email Archer (Opsional)</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Email Archer (Opsional)</span>
                   <input 
                     type="email" 
                     value={newArcher.email}
                     onChange={e => setNewArcher({...newArcher, email: e.target.value})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all" 
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900 placeholder:text-slate-400" 
                     placeholder="email@archer.com"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Klub / Instansi</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Klub / Instansi</span>
                   <input 
                     type="text" 
                     required
                     value={newArcher.club}
                     onChange={e => setNewArcher({...newArcher, club: e.target.value})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all" 
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900" 
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Kategori</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Kategori</span>
                   <select 
                     value={newArcher.category}
                     onChange={e => setNewArcher({...newArcher, category: e.target.value as CategoryType})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all"
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900"
                   >
                     {(Object.keys(CategoryType) as CategoryType[]).filter(cat => cat !== CategoryType.OFFICIAL).map(cat => (
                       <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
@@ -287,24 +287,24 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
                 </label>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Bantalan (Maks {totalTargets})</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Bantalan</span>
                   <input 
                     type="number" 
                     value={newArcher.targetNo}
                     onChange={e => setNewArcher({...newArcher, targetNo: Math.min(totalTargets, parseInt(e.target.value) || 1)})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all" 
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900" 
                     min="1"
                     max={totalTargets}
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Posisi</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Posisi</span>
                   <select 
                     value={newArcher.position}
                     onChange={e => setNewArcher({...newArcher, position: e.target.value as any})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none"
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none text-slate-900"
                   >
                     <option value="A">A</option>
                     <option value="B">B</option>
@@ -313,12 +313,12 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
                   </select>
                 </label>
                 <label className="block">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Sesi (Wave)</span>
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Sesi (Wave)</span>
                   <input 
                     type="number" 
                     value={newArcher.wave}
                     onChange={e => setNewArcher({...newArcher, wave: parseInt(e.target.value) || 1})}
-                    className="mt-2 block w-full rounded-2xl border-slate-200 p-4 border font-bold outline-none" 
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none text-slate-900 focus:ring-4 ring-red-500/10 transition-all" 
                     min="1"
                   />
                 </label>
@@ -337,7 +337,7 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
           <button 
             key={cat}
             onClick={() => setActiveCategory(cat)}
-            className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${activeCategory === cat ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600 hover:border-slate-300'}`}
+            className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${activeCategory === cat ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-100 text-slate-900 hover:text-arcus-red hover:border-arcus-red'}`}
           >
             {CATEGORY_LABELS[cat]}
           </button>

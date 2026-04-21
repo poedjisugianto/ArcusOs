@@ -95,7 +95,7 @@ export default function EntryList({ event, onBack }: Props) {
         <div className={`mb-8 pl-4 border-l-4 ${viewMode === 'ARCHERS' ? 'border-arcus-red' : 'border-blue-600'}`}>
           <div className="flex flex-col lg:flex-row gap-6 items-center">
             <div className="relative flex-1 w-full">
-              <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-900" />
               <input 
                 type="text" 
                 placeholder={viewMode === 'ARCHERS' ? "Cari nama atlet atau klub..." : "Cari nama official atau klub..."}
@@ -109,7 +109,7 @@ export default function EntryList({ event, onBack }: Props) {
                 <button 
                   onClick={() => setActiveCategory('ALL')}
                   className={`px-3 md:px-5 py-2 md:py-2.5 rounded-lg text-[7px] md:text-[9px] font-black uppercase tracking-widest transition-all border ${
-                    activeCategory === 'ALL' ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600 hover:border-slate-300'
+                    activeCategory === 'ALL' ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-100 text-slate-900 hover:text-arcus-red hover:border-arcus-red'
                   }`}
                 >
                   Semua
@@ -119,7 +119,7 @@ export default function EntryList({ event, onBack }: Props) {
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
                     className={`px-3 md:px-5 py-2 md:py-2.5 rounded-lg text-[7px] md:text-[9px] font-black uppercase tracking-widest whitespace-nowrap transition-all border ${
-                      activeCategory === cat ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600 hover:border-slate-300'
+                      activeCategory === cat ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-100 text-slate-900 hover:text-arcus-red hover:border-arcus-red'
                     }`}
                   >
                     {CATEGORY_LABELS[cat]}
@@ -135,7 +135,7 @@ export default function EntryList({ event, onBack }: Props) {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm md:text-base">
               <thead>
-                <tr className="bg-slate-50 text-slate-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest border-b border-slate-100">
+                <tr className="bg-slate-50 text-slate-900 text-[9px] md:text-[10px] font-bold uppercase tracking-widest border-b border-slate-100">
                   <th className="px-4 md:px-10 py-3 md:py-6 w-12 md:w-16">No</th>
                   <th className="px-4 md:px-10 py-3 md:py-6">{viewMode === 'ARCHERS' ? 'Archer' : 'Official Name'}</th>
                   <th className="px-4 md:px-10 py-3 md:py-6 hidden md:table-cell">Club</th>

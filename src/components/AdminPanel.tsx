@@ -232,7 +232,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                   </div>
                 )}
               </div>
-              <p className="text-[7px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 italic truncate max-w-[120px] md:max-w-none">
+              <p className="text-[7px] md:text-[9px] font-bold text-slate-900 uppercase tracking-widest mt-0.5 italic truncate max-w-[120px] md:max-w-none">
                 {isPractice ? 'Sesi Scoring' : `EVENT: ${localSettings.tournamentName || 'Untitled'}`}
               </p>
             </div>
@@ -241,7 +241,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
           <div className="flex items-center gap-2">
             <button 
               onClick={onClear}
-              className="hidden sm:flex px-4 py-2.5 text-[8px] font-black uppercase tracking-widest text-slate-400 hover:text-red-600 transition-all font-sans"
+              className="hidden sm:flex px-4 py-2.5 text-[8px] font-black uppercase tracking-widest text-slate-600 hover:text-red-600 transition-all font-sans"
             >
               RESET
             </button>
@@ -260,7 +260,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
             <button 
               type="button"
               onClick={() => setActiveTab('GENERAL')}
-              className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'GENERAL' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'GENERAL' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-800'}`}
             >
               <Trophy className={`w-3.5 h-3.5 ${activeTab === 'GENERAL' ? 'text-arcus-red' : ''}`} /> INFO & KATEGORI
               {activeTab === 'GENERAL' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
@@ -269,7 +269,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
               <button 
                 type="button"
                 onClick={() => setActiveTab('PAYMENT')}
-                className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'PAYMENT' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'PAYMENT' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-800'}`}
               >
                 <Landmark className={`w-3.5 h-3.5 ${activeTab === 'PAYMENT' ? 'text-arcus-red' : ''}`} /> PEMBAYARAN
                 {activeTab === 'PAYMENT' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
@@ -278,7 +278,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
             <button 
               type="button"
               onClick={() => setActiveTab('SCORERS')}
-              className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'SCORERS' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'SCORERS' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-800'}`}
             >
               <Smartphone className={`w-3.5 h-3.5 ${activeTab === 'SCORERS' ? 'text-arcus-red' : ''}`} /> AKSES PANITIA
               {activeTab === 'SCORERS' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
@@ -304,41 +304,41 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2 space-y-8">
                     <label className="block group">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Sesi / Turnamen</span>
-                      <input type="text" value={localSettings.tournamentName} onChange={e => updateSettings({ tournamentName: e.target.value })} className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-base outline-none focus:border-arcus-red transition-all" required />
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Nama Sesi / Turnamen</span>
+                      <input type="text" value={localSettings.tournamentName} onChange={e => updateSettings({ tournamentName: e.target.value })} className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-base outline-none focus:border-arcus-red transition-all text-slate-900" required />
                     </label>
 
                     <label className="block group">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Keterangan Singkat</span>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Keterangan Singkat</span>
                       <textarea 
                         value={localSettings.description} 
                         onChange={e => updateSettings({ description: e.target.value })} 
-                        className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-arcus-red transition-all h-24 resize-none" 
+                        className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-arcus-red transition-all h-24 resize-none text-slate-900" 
                         placeholder="Deskripsi turnamen..."
                       />
                     </label>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <label className="block group">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Lokasi</span>
-                        <input type="text" placeholder="Lokasi..." value={localSettings.location} onChange={e => updateSettings({ location: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Lokasi</span>
+                        <input type="text" placeholder="Lokasi..." value={localSettings.location} onChange={e => updateSettings({ location: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
 
                       <label className="block group">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 italic">Tanggal</span>
-                        <input type="text" placeholder="Tanggal..." value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 italic">Tanggal</span>
+                        <input type="text" placeholder="Tanggal..." value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <label className="block group">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Total Bantalan</span>
-                        <input type="number" value={localSettings.totalTargets} onChange={e => updateSettings({ totalTargets: parseInt(e.target.value) || 1 })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" min="1" />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Total Bantalan</span>
+                        <input type="number" value={localSettings.totalTargets} onChange={e => updateSettings({ totalTargets: parseInt(e.target.value) || 1 })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" min="1" />
                       </label>
 
                       <label className="block group">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 italic">Archer per Target Face</span>
-                        <input type="number" value={localSettings.archersPerTarget || 2} onChange={e => updateSettings({ archersPerTarget: parseInt(e.target.value) || 1 })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red" min="1" max="4" />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 italic">Archer per Target Face</span>
+                        <input type="number" value={localSettings.archersPerTarget || 2} onChange={e => updateSettings({ archersPerTarget: parseInt(e.target.value) || 1 })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" min="1" max="4" />
                       </label>
                     </div>
 
@@ -384,7 +384,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                              </div>
                              <div>
                                 <p className="text-xs font-black uppercase text-slate-900 leading-none">Payment Gateway</p>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Otomatisasi Status Lunas</p>
+                                <p className="text-[9px] font-bold text-slate-900 uppercase mt-1">Otomatisasi Status Lunas</p>
                              </div>
                           </div>
                           <button 
@@ -399,7 +399,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                          <label className="block space-y-2">
                             <div className="flex items-center gap-2">
                                <UsersIcon className="w-4 h-4 text-slate-400" />
-                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Biaya Registrasi Official (Pusat)</span>
+                               <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Biaya Registrasi Official (Pusat)</span>
                             </div>
                             <div className="relative">
                               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 italic">Rp</span>
@@ -453,7 +453,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div className="space-y-6">
                    <label className="block group">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Link Gambar Pamflet / Poster (URL)</span>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Link Gambar Pamflet / Poster (URL)</span>
                       <div className="relative mt-2">
                         <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         <input 
@@ -467,7 +467,7 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                    </label>
 
                    <label className="block group">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Link Technical Hand Book (THB / PDF URL)</span>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Link Technical Hand Book (THB / PDF URL)</span>
                       <div className="relative mt-2">
                         <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         <input 
@@ -568,36 +568,48 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                     </div>
                     {cat !== CategoryType.OFFICIAL && (
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                        <input 
-                          type="text" 
-                          value={localSettings.categoryConfigs?.[cat]?.distance || ''} 
-                          onChange={e => updateCategoryConfig(cat, 'distance', e.target.value)} 
-                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all" 
-                          placeholder="Jarak" 
-                        />
-                        <input 
-                          type="number" 
-                          value={localSettings.categoryConfigs?.[cat]?.arrows || 0} 
-                          onChange={e => updateCategoryConfig(cat, 'arrows', parseInt(e.target.value) || 0)} 
-                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all" 
-                          placeholder="Arrows" 
-                        />
-                        <input 
-                          type="number" 
-                          value={localSettings.categoryConfigs?.[cat]?.ends || 0} 
-                          onChange={e => updateCategoryConfig(cat, 'ends', parseInt(e.target.value) || 0)} 
-                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all" 
-                          placeholder="Ends" 
-                        />
-                        <select 
-                          value={localSettings.categoryConfigs?.[cat]?.targetType || TargetType.STANDARD} 
-                          onChange={e => updateCategoryConfig(cat, 'targetType', e.target.value as TargetType)} 
-                          className="rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all"
-                        >
-                          {Object.values(TargetType).map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Jarak</span>
+                          <input 
+                            type="text" 
+                            value={localSettings.categoryConfigs?.[cat]?.distance || ''} 
+                            onChange={e => updateCategoryConfig(cat, 'distance', e.target.value)} 
+                            className="w-full rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all text-slate-900" 
+                            placeholder="Jarak" 
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Arrow</span>
+                          <input 
+                            type="number" 
+                            value={localSettings.categoryConfigs?.[cat]?.arrows || 0} 
+                            onChange={e => updateCategoryConfig(cat, 'arrows', parseInt(e.target.value) || 0)} 
+                            className="w-full rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all text-slate-900" 
+                            placeholder="Arrows" 
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Rambahan</span>
+                          <input 
+                            type="number" 
+                            value={localSettings.categoryConfigs?.[cat]?.ends || 0} 
+                            onChange={e => updateCategoryConfig(cat, 'ends', parseInt(e.target.value) || 0)} 
+                            className="w-full rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all text-slate-900" 
+                            placeholder="Ends" 
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Face Target</span>
+                          <select 
+                            value={localSettings.categoryConfigs?.[cat]?.targetType || TargetType.STANDARD} 
+                            onChange={e => updateCategoryConfig(cat, 'targetType', e.target.value as TargetType)} 
+                            className="w-full rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all text-slate-900"
+                          >
+                            {Object.values(TargetType).map(t => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                     )}
                     {cat === CategoryType.OFFICIAL && (

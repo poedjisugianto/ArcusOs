@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { 
   ArrowLeft, Printer, Image as ImageIcon, Plus, Trash2, 
   Settings, User, MapPin, Calendar, Layout, Download,
-  Type, Move, Maximize, Activity, CreditCard, ShieldCheck, Star, Trophy, Crown
+  Type, Move, Maximize, Activity, CreditCard, ShieldCheck, Star, Trophy, Crown, Crosshair, Target
 } from 'lucide-react';
 import { Archer, TournamentSettings, CategoryType } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
@@ -23,7 +23,7 @@ interface Logo {
 }
 
 type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON' | 'HERITAGE_PAPER' | 'BAMBOO_WEAVE' | 'ETHNIC_MODERN' | 'SPORTY_BURST';
-type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_LEGACY' | 'STEALTH_ELITE' | 'ASYMETRIC_PRO' | 'GLORY_ULTIMATE' | 'CHAMPION_ELITE';
+type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_LEGACY' | 'STEALTH_ELITE' | 'ASYMETRIC_PRO' | 'GLORY_ULTIMATE' | 'CHAMPION_ELITE' | 'PRO_ARCHER_X';
 
 const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [logos, setLogos] = useState<Logo[]>([]);
@@ -134,17 +134,37 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
     const isAsymmetric = cardTheme === 'ASYMETRIC_PRO';
     const isGlory = cardTheme === 'GLORY_ULTIMATE';
     const isChampion = cardTheme === 'CHAMPION_ELITE';
+    const isProX = cardTheme === 'PRO_ARCHER_X';
     
     const cardAccent = isStealth ? '#E61E2A' : (isOfficial ? (isLegacy ? '#78350f' : '#2563eb') : accentColor);
-    const textPrimary = (isStealth || isChampion) ? 'text-white' : 'text-slate-900';
-    const textSecondary = (isStealth || isChampion) ? 'text-slate-100/70' : 'text-slate-600';
-    const bgBase = isStealth ? 'bg-[#0a0a0a]' : isChampion ? 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900' : 'bg-white';
+    const textPrimary = (isStealth || isChampion || isProX) ? 'text-white' : 'text-slate-900';
+    const textSecondary = (isStealth || isChampion || isProX) ? 'text-slate-100/70' : 'text-slate-600';
+    const bgBase = isStealth ? 'bg-[#0a0a0a]' : isChampion ? 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900' : isProX ? 'bg-[#0f172a]' : 'bg-white';
 
     return (
       <div key={person.id} className={`w-full aspect-[2/3] border border-slate-200 overflow-hidden flex flex-col break-inside-avoid shadow-sm print:shadow-none relative transition-all duration-700 ${bgBase}`}>
         {/* Pattern Layer */}
-        {!isChampion && <div className="absolute inset-0 opacity-40 mix-blend-multiply" style={getPatternStyles(bgPattern, cardAccent)} />}
+        {!isChampion && !isProX && <div className="absolute inset-0 opacity-40 mix-blend-multiply" style={getPatternStyles(bgPattern, cardAccent)} />}
         
+        {/* Pro Archer X specific Graphics */}
+        {isProX && (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {/* Dynamic Bow Limb Graphics */}
+            <div className="absolute -right-24 top-0 bottom-0 w-72 border-l-[35px] border-white/5 rounded-full z-0" />
+            <div className="absolute -right-28 top-10 bottom-10 w-72 border-l-[2px] border-yellow-500/30 rounded-full z-0" />
+            
+            {/* Precision Trajectory Lines */}
+            <div className="absolute top-[42%] -left-10 w-full h-[0.5px] bg-gradient-to-r from-transparent via-white/20 to-transparent rotate-[-12deg] z-0" />
+            <div className="absolute top-[44%] -left-10 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent rotate-[-12deg] z-0" />
+            
+            {/* Motion Blur Shapes */}
+            <div className="absolute -bottom-10 -left-10 w-56 h-56 bg-yellow-500/5 skew-x-[-25deg] rotate-[-15deg] z-0" />
+            
+            {/* Pro Grid Overlay */}
+            <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:20px_20px]" />
+          </div>
+        )}
+
         {/* Champion Mesh Gradient / Atmosphere */}
         {isChampion && (
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -157,8 +177,8 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
         )}
 
         {/* Target Motif / Face Target Layer */}
-        {isGlory || isChampion ? (
-          <div className={`absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] aspect-square ${isChampion ? 'opacity-30 scale-110' : 'opacity-20'} pointer-events-none`}>
+        {isGlory || isChampion || isProX ? (
+          <div className={`absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] aspect-square ${isChampion || isProX ? 'opacity-30 scale-125' : 'opacity-20'} pointer-events-none`}>
              {/* Realistic Face Target */}
              <div className="absolute inset-0 rounded-full border-[20px] border-white/80 shadow-[inset_0_0_40px_rgba(0,0,0,0.1)]" />
              <div className="absolute inset-[20px] rounded-full border-[20px] border-slate-900/90 shadow-[inset_0_0_40px_rgba(0,0,0,0.4)]" />
@@ -181,8 +201,18 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           </div>
         )}
 
-        {/* Framing / Engravings / Champion Gold Frame */}
-        {isChampion ? (
+        {/* Framing / Engravings / Champion Gold Frame / Pro Frame */}
+        {isProX ? (
+          <>
+             <div className="absolute inset-2 border-[12px] border-double opacity-10 z-20 pointer-events-none" style={{ borderColor: accentColor }} />
+             <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-yellow-500 z-30" />
+             {/* Dynamic Aim Reticle Corners */}
+             <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-yellow-500 z-30" />
+             <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-yellow-500 z-30" />
+             <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-yellow-500 z-30" />
+             <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-yellow-500 z-30" />
+          </>
+        ) : isChampion ? (
           <>
             {/* Bold Engraved Gold Frame */}
             <div className="absolute inset-2 border-[6px] border-double pointer-events-none z-20 shadow-[0_0_20px_rgba(234,179,8,0.2)]" 
@@ -241,8 +271,8 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
             {logos.length === 0 && <div className="w-12 h-12 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 bg-white/50 backdrop-blur-sm"><ImageIcon className="w-5 h-5 text-slate-300" /></div>}
           </div>
           <div className="text-right">
-             <div className={`text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 ${isChampion ? 'text-yellow-400 opacity-100' : 'opacity-40'}`}>E-PASS ID</div>
-             <div className={`text-[12px] font-mono font-black ${isChampion ? 'text-white' : ''}`} style={{ color: isChampion ? undefined : cardAccent }}>{person.id.substring(0, 8)}</div>
+             <div className={`text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 ${isChampion || isProX ? 'text-yellow-400 opacity-100' : 'opacity-40'}`}>E-PASS ID</div>
+             <div className={`text-[12px] font-mono font-black ${isChampion || isProX ? 'text-white' : ''}`} style={{ color: (isChampion || isProX) ? undefined : cardAccent }}>{person.id.substring(0, 8)}</div>
           </div>
         </div>
 
@@ -254,22 +284,22 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
         {/* Main Content Area */}
         <div className={`p-6 flex flex-col flex-1 relative z-10 ${isAsymmetric ? 'items-start pl-8' : 'items-center'}`}>
           <div className={`w-full mb-6 ${isAsymmetric ? 'text-left' : 'text-center'}`}>
-            <h2 className={`text-[12px] font-black uppercase tracking-[0.3em] mb-1 scale-y-110 ${isLegacy || isGlory || isChampion ? 'font-serif italic' : 'font-oswald'} ${textPrimary}`}>
+            <h2 className={`text-[12px] font-black uppercase tracking-[0.3em] mb-1 scale-y-110 ${isLegacy || isGlory || isChampion || isProX ? 'font-serif italic' : 'font-oswald'} ${textPrimary}`}>
               {cardTitle}
             </h2>
-            <div className={`h-px w-16 mx-auto mt-2 ${isChampion ? 'bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent' : 'bg-slate-200'}`} style={{ backgroundColor: (isAsymmetric || isChampion) ? undefined : `${cardAccent}33` }} />
+            <div className={`h-px w-16 mx-auto mt-2 ${isChampion || isProX ? 'bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent' : 'bg-slate-200'}`} style={{ backgroundColor: (isAsymmetric || isChampion || isProX) ? undefined : `${cardAccent}33` }} />
           </div>
 
           <div className={`flex flex-col gap-6 w-full ${isAsymmetric ? 'items-start' : 'items-center'}`}>
-            {/* Name Section with Champion Typography */}
-            <div className="relative group">
-              {(isLegacy || isGlory || isChampion) && (
-                <div className={`absolute -top-4 left-0 w-full text-center text-[10px] uppercase font-black tracking-[0.3em] ${isChampion ? 'text-yellow-500' : 'font-serif italic text-slate-400 opacity-50'}`}>
-                  {isChampion ? 'Elite Athlete' : 'Grand Athlete'}
+            {/* Name Section with Custom Typography */}
+            <div className="relative group text-center">
+              {(isLegacy || isGlory || isChampion || isProX) && (
+                <div className={`absolute -top-4 left-0 w-full text-center text-[10px] uppercase font-black tracking-[0.3em] ${isChampion || isProX ? 'text-yellow-500' : 'font-serif italic text-slate-400 opacity-50'}`}>
+                  {isChampion || isProX ? 'Elite Pro Archer' : 'Grand Athlete'}
                 </div>
               )}
-              <h1 className={`text-4xl leading-[0.85] font-black uppercase mb-1 drop-shadow-sm ${isLegacy || isGlory || isChampion ? 'font-serif tracking-normal' : 'font-oswald italic tracking-tighter'} ${textPrimary}`}>
-                {isChampion ? (
+              <h1 className={`text-4xl leading-[0.85] font-black uppercase mb-1 drop-shadow-sm ${isProX ? 'font-oswald italic tracking-tighter' : isLegacy || isGlory || isChampion ? 'font-serif tracking-normal' : 'font-oswald italic tracking-tighter'} ${textPrimary}`}>
+                {isChampion || isProX ? (
                   <>
                     <span className="block drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">{person.name.split(' ')[0]}</span>
                     <span className="text-yellow-400 block mt-1 drop-shadow-[0_0_20px_rgba(234,179,8,0.5)]">{person.name.split(' ').slice(1).join(' ')}</span>
@@ -288,50 +318,50 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
 
             {/* QR Section with Premium Container */}
             <div className={`flex items-end gap-6 ${isAsymmetric ? 'flex-row' : 'flex-col'}`}>
-              <div className={`p-4 rounded-[2rem] shadow-2xl relative group ${isChampion ? 'bg-white/10 backdrop-blur-md border border-white/20' : isStealth || isGlory ? 'bg-white' : 'bg-white shadow-slate-200'}`}>
-                 {isChampion && <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-[2rem]" />}
+              <div className={`p-4 rounded-[2rem] shadow-2xl relative group ${isChampion || isProX ? 'bg-white/10 backdrop-blur-md border border-white/20' : isStealth || isGlory ? 'bg-white' : 'bg-white shadow-slate-200'}`}>
+                 {(isChampion || isProX) && <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-[2rem]" />}
                  <div className="bg-white p-1 rounded-lg">
                     <QRCodeSVG value={person.id} size={person.id.length > 20 ? 80 : 100} level="H" />
                  </div>
               </div>
               
               <div className={`flex flex-col ${isAsymmetric ? 'items-start' : 'items-center'} gap-2`}>
-                <span className={`text-[10px] font-black px-6 py-2 rounded-full text-white uppercase tracking-[0.2em] shadow-lg ${isLegacy || isGlory || isChampion ? 'rounded-none border-y-2 border-white/20' : 'skew-x-[-10deg]'}`} style={{ backgroundColor: isChampion ? '#ca8a04' : cardAccent }}>
+                <span className={`text-[10px] font-black px-6 py-2 rounded-full text-white uppercase tracking-[0.2em] shadow-lg ${isLegacy || isGlory || isChampion || isProX ? 'rounded-none border-y-2 border-white/20' : 'skew-x-[-10deg]'}`} style={{ backgroundColor: (isChampion || isProX) ? '#ca8a04' : cardAccent }}>
                   {isOfficial ? 'CREW' : person.category}
                 </span>
-                {isChampion && <div className="text-[8px] font-black uppercase text-yellow-500 tracking-[0.4em] mt-1">Official Member</div>}
+                {(isChampion || isProX) && <div className="text-[8px] font-black uppercase text-yellow-500 tracking-[0.4em] mt-1">Official Member</div>}
               </div>
             </div>
           </div>
 
-          {/* Technical Data Grid with Glare Effect for Champion */}
+          {/* Technical Data Grid with Glare Effect */}
           {!isOfficial && (
-            <div className={`mt-auto w-full grid grid-cols-2 gap-px bg-slate-100 border border-slate-100 rounded-3xl overflow-hidden shadow-2xl ${isChampion ? 'border-white/10 bg-white/5 backdrop-blur-md' : isGlory ? 'border-amber-200/50' : ''}`}>
-               <div className={`${isStealth ? 'bg-slate-900' : isChampion ? 'bg-white/5' : 'bg-white/50'} p-4 flex flex-col items-center relative overflow-hidden`}>
-                  {(isGlory || isChampion) && <div className="absolute top-0 left-0 w-full h-0.5" style={{ background: isChampion ? '#eab308' : cardAccent }} />}
-                  <span className={`text-[7px] font-black uppercase tracking-widest mb-1 ${isChampion ? 'text-yellow-500' : 'text-slate-400'}`}>Target</span>
+            <div className={`mt-auto w-full grid grid-cols-2 gap-px bg-slate-100 border border-slate-100 rounded-3xl overflow-hidden shadow-2xl ${isChampion || isProX ? 'border-white/10 bg-white/5 backdrop-blur-md' : isGlory ? 'border-amber-200/50' : ''}`}>
+               <div className={`${isStealth ? 'bg-slate-900' : (isChampion || isProX) ? 'bg-white/5' : 'bg-white/50'} p-4 flex flex-col items-center relative overflow-hidden`}>
+                  {(isGlory || isChampion || isProX) && <div className="absolute top-0 left-0 w-full h-0.5" style={{ background: (isChampion || isProX) ? '#eab308' : cardAccent }} />}
+                  <span className={`text-[7px] font-black uppercase tracking-widest mb-1 ${(isChampion || isProX) ? 'text-yellow-500' : 'text-slate-400'}`}>Target</span>
                   <span className={`text-2xl font-black ${textPrimary}`}>{person.targetNo}{person.position}</span>
                </div>
-               <div className={`${isStealth ? 'bg-slate-900' : isChampion ? 'bg-white/5' : 'bg-white/50'} p-4 flex flex-col items-center relative overflow-hidden`}>
-                  {(isGlory || isChampion) && <div className="absolute top-0 left-0 w-full h-0.5" style={{ background: isChampion ? '#eab308' : cardAccent }} />}
-                  <span className={`text-[7px] font-black uppercase tracking-widest mb-1 ${isChampion ? 'text-yellow-500' : 'text-slate-400'}`}>Session</span>
+               <div className={`${isStealth ? 'bg-slate-900' : (isChampion || isProX) ? 'bg-white/5' : 'bg-white/50'} p-4 flex flex-col items-center relative overflow-hidden`}>
+                  {(isGlory || isChampion || isProX) && <div className="absolute top-0 left-0 w-full h-0.5" style={{ background: (isChampion || isProX) ? '#eab308' : cardAccent }} />}
+                  <span className={`text-[7px] font-black uppercase tracking-widest mb-1 ${(isChampion || isProX) ? 'text-yellow-500' : 'text-slate-400'}`}>Session</span>
                   <span className={`text-2xl font-black ${textPrimary}`}>{person.wave}</span>
                </div>
             </div>
           )}
           
           {isOfficial && (
-            <div className={`mt-auto w-full p-4 rounded-3xl border flex items-center justify-between ${isChampion ? 'border-yellow-500/30 bg-yellow-500/5 backdrop-blur-md' : isStealth || isGlory ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
+            <div className={`mt-auto w-full p-4 rounded-3xl border flex items-center justify-between ${(isChampion || isProX) ? 'border-yellow-500/30 bg-yellow-500/5 backdrop-blur-md' : isStealth || isGlory ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
                <div className="flex items-center gap-4">
-                  <div className={`p-2.5 rounded-xl shadow-lg ${isChampion ? 'bg-yellow-500' : 'bg-blue-600'}`}>
+                  <div className={`p-2.5 rounded-xl shadow-lg ${(isChampion || isProX) ? 'bg-yellow-500' : 'bg-blue-600'}`}>
                      <ShieldCheck className="w-5 h-5 text-white" />
                   </div>
                   <div className="text-left">
-                     <p className={`text-[12px] font-black leading-none uppercase ${isChampion ? 'text-white' : isGlory ? 'text-slate-900' : textPrimary}`}>Full Access</p>
-                     <p className={`text-[8px] font-bold uppercase mt-1.5 ${isChampion ? 'text-yellow-500' : 'text-slate-400'}`}>Verified Personnel</p>
+                     <p className={`text-[12px] font-black leading-none uppercase ${(isChampion || isProX) ? 'text-white' : isGlory ? 'text-slate-900' : textPrimary}`}>Full Access</p>
+                     <p className={`text-[8px] font-bold uppercase mt-1.5 ${(isChampion || isProX) ? 'text-yellow-500' : 'text-slate-400'}`}>Verified Personnel</p>
                   </div>
                </div>
-               <div className={`text-[10px] font-black font-mono rotate-90 opacity-40 italic ${isChampion ? 'text-yellow-500' : ''}`}>AUTHORIZED</div>
+               <div className={`text-[10px] font-black font-mono rotate-90 opacity-40 italic ${(isChampion || isProX) ? 'text-yellow-500' : ''}`}>AUTHORIZED</div>
             </div>
           )}
         </div>
@@ -345,8 +375,8 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           </div>
         )}
 
-        {/* Global Footer (Non-Glory / Non-Champion) */}
-        {(!isAsymmetric && !isGlory && !isChampion) && (
+        {/* Global Footer (Non-Glory / Non-Champion / Non-ProX) */}
+        {(!isAsymmetric && !isGlory && !isChampion && !isProX) && (
           <div className="h-12 flex items-center justify-center relative z-10 pt-2" style={{ borderTop: `1px solid ${cardAccent}22` }}>
              <span className={`text-[9px] font-black uppercase tracking-[0.4em] ${textSecondary}`}>
                 • {cardSubtitle} •
@@ -354,16 +384,22 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           </div>
         )}
 
-        {/* Glory / Champion Footer with Premium Shine */}
-        {(isGlory || isChampion) && (
-           <div className="h-12 flex items-center justify-center relative z-10 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,0.2)]" 
-                style={{ backgroundColor: isChampion ? '#ca8a04' : cardAccent }}>
+        {/* Glory / Champion / ProX Footer with Premium Shine */}
+        {(isGlory || isChampion || isProX) && (
+           <div className={`h-12 flex items-center justify-between px-6 relative z-10 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,0.2)]`} 
+                style={{ backgroundColor: (isChampion || isProX) ? (isProX ? '#eab308' : '#ca8a04') : cardAccent }}>
               {/* Shine Effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg] translate-x-[-100%] animate-[shimmer_3s_infinite]" />
               <div className="absolute inset-0 opacity-20 bg-[linear-gradient(45deg,rgba(0,0,0,0.4)_25%,transparent_25%,transparent_50%,rgba(0,0,0,0.4)_50%,rgba(0,0,0,0.4)_75%,transparent_75%,transparent)] bg-[length:10px_10px]" />
-              <span className="text-[11px] font-black text-white uppercase italic tracking-[0.4em] relative z-10 drop-shadow-sm">
-                {cardSubtitle}
-              </span>
+              
+              <div className="flex flex-col items-start relative z-10">
+                 <span className={`text-[11px] font-black uppercase italic tracking-[0.2em] ${isProX ? 'text-slate-900' : 'text-white'} drop-shadow-sm`}>
+                   {cardSubtitle}
+                 </span>
+                 {isProX && <span className="text-[6px] font-bold text-slate-800 uppercase tracking-[0.3em] leading-none">Official Pro Circuit</span>}
+              </div>
+              
+              {(isProX) && <Target className="w-5 h-5 text-slate-900 opacity-80 relative z-10" />}
            </div>
         )}
       </div>
@@ -440,6 +476,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Pro Master Templates</span>
                     <div className="grid grid-cols-2 gap-2">
                        {([
+                         { id: 'PRO_ARCHER_X', name: 'X-Dynamic', icon: Crosshair, color: '#eab308', pattern: 'SPORTY_BURST' },
                          { id: 'CHAMPION_ELITE', name: 'Champion Elite', icon: Trophy, color: '#eab308', pattern: 'SPORTY_BURST' },
                          { id: 'GLORY_ULTIMATE', name: 'Glory Ultimate', icon: Star, color: '#f59e0b', pattern: 'SPORTY_BURST' },
                          { id: 'SPORTY_MODERN', name: 'Modern Sporty', icon: Activity, color: '#ef4444', pattern: 'SPORTY_MESH' },
@@ -460,6 +497,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                            <div className="flex flex-col items-start">
                              <span className="text-[8px] font-black uppercase tracking-tighter text-left leading-tight">{t.name}</span>
                              {t.id === 'CHAMPION_ELITE' && <span className="text-[6px] font-bold text-yellow-500 uppercase tracking-widest mt-0.5">Ultra Premium</span>}
+                             {t.id === 'PRO_ARCHER_X' && <span className="text-[6px] font-bold text-yellow-500 uppercase tracking-widest mt-0.5">Sports Dynamic</span>}
                            </div>
                            {cardTheme === t.id && <div className="absolute right-0 top-0 bottom-0 w-1 bg-white/20" />}
                          </button>

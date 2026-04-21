@@ -134,7 +134,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
             <button onClick={onBack} className="p-3 bg-slate-100 rounded-lg active:scale-90 text-slate-600"><ArrowLeft className="w-6 h-6" /></button>
             <div>
               <h2 className="text-base font-black uppercase font-oswald leading-none tracking-tight text-slate-900">Bantalan {selectedTarget}</h2>
-              <p className="text-[9px] font-bold uppercase mt-1 tracking-widest text-slate-400">Field Score Terminal</p>
+              <p className="text-[9px] font-bold uppercase mt-1 tracking-widest text-slate-900">Field Score Terminal</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 font-sans">
@@ -144,7 +144,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
                   <button 
                     key={i} 
                     onClick={() => setSelectedTarget(i + 1)}
-                    className={`shrink-0 w-8 h-8 rounded-lg font-black text-[10px] transition-all border ${selectedTarget === i + 1 ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-transparent border-transparent text-slate-400'}`}
+                    className={`shrink-0 w-8 h-8 rounded-lg font-black text-[10px] transition-all border ${selectedTarget === i + 1 ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-transparent border-transparent text-slate-900 opacity-60'}`}
                   >
                     {i + 1}
                   </button>
@@ -180,7 +180,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
             <button 
               key={a.id} 
               onClick={() => setSelectedArcherId(a.id)}
-              className={`flex-1 md:flex-none p-4 rounded-lg text-left border transition-all duration-200 ${selectedArcherId === a.id ? 'bg-arcus-sun border-yellow-500 text-black shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}
+              className={`flex-1 md:flex-none p-4 rounded-lg text-left border transition-all duration-200 ${selectedArcherId === a.id ? 'bg-arcus-sun border-yellow-500 text-black shadow-md' : 'bg-white border-slate-200 text-slate-900'}`}
             >
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-black uppercase tracking-widest">{a.targetNo}{a.position}</p>
@@ -196,7 +196,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
             </button>
           ))}
           {archersAtTarget.length === 0 && (
-            <div className="p-8 text-center text-slate-400 italic text-xs uppercase font-black">Bantalan Kosong</div>
+            <div className="p-8 text-center text-slate-900 font-bold italic text-xs uppercase">Bantalan Kosong</div>
           )}
         </div>
 

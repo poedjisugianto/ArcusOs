@@ -8,7 +8,7 @@ import {
   DollarSign, Landmark, CreditCard, Printer, Info, Check, Target, Zap,
   QrCode, Loader2, Smartphone, Share2, Shield, ChevronRight, ShieldAlert,
   Bell, BellRing, Mail, Inbox, Send, MessageSquare, History, RefreshCw,
-  TrendingUp, BarChart2, Database, Search, Users
+  TrendingUp, BarChart2, Database, Search, Users, Filter, Calendar, MapPin
 } from 'lucide-react';
 import ArcusLogo from './ArcusLogo';
 import AdminDashboard from './AdminDashboard';
@@ -72,13 +72,38 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const [billingTrxId, setBillingTrxId] = useState<string | null>(null);
   const [billingPaymentStatus, setBillingPaymentStatus] = useState<'PENDING' | 'PAID'>('PENDING');
   const [eventSearch, setEventSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ONGOING' | 'UPCOMING'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'TOURNAMENT' | 'PRACTICE'>('ALL');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'ALL' | 'PAID' | 'UNPAID'>('ALL');
+  const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'NAME_ASC'>('NEWEST');
 
   const filteredEvents = useMemo(() => {
-    return events.filter(e => 
-      e.settings.tournamentName.toLowerCase().includes(eventSearch.toLowerCase()) ||
-      (e.settings.location?.toLowerCase() || '').includes(eventSearch.toLowerCase())
-    );
-  }, [events, eventSearch]);
+    let result = events.filter(e => {
+      const matchesSearch = e.settings.tournamentName.toLowerCase().includes(eventSearch.toLowerCase()) ||
+        (e.settings.location?.toLowerCase() || '').includes(eventSearch.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'ALL' || e.status === statusFilter;
+      
+      const isPractice = e.settings.isPractice || e.settings.isSelfPractice;
+      const matchesType = typeFilter === 'ALL' || 
+        (typeFilter === 'PRACTICE' && isPractice) || 
+        (typeFilter === 'TOURNAMENT' && !isPractice);
+
+      const matchesPayment = paymentStatusFilter === 'ALL' || 
+        (paymentStatusFilter === 'PAID' && e.settings.platformFeePaidToOwner) || 
+        (paymentStatusFilter === 'UNPAID' && !e.settings.platformFeePaidToOwner && !e.settings.isPractice);
+        
+      return matchesSearch && matchesStatus && matchesType && matchesPayment;
+    });
+
+    // Sorting
+    return result.sort((a, b) => {
+      if (sortBy === 'NEWEST') return (b.settings.createdAt || 0) - (a.settings.createdAt || 0);
+      if (sortBy === 'OLDEST') return (a.settings.createdAt || 0) - (b.settings.createdAt || 0);
+      if (sortBy === 'NAME_ASC') return a.settings.tournamentName.localeCompare(b.settings.tournamentName);
+      return 0;
+    });
+  }, [events, eventSearch, statusFilter, typeFilter, sortBy]);
 
   const handleStartCreation = () => {
     setStep('AGREEMENT');
@@ -576,6 +601,130 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
         </button>
       </div>
 
+      {/* Search & Filter Bar */}
+      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Cari turnamen, latihan, atau lokasi..." 
+              value={eventSearch}
+              onChange={(e) => setEventSearch(e.target.value)}
+              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-arcus-red transition-all"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button 
+                  onClick={() => setTypeFilter('ALL')}
+                  className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${typeFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                >
+                  Semua Tipe
+                </button>
+                <button 
+                  onClick={() => setTypeFilter('TOURNAMENT')}
+                  className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${typeFilter === 'TOURNAMENT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                >
+                  Turnamen
+                </button>
+                <button 
+                  onClick={() => setTypeFilter('PRACTICE')}
+                  className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${typeFilter === 'PRACTICE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                >
+                  Latihan
+                </button>
+             </div>
+
+             <div className="relative group">
+                <select 
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="appearance-none pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl font-black text-[9px] uppercase tracking-widest outline-none focus:border-arcus-red transition-all shadow-sm"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="DRAFT">Draf</option>
+                  <option value="UPCOMING">Mendatang</option>
+                  <option value="ACTIVE">Aktif (Reg)</option>
+                  <option value="ONGOING">Sedang Jalan</option>
+                  <option value="COMPLETED">Selesai</option>
+                </select>
+                <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <Layout className="w-3.5 h-3.5" />
+                </div>
+             </div>
+
+             <div className="relative group">
+                <select 
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="appearance-none pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl font-black text-[9px] uppercase tracking-widest outline-none focus:border-blue-600 transition-all shadow-sm"
+                >
+                  <option value="NEWEST">Terbaru</option>
+                  <option value="OLDEST">Terlama</option>
+                  <option value="NAME_ASC">Nama A-Z</option>
+                </select>
+                <TrendingUp className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <Layout className="w-3.5 h-3.5" />
+                </div>
+             </div>
+
+             <div className="relative group">
+                <select 
+                  value={paymentStatusFilter}
+                  onChange={(e) => setPaymentStatusFilter(e.target.value as any)}
+                  className="appearance-none pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl font-black text-[9px] uppercase tracking-widest outline-none focus:border-emerald-600 transition-all shadow-sm"
+                >
+                  <option value="ALL">Semua Biaya</option>
+                  <option value="PAID">Lunas Admin</option>
+                  <option value="UNPAID">Pending Admin</option>
+                </select>
+                <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <Layout className="w-3.5 h-3.5" />
+                </div>
+             </div>
+          </div>
+        </div>
+
+        {/* Quick Filter Indicators */}
+        {(eventSearch || statusFilter !== 'ALL' || typeFilter !== 'ALL') && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-50">
+            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mr-2">Filter Aktif:</span>
+            {eventSearch && (
+              <span className="bg-slate-900 text-white px-3 py-1 rounded-full text-[8px] font-black flex items-center gap-2">
+                "{eventSearch}" <X className="w-2.5 h-2.5 cursor-pointer" onClick={() => setEventSearch('')} />
+              </span>
+            )}
+            {typeFilter !== 'ALL' && (
+              <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-[8px] font-black flex items-center gap-2">
+                {typeFilter} <X className="w-2.5 h-2.5 cursor-pointer" onClick={() => setTypeFilter('ALL')} />
+              </span>
+            )}
+            {statusFilter !== 'ALL' && (
+              <span className="bg-arcus-red text-white px-3 py-1 rounded-full text-[8px] font-black flex items-center gap-2">
+                STATUS: {statusFilter} <X className="w-2.5 h-2.5 cursor-pointer" onClick={() => setStatusFilter('ALL')} />
+              </span>
+            )}
+            {paymentStatusFilter !== 'ALL' && (
+              <span className="bg-emerald-600 text-white px-3 py-1 rounded-full text-[8px] font-black flex items-center gap-2">
+                BIAYA: {paymentStatusFilter} <X className="w-2.5 h-2.5 cursor-pointer" onClick={() => setPaymentStatusFilter('ALL')} />
+              </span>
+            )}
+            <button 
+              onClick={() => { setEventSearch(''); setTypeFilter('ALL'); setStatusFilter('ALL'); setSortBy('NEWEST'); setPaymentStatusFilter('ALL'); }}
+              className="text-[8px] font-black text-arcus-red uppercase tracking-widest hover:underline ml-auto"
+            >
+              Reset Semua
+            </button>
+          </div>
+        )}
+      </div>
+
       {activeTab === 'DASHBOARD' ? (
         <AdminDashboard 
           user={{ id: userId, name: userName || '', email: '', isOrganizer: true, role: userRole }}
@@ -637,6 +786,18 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                             <Users className={`w-4 h-4 ${event.settings.isPractice ? 'text-teal-500' : 'text-arcus-red'}`} />
                             {event.archers.length} Archer <span className="hidden sm:inline">Terdaftar</span>
                           </div>
+                          {event.settings.location && (
+                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                              <MapPin className="w-4 h-4 text-blue-500" />
+                              <span className="truncate max-w-[120px]">{event.settings.location}</span>
+                            </div>
+                          )}
+                          {event.settings.eventDate && (
+                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                              <Calendar className="w-4 h-4 text-emerald-500" />
+                              <span>{new Date(event.settings.eventDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                            </div>
+                          )}
                           {!event.settings.isPractice && (
                             <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-wider ${event.settings.platformFeePaidToOwner ? 'text-emerald-500' : 'text-orange-500'}`}>
                               {event.settings.platformFeePaidToOwner ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}

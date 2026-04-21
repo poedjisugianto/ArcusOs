@@ -44,7 +44,7 @@ const ScorerLogin: React.FC<ScorerLoginProps> = ({ events, onLogin, onBack }) =>
             <ArcusLogo className="w-12 h-12" />
           </div>
           <h1 className="text-4xl font-black font-oswald uppercase italic tracking-tight text-slate-900">Akses Tim Lapangan</h1>
-          <p className="text-slate-500 font-medium">Masukkan kode akses 4-digit yang diberikan oleh panitia.</p>
+          <p className="text-slate-900 font-bold uppercase text-[10px] tracking-widest italic opacity-70">Masukkan kode akses 4-digit yang diberikan oleh panitia.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 space-y-8">
@@ -57,7 +57,7 @@ const ScorerLogin: React.FC<ScorerLoginProps> = ({ events, onLogin, onBack }) =>
 
           <div className="space-y-4">
             <label className="block group">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 group-focus-within:text-purple-600 transition-colors">Kode Akses (4 Digit)</span>
+              <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 group-focus-within:text-purple-600 transition-colors">Kode Akses (4 Digit)</span>
               <input 
                 type="text" 
                 maxLength={4}
@@ -83,7 +83,7 @@ const ScorerLogin: React.FC<ScorerLoginProps> = ({ events, onLogin, onBack }) =>
 
         <button 
           onClick={onBack}
-          className="w-full flex items-center justify-center gap-2 text-slate-400 hover:text-slate-600 font-black uppercase text-[10px] tracking-widest transition-colors"
+          className="w-full flex items-center justify-center gap-2 text-slate-900 hover:text-purple-600 font-black uppercase text-[10px] tracking-widest transition-colors"
         >
           <ChevronLeft className="w-4 h-4" /> Kembali ke Beranda
         </button>

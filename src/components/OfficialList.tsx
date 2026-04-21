@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Search, Trash2, ArrowLeft, 
-  X, Check, UserPlus, Printer, Users as UsersIcon
+  X, Check, UserPlus, Printer, Users as UsersIcon, Image as ImageIcon
 } from 'lucide-react';
 import { Archer, CategoryType, TournamentSettings, GlobalSettings } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -10,11 +10,12 @@ interface Props {
   officials: Archer[];
   onUpdate: (official: Archer) => void;
   onRemove: (id: string) => void;
+  onGoToIdCardEditor: () => void;
   onBack: () => void;
   settings: TournamentSettings;
 }
 
-const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onBack, settings }) => {
+const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToIdCardEditor, onBack, settings }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filtered = useMemo(() => {
@@ -40,6 +41,13 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onBack, 
           </div>
         </div>
         <div className="flex items-center gap-2">
+           <button 
+            onClick={onGoToIdCardEditor}
+            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-blue-700 transition-all active:scale-95 shadow-xl shadow-blue-600/20"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            Kartu Official
+          </button>
           <button 
             onClick={handlePrint}
             className="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-slate-200 transition-all active:scale-95"

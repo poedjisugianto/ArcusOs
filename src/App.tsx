@@ -965,6 +965,7 @@ export function App() {
             settings={activeEvent.settings}
             onUpdate={(o) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.map(arc => arc.id === o.id ? o : arc) })}
             onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.filter(a => a.id !== id) })}
+            onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
             onBack={() => setView('EVENT_ADMIN')}
           />
         )}

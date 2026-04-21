@@ -19,6 +19,15 @@
   --radius-xl: 1.5rem;
   --radius-2xl: 2rem;
   --radius-3xl: 3rem;
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
+
+@utility animate-shimmer {
+  animation: shimmer 2s infinite;
 }
 
 @layer base {

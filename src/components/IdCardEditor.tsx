@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { 
   ArrowLeft, Printer, Image as ImageIcon, Plus, Trash2, 
   Settings, User, MapPin, Calendar, Layout, Download,
-  Type, Move, Maximize, Activity, CreditCard, ShieldCheck
+  Type, Move, Maximize, Activity, CreditCard, ShieldCheck, Star
 } from 'lucide-react';
 import { Archer, TournamentSettings, CategoryType } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
@@ -22,8 +22,8 @@ interface Logo {
   size: number;
 }
 
-type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON' | 'HERITAGE_PAPER' | 'BAMBOO_WEAVE' | 'ETHNIC_MODERN';
-type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_LEGACY' | 'STEALTH_ELITE' | 'ASYMETRIC_PRO';
+type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON' | 'HERITAGE_PAPER' | 'BAMBOO_WEAVE' | 'ETHNIC_MODERN' | 'SPORTY_BURST';
+type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_LEGACY' | 'STEALTH_ELITE' | 'ASYMETRIC_PRO' | 'GLORY_ULTIMATE';
 
 const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [logos, setLogos] = useState<Logo[]>([]);
@@ -119,6 +119,10 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           backgroundImage: `repeating-linear-gradient(45deg, ${color}05 0px, ${color}05 2px, transparent 2px, transparent 8px), repeating-linear-gradient(-45deg, ${color}05 0px, ${color}05 2px, transparent 2px, transparent 8px)`,
           backgroundSize: '20px 20px'
         };
+      case 'SPORTY_BURST':
+        return {
+          backgroundImage: `linear-gradient(120deg, ${color}11 0%, transparent 50%), linear-gradient(-120deg, ${color}08 0%, transparent 50%), repeating-linear-gradient(45deg, transparent, transparent 15px, ${color}05 15px, ${color}05 16px)`
+        };
       default:
         return {};
     }
@@ -128,6 +132,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
     const isLegacy = cardTheme === 'TRADITIONAL_LEGACY';
     const isStealth = cardTheme === 'STEALTH_ELITE';
     const isAsymmetric = cardTheme === 'ASYMETRIC_PRO';
+    const isGlory = cardTheme === 'GLORY_ULTIMATE';
     
     const cardAccent = isStealth ? '#E61E2A' : (isOfficial ? (isLegacy ? '#78350f' : '#2563eb') : accentColor);
     const textPrimary = isStealth ? 'text-white' : 'text-slate-900';
@@ -139,21 +144,52 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
         {/* Pattern Layer */}
         <div className="absolute inset-0 opacity-40 mix-blend-multiply" style={getPatternStyles(bgPattern, cardAccent)} />
         
-        {/* Target Motif (Faded in Background) */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full border border-slate-200/20 pointer-events-none">
-           <div className="absolute inset-10 rounded-full border border-slate-200/20" />
-           <div className="absolute inset-20 rounded-full border border-slate-200/20" />
-           <div className="absolute inset-30 rounded-full border border-slate-200/20" />
-        </div>
+        {/* Target Motif / Face Target Layer */}
+        {isGlory ? (
+          <div className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] aspect-square opacity-20 pointer-events-none">
+             {/* Realistic Face Target */}
+             <div className="absolute inset-0 rounded-full border-[20px] border-white" />
+             <div className="absolute inset-[20px] rounded-full border-[20px] border-slate-900" />
+             <div className="absolute inset-[40px] rounded-full border-[20px] border-blue-500" />
+             <div className="absolute inset-[60px] rounded-full border-[20px] border-red-500" />
+             <div className="absolute inset-[80px] rounded-full bg-yellow-400" />
+             
+             {/* Sporty Speed Lines Overlay */}
+             <div className="absolute inset-0 bg-[repeating-linear-gradient(60deg,transparent,transparent_40px,rgba(255,255,255,0.1)_40px,rgba(255,255,255,0.1)_41px)]" />
+             <div className="absolute inset-0 bg-[repeating-linear-gradient(-30deg,transparent,transparent_60px,rgba(255,255,255,0.05)_60px,rgba(255,255,255,0.05)_61px)]" />
+          </div>
+        ) : (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full border border-slate-200/20 pointer-events-none">
+             <div className="absolute inset-10 rounded-full border border-slate-200/20" />
+             <div className="absolute inset-20 rounded-full border border-slate-200/20" />
+             <div className="absolute inset-30 rounded-full border border-slate-200/20" />
+          </div>
+        )}
 
-        {/* Framing */}
-        {isLegacy ? (
+        {/* Framing / Engravings */}
+        {isGlory ? (
+          <>
+            {/* Engraved Border Look */}
+            <div className="absolute inset-3 border-4 pointer-events-none z-20" style={{ borderColor: `${cardAccent}22`, borderStyle: 'double' }} />
+            <div className="absolute inset-5 border border-dashed pointer-events-none z-20 opacity-30" style={{ borderColor: cardAccent }} />
+            {/* Corner Ornaments - More Ornate */}
+            <div className="absolute top-2 left-2 w-10 h-10 border-t-4 border-l-4 z-30" style={{ borderColor: cardAccent, borderRadius: '8px 0 20px 0' }} />
+            <div className="absolute top-2 right-2 w-10 h-10 border-t-4 border-r-4 z-30" style={{ borderColor: cardAccent, borderRadius: '0 8px 0 20px' }} />
+            <div className="absolute bottom-2 left-2 w-10 h-10 border-b-4 border-l-4 z-30" style={{ borderColor: cardAccent, borderRadius: '0 20px 8px 0' }} />
+            <div className="absolute bottom-2 right-2 w-10 h-10 border-b-4 border-r-4 z-30" style={{ borderColor: cardAccent, borderRadius: '20px 0 0 8px' }} />
+            {/* Decorative Dots in Corners */}
+            <div className="absolute top-4 left-4 w-1.5 h-1.5 rounded-full z-40" style={{ backgroundColor: cardAccent }} />
+            <div className="absolute top-4 right-4 w-1.5 h-1.5 rounded-full z-40" style={{ backgroundColor: cardAccent }} />
+            <div className="absolute bottom-4 left-4 w-1.5 h-1.5 rounded-full z-40" style={{ backgroundColor: cardAccent }} />
+            <div className="absolute bottom-4 right-4 w-1.5 h-1.5 rounded-full z-40" style={{ backgroundColor: cardAccent }} />
+          </>
+        ) : isLegacy ? (
           <div className="absolute inset-4 border border-double pointer-events-none z-20" style={{ borderColor: `${cardAccent}33`, borderWidth: '3px' }} />
         ) : (
           !isAsymmetric && <div className="absolute left-0 top-0 bottom-0 w-2" style={{ backgroundColor: cardAccent }} />
         )}
 
-        {/* Header - Asymmetric Layout logic */}
+        {/* Header */}
         <div className={`h-24 p-5 flex items-center justify-between relative z-10 ${isAsymmetric ? 'flex-row-reverse' : ''}`}>
           <div className="flex -space-x-2">
             {logos.map(logo => (
@@ -162,7 +198,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                 src={logo.url} 
                 alt="" 
                 style={{ maxHeight: logo.size / 2, width: 'auto' }}
-                className="object-contain ring-2 ring-white rounded-lg bg-white"
+                className="object-contain ring-2 ring-white rounded-lg bg-white shadow-sm"
               />
             ))}
             {logos.length === 0 && <div className="w-12 h-12 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 bg-white/50"><ImageIcon className="w-5 h-5 text-slate-300" /></div>}
@@ -173,22 +209,27 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           </div>
         </div>
 
+        {/* Dynamic Sporty Lines for Glory theme */}
+        {isGlory && (
+          <div className="absolute top-24 left-0 w-full h-1 opacity-20 z-10" style={{ background: `linear-gradient(90deg, transparent, ${cardAccent}, transparent)` }} />
+        )}
+
         {/* Main Content Area */}
         <div className={`p-6 flex flex-col flex-1 relative z-10 ${isAsymmetric ? 'items-start pl-8' : 'items-center'}`}>
           <div className={`w-full mb-6 ${isAsymmetric ? 'text-left' : 'text-center'}`}>
-            <h2 className={`text-[12px] font-black uppercase tracking-[0.3em] mb-1 scale-y-110 ${isLegacy ? 'font-serif italic' : 'font-oswald'} ${textPrimary}`}>
+            <h2 className={`text-[12px] font-black uppercase tracking-[0.3em] mb-1 scale-y-110 ${isLegacy || isGlory ? 'font-serif italic' : 'font-oswald'} ${textPrimary}`}>
               {cardTitle}
             </h2>
             <div className="h-px w-12 bg-slate-200 mx-auto mt-2" style={{ backgroundColor: isAsymmetric ? 'transparent' : `${cardAccent}33` }} />
           </div>
 
           <div className={`flex flex-col gap-6 w-full ${isAsymmetric ? 'items-start' : 'items-center'}`}>
-            {/* Name - Dramatic Typography */}
+            {/* Name */}
             <div className="relative">
-              {isLegacy && <div className="absolute -top-4 left-0 w-full text-center text-[10px] font-serif italic text-slate-400 opacity-50">Grand Athlete</div>}
-              <h1 className={`text-3xl leading-[0.85] font-black uppercase mb-1 ${isLegacy ? 'font-serif tracking-normal text-amber-950' : 'font-oswald italic tracking-tighter'} ${textPrimary}`}>
+              {(isLegacy || isGlory) && <div className="absolute -top-4 left-0 w-full text-center text-[10px] font-serif italic text-slate-400 opacity-50">Grand Athlete</div>}
+              <h1 className={`text-3xl leading-[0.85] font-black uppercase mb-1 ${isLegacy || isGlory ? 'font-serif tracking-normal text-amber-950' : 'font-oswald italic tracking-tighter'} ${textPrimary}`}>
                 {person.name.split(' ')[0]}<br/>
-                <span style={{ color: isLegacy ? '#78350f' : cardAccent }}>{person.name.split(' ').slice(1).join(' ')}</span>
+                <span style={{ color: (isLegacy || isGlory) ? '#78350f' : cardAccent }}>{person.name.split(' ').slice(1).join(' ')}</span>
               </h1>
               <p className={`text-[12px] font-black mt-2 tracking-widest ${textSecondary}`}>
                 {person.club}
@@ -197,26 +238,28 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
 
             {/* QR Section */}
             <div className={`flex items-end gap-6 ${isAsymmetric ? 'flex-row' : 'flex-col'}`}>
-              <div className={`p-3 rounded-[2rem] shadow-2xl ${isStealth ? 'bg-white' : 'bg-white shadow-slate-200'}`}>
+              <div className={`p-3 rounded-[2rem] shadow-2xl ${isStealth || isGlory ? 'bg-white' : 'bg-white shadow-slate-200'}`}>
                 <QRCodeSVG value={person.id} size={90} level="H" />
               </div>
               
               <div className={`flex flex-col ${isAsymmetric ? 'items-start' : 'items-center'} gap-2`}>
-                <span className={`text-[10px] font-black px-4 py-1.5 rounded-full text-white uppercase tracking-widest shadow-lg ${isLegacy ? 'rounded-none' : 'skew-x-[-10deg]'}`} style={{ backgroundColor: cardAccent }}>
+                <span className={`text-[10px] font-black px-4 py-1.5 rounded-full text-white uppercase tracking-widest shadow-lg ${isLegacy || isGlory ? 'rounded-none' : 'skew-x-[-10deg]'}`} style={{ backgroundColor: cardAccent }}>
                   {isOfficial ? 'CREW' : person.category}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Technical Data Grid */}
+          {/* Technical Data Grid with Sporty Accents for Glory */}
           {!isOfficial && (
-            <div className="mt-auto w-full grid grid-cols-2 gap-px bg-slate-100 border border-slate-100 rounded-2xl overflow-hidden shadow-inner">
-               <div className={`${isStealth ? 'bg-slate-900' : 'bg-white/50'} p-3 flex flex-col items-center`}>
+            <div className={`mt-auto w-full grid grid-cols-2 gap-px bg-slate-100 border border-slate-100 rounded-2xl overflow-hidden shadow-inner ${isGlory ? 'border-amber-200/50' : ''}`}>
+               <div className={`${isStealth ? 'bg-slate-900' : 'bg-white/50'} p-3 flex flex-col items-center relative overflow-hidden`}>
+                  {isGlory && <div className="absolute top-0 left-0 w-full h-0.5" style={{ background: cardAccent }} />}
                   <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Target</span>
                   <span className={`text-xl font-black ${textPrimary}`}>{person.targetNo}{person.position}</span>
                </div>
-               <div className={`${isStealth ? 'bg-slate-900' : 'bg-white/50'} p-3 flex flex-col items-center`}>
+               <div className={`${isStealth ? 'bg-slate-900' : 'bg-white/50'} p-3 flex flex-col items-center relative overflow-hidden`}>
+                  {isGlory && <div className="absolute top-0 left-0 w-full h-0.5" style={{ background: cardAccent }} />}
                   <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Session</span>
                   <span className={`text-xl font-black ${textPrimary}`}>{person.wave}</span>
                </div>
@@ -224,20 +267,20 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
           )}
           
           {isOfficial && (
-            <div className={`mt-auto w-full p-4 rounded-2xl border flex items-center justify-between ${isStealth ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
+            <div className={`mt-auto w-full p-4 rounded-2xl border flex items-center justify-between ${isStealth || isGlory ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-600 rounded-lg"><ShieldCheck className="w-4 h-4 text-white" /></div>
+                  <div className="p-2 bg-blue-600 rounded-lg shadow-lg"><ShieldCheck className="w-4 h-4 text-white" /></div>
                   <div className="text-left">
-                     <p className="text-[10px] font-black text-slate-900 leading-none uppercase">Full Access</p>
+                     <p className={`text-[10px] font-black leading-none uppercase ${isGlory ? 'text-slate-900' : textPrimary}`}>Full Access</p>
                      <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Verified Personnel</p>
                   </div>
                </div>
-               <div className="text-[10px] font-black font-mono rotate-90 opacity-20">STAFF</div>
+               <div className="text-[10px] font-black font-mono rotate-90 opacity-20 italic">AUTHORIZED</div>
             </div>
           )}
         </div>
 
-        {/* Side Rail Text (For Asymmetric) */}
+        {/* Side Rail Text */}
         {isAsymmetric && (
           <div className="absolute right-0 top-0 bottom-0 w-12 bg-slate-900 flex items-center justify-center p-2">
              <span className="text-[10px] font-black text-white uppercase tracking-[0.5em] whitespace-nowrap rotate-90" style={{ color: cardAccent }}>
@@ -247,12 +290,22 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
         )}
 
         {/* Global Footer */}
-        {!isAsymmetric && (
+        {(!isAsymmetric && !isGlory) && (
           <div className="h-10 flex items-center justify-center relative z-10 pt-2" style={{ borderTop: `1px solid ${cardAccent}22` }}>
              <span className={`text-[9px] font-black uppercase tracking-[0.4em] ${textSecondary}`}>
                 • {cardSubtitle} •
              </span>
           </div>
+        )}
+
+        {/* Glory Footer with Speed Accents */}
+        {isGlory && (
+           <div className="h-10 flex items-center justify-center relative z-10 overflow-hidden" style={{ backgroundColor: cardAccent }}>
+              <div className="absolute inset-0 opacity-20 bg-[linear-gradient(45deg,rgba(0,0,0,0.4)_25%,transparent_25%,transparent_50%,rgba(0,0,0,0.4)_50%,rgba(0,0,0,0.4)_75%,transparent_75%,transparent)] bg-[length:10px_10px]" />
+              <span className="text-[9px] font-black text-white uppercase italic tracking-[0.4em] relative z-10">
+                {cardSubtitle}
+              </span>
+           </div>
         )}
       </div>
     );
@@ -328,6 +381,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Pro Master Templates</span>
                     <div className="grid grid-cols-2 gap-2">
                        {([
+                         { id: 'GLORY_ULTIMATE', name: 'Glory Ultimate', icon: Star, color: '#f59e0b', pattern: 'SPORTY_BURST' },
                          { id: 'SPORTY_MODERN', name: 'Modern Sporty', icon: Activity, color: '#ef4444', pattern: 'SPORTY_MESH' },
                          { id: 'TRADITIONAL_LEGACY', name: 'Legacy Heritage', icon: ShieldCheck, color: '#78350f', pattern: 'HERITAGE_PAPER' },
                          { id: 'STEALTH_ELITE', name: 'Elite Stealth', icon: Maximize, color: '#E61E2A', pattern: 'CARBON' },
@@ -380,7 +434,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                   <div className="space-y-3">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Sporty Background Pattern</span>
                     <div className="grid grid-cols-2 gap-2">
-                       {(['CLEAN', 'SPORTY_MESH', 'DIAGONAL_SPEED', 'DYNAMIC_WAVES', 'CARBON', 'HERITAGE_PAPER', 'BAMBOO_WEAVE', 'ETHNIC_MODERN'] as BgPattern[]).map(p => (
+                       {(['CLEAN', 'SPORTY_MESH', 'DIAGONAL_SPEED', 'DYNAMIC_WAVES', 'CARBON', 'HERITAGE_PAPER', 'BAMBOO_WEAVE', 'ETHNIC_MODERN', 'SPORTY_BURST'] as BgPattern[]).map(p => (
                          <button 
                            key={p}
                            onClick={() => setBgPattern(p)}

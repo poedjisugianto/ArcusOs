@@ -41,7 +41,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
 
 export function App() {
-  const [view, setView] = useState<View>('LANDING');
+  const [view, setView] = useState<View>(() => {
+    const saved = localStorage.getItem('ARCUS_CURRENT_VIEW');
+    return (saved as View) || 'LANDING';
+  });
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -230,6 +233,10 @@ export function App() {
   }, [appState]);
 
   useEffect(() => {
+    localStorage.setItem('ARCUS_CURRENT_VIEW', view);
+  }, [view]);
+
+  useEffect(() => {
     setHasPendingChanges(true);
   }, [appState.events, appState.globalSettings, appState.currentUser]);
 
@@ -285,6 +292,18 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser, isOnline, hasPendingChanges]);
 
   const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
+
+  // Consistency Check for View and State
+  useEffect(() => {
+    const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE'];
+    if (eventRequiredViews.includes(view) && !activeEvent) {
+      setView('MEMBER_DASHBOARD');
+    }
+    const authViews = ['MEMBER_DASHBOARD', 'PROFILE', 'SUPER_ADMIN', 'OPERATOR_CENTER'];
+    if (authViews.includes(view) && !appState.currentUser) {
+      setView('LANDING');
+    }
+  }, [view, activeEvent, appState.currentUser]);
 
   useEffect(() => {
     if (activeEvent?.status === 'DRAFT' && view.startsWith('PUBLIC_')) {

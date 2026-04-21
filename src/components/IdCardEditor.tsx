@@ -347,29 +347,16 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Sporty & Heritage Pattern Gallery</span>
-                      <span className="bg-slate-100 text-slate-500 text-[8px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Visual Select</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Sporty Background Pattern</span>
+                    <div className="grid grid-cols-2 gap-2">
                        {(['CLEAN', 'SPORTY_MESH', 'DIAGONAL_SPEED', 'DYNAMIC_WAVES', 'CARBON', 'HERITAGE_PAPER', 'BAMBOO_WEAVE', 'ETHNIC_MODERN'] as BgPattern[]).map(p => (
                          <button 
                            key={p}
                            onClick={() => setBgPattern(p)}
-                           className={`relative h-20 rounded-2xl border-2 transition-all flex flex-col justify-end p-2 overflow-hidden group shadow-sm active:scale-95 ${bgPattern === p ? 'border-slate-900 ring-2 ring-slate-100' : 'border-slate-100 hover:border-slate-300'}`}
+                           className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${bgPattern === p ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
                          >
-                           {/* Mini Pattern Preview */}
-                           <div 
-                              className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity" 
-                              style={getPatternStyles(p, accentColor)}
-                           />
-                           <div className="relative z-10 w-full">
-                              <p className={`text-[8px] font-black uppercase tracking-tighter truncate ${bgPattern === p ? 'text-slate-900' : 'text-slate-400'}`}>
-                                {p.replace('_', ' ')}
-                              </p>
-                              {bgPattern === p && <div className="h-1 bg-slate-900 rounded-full mt-1 w-1/2 animate-in slide-in-from-left-2" />}
-                           </div>
+                           {p.replace('_', ' ')}
                          </button>
                        ))}
                     </div>

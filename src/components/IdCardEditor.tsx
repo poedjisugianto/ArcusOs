@@ -23,6 +23,7 @@ interface Logo {
 }
 
 type BgPattern = 'CLEAN' | 'SPORTY_MESH' | 'DIAGONAL_SPEED' | 'DYNAMIC_WAVES' | 'CARBON' | 'HERITAGE_PAPER' | 'BAMBOO_WEAVE' | 'ETHNIC_MODERN';
+type CardTheme = 'SPORTY_MODERN' | 'TRADITIONAL_HERITAGE' | 'ELITE_DARK' | 'MINIMAL_PRO';
 
 const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [logos, setLogos] = useState<Logo[]>([]);
@@ -31,6 +32,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [cardDate, setCardDate] = useState(settings.eventDate ? new Date(settings.eventDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
   const [accentColor, setAccentColor] = useState('#ef4444'); // Default red
   const [bgPattern, setBgPattern] = useState<BgPattern>('SPORTY_MESH');
+  const [cardTheme, setCardTheme] = useState<CardTheme>('SPORTY_MODERN');
   const [showEditor, setShowEditor] = useState(true);
   const [viewMode, setViewMode] = useState<'DESIGNER' | 'FULL_PREVIEW'>('DESIGNER');
   
@@ -122,91 +124,109 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
     }
   };
 
-  const renderCard = (person: Archer, isOfficial: boolean) => (
-    <div key={person.id} className="w-full aspect-[2/3] border border-slate-200 overflow-hidden flex flex-col break-inside-avoid shadow-sm print:shadow-none bg-white relative">
-      {/* Sporty Background Layer */}
-      <div className="absolute inset-0 opacity-50" style={getPatternStyles(bgPattern, accentColor)} />
-      
-      {/* Decorative Side Bar */}
-      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: accentColor }} />
+  const renderCard = (person: Archer, isOfficial: boolean) => {
+    const isTraditional = cardTheme === 'TRADITIONAL_HERITAGE';
+    const isElite = cardTheme === 'ELITE_DARK';
+    const cardAccent = isElite ? '#facc15' : (isOfficial ? (isTraditional ? '#78350f' : '#2563eb') : accentColor);
+    const textPrimary = isElite ? 'text-white' : 'text-slate-900';
+    const textSecondary = isElite ? 'text-slate-400' : 'text-slate-600';
+    const bgBase = isElite ? 'bg-[#0f172a]' : 'bg-white';
 
-      {/* Header with Logos */}
-      <div className="h-20 bg-white/80 backdrop-blur-sm p-3 border-b border-slate-100 flex items-center justify-center gap-3 relative z-10">
-        {logos.map(logo => (
-          <img 
-            key={logo.id} 
-            src={logo.url} 
-            alt="" 
-            style={{ maxHeight: logo.size / 2, width: 'auto' }}
-            className="object-contain"
-          />
-        ))}
-        {logos.length === 0 && <div className="w-10 h-10 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200"><ImageIcon className="w-5 h-5 text-slate-200" /></div>}
-      </div>
+    return (
+      <div key={person.id} className={`w-full aspect-[2/3] border border-slate-200 overflow-hidden flex flex-col break-inside-avoid shadow-sm print:shadow-none relative transition-all duration-500 ${bgBase}`}>
+        {/* Pattern Layer */}
+        <div className="absolute inset-0 opacity-40" style={getPatternStyles(bgPattern, cardAccent)} />
+        
+        {/* Frame / Side Bar */}
+        {isTraditional ? (
+          <div className="absolute inset-0 border-[6px] border-double m-2 pointer-events-none z-20" style={{ borderColor: `${cardAccent}22` }} />
+        ) : (
+          <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: cardAccent }} />
+        )}
 
-      {/* Participant Info Body */}
-      <div className="p-5 flex flex-col items-center justify-between flex-1 space-y-4 relative z-10">
-        <div className="text-center space-y-1">
-          <h2 className="text-[10px] font-black font-oswald uppercase italic leading-tight text-slate-800">{cardTitle}</h2>
-          {cardDate && <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest">{cardDate}</p>}
+        {/* Header */}
+        <div className={`h-22 p-4 flex items-center justify-center gap-3 relative z-10 ${isElite ? 'bg-slate-900/80' : 'bg-white/80'} backdrop-blur-md border-b border-white/10`}>
+          {logos.map(logo => (
+            <img 
+              key={logo.id} 
+              src={logo.url} 
+              alt="" 
+              style={{ maxHeight: logo.size / 2.2, width: 'auto' }}
+              className="object-contain drop-shadow-sm"
+            />
+          ))}
+          {logos.length === 0 && <div className="w-12 h-12 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-200/50"><ImageIcon className="w-6 h-6 text-slate-300" /></div>}
         </div>
 
-        <div className="flex flex-col items-center gap-3">
-          <div className="bg-white p-2 rounded-xl shadow-md">
-            <QRCodeSVG value={person.id} size={70} level="M" />
+        {/* Content Body */}
+        <div className="p-6 flex flex-col items-center justify-between flex-1 gap-4 relative z-10">
+          <div className="text-center space-y-1.5">
+            <h2 className={`text-[11px] font-black uppercase tracking-tight leading-tight ${isTraditional ? 'font-serif' : 'font-oswald italic'} ${textPrimary}`}>
+              {cardTitle}
+            </h2>
+            {cardDate && <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em]">{cardDate}</p>}
           </div>
-          <span className="text-[7px] font-mono text-slate-400">{person.id}</span>
-        </div>
 
-        <div className="text-center space-y-2 w-full">
-          <div className="flex flex-col items-center gap-1">
-            <span 
-              className="text-[8px] font-black px-3 py-0.5 rounded-full text-white uppercase italic tracking-widest"
-              style={{ backgroundColor: isOfficial ? '#2563eb' : accentColor }}
-            >
-              {isOfficial ? 'OFFICIAL TEAM' : 'ATHLETE'}
-            </span>
-            <h1 className="text-lg font-black font-oswald uppercase italic leading-none text-slate-900 border-b-2 pb-1 pt-1" style={{ borderColor: accentColor }}>
-              {person.name}
-            </h1>
+          <div className="flex flex-col items-center gap-2">
+            <div className={`p-2.5 rounded-2xl shadow-xl ${isElite ? 'bg-white' : 'bg-white'}`}>
+              <QRCodeSVG value={person.id} size={75} level="M" />
+            </div>
+            <span className="text-[7px] font-mono font-bold text-slate-400 uppercase tracking-widest">{person.id.substring(0, 8)}</span>
           </div>
-          
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] font-black text-slate-600 uppercase italic">
-              {person.club}
-            </span>
-            {!isOfficial ? (
-               <>
-                 <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                   {person.category}
-                 </span>
-                 <div className="flex items-center gap-2 mt-1.5">
-                   <div className="flex flex-col items-center bg-slate-900 text-white px-3 py-1 rounded-lg">
-                      <span className="text-[6px] font-black opacity-50 leading-none">TARGET</span>
-                      <span className="text-[10px] font-black leading-none mt-1">{person.targetNo}{person.position}</span>
-                   </div>
-                   <div className="flex flex-col items-center border border-slate-200 px-3 py-1 rounded-lg bg-white">
-                      <span className="text-[6px] font-black text-slate-400 leading-none uppercase">Session</span>
-                      <span className="text-[10px] font-black text-slate-900 leading-none mt-1">{person.wave}</span>
-                   </div>
+
+          <div className="text-center space-y-3 w-full">
+            <div className="flex flex-col items-center gap-1.5">
+              <span 
+                className={`text-[8px] font-black px-4 py-1 rounded-full text-white uppercase tracking-[0.15em] ${isTraditional ? 'rounded-lg' : 'italic'}`}
+                style={{ backgroundColor: cardAccent }}
+              >
+                {isOfficial ? 'OFFICIAL PASS' : 'ARCHERY ATHLETE'}
+              </span>
+              <h1 className={`text-xl font-black uppercase leading-none border-b-2 pb-1.5 pt-1 ${isTraditional ? 'font-serif tracking-normal' : 'font-oswald italic tracking-tighter'} ${textPrimary}`} style={{ borderColor: `${cardAccent}44` }}>
+                {person.name}
+              </h1>
+            </div>
+            
+            <div className="flex flex-col items-center">
+              <span className={`text-[11px] font-black uppercase ${isTraditional ? 'font-serif' : 'italic'} ${textSecondary}`}>
+                {person.club}
+              </span>
+              
+              {!isOfficial ? (
+                 <div className="mt-3 flex flex-col items-center gap-2">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                      {person.category}
+                    </span>
+                    <div className="flex items-center gap-2.5">
+                       <div className={`flex flex-col items-center px-4 py-1.5 rounded-xl ${isElite ? 'bg-amber-400 text-slate-900 shadow-lg shadow-amber-400/20' : 'bg-slate-900 text-white'}`}>
+                          <span className="text-[6px] font-black opacity-60 leading-none uppercase tracking-tighter">Target</span>
+                          <span className="text-[12px] font-black leading-none mt-1.5">{person.targetNo}{person.position}</span>
+                       </div>
+                       <div className={`flex flex-col items-center px-4 py-1.5 rounded-xl border ${isElite ? 'border-slate-700 bg-slate-800' : 'border-slate-100 bg-white shadow-sm'}`}>
+                          <span className="text-[6px] font-black text-slate-400 leading-none uppercase tracking-tighter">Session</span>
+                          <span className={`text-[12px] font-black leading-none mt-1.5 ${textPrimary}`}>{person.wave}</span>
+                       </div>
+                    </div>
                  </div>
-               </>
-            ) : (
-               <div className="mt-2 flex items-center justify-center gap-2 text-blue-600 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Verified Official</span>
-               </div>
-            )}
+              ) : (
+                 <div className={`mt-3 flex items-center justify-center gap-2 border px-5 py-2 rounded-full ${isElite ? 'border-amber-400/30 text-amber-400 bg-amber-400/5' : 'border-blue-100 text-blue-600 bg-blue-50'}`}>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span className="text-[9px] font-black uppercase tracking-widest italic">Authorized Personal</span>
+                 </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Footer Stripe */}
-      <div className="h-8 flex items-center justify-center mt-auto relative z-10" style={{ backgroundColor: isOfficial ? '#1e3a8a' : accentColor }}>
-         <span className="text-[8px] font-black text-white uppercase italic tracking-[0.2em]">{isOfficial ? 'OFFICIAL PASS' : 'PARTICIPANT PASS'}</span>
+        {/* Bottom Banner */}
+        <div className={`h-10 flex items-center justify-center mt-auto relative z-10`} style={{ backgroundColor: cardAccent }}>
+           <span className="text-[9px] font-black text-white uppercase italic tracking-[0.25em] drop-shadow-sm">
+             {isOfficial ? 'STAFF IDENTIFICATION' : 'TOURNAMENT PARTICIPANT'}
+           </span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -274,7 +294,33 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
                 </div>
 
                 <div className="space-y-5">
-                  <div className="space-y-4">
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Pro Master Templates</span>
+                    <div className="grid grid-cols-2 gap-2">
+                       {([
+                         { id: 'SPORTY_MODERN', name: 'Modern Sporty', icon: Activity, color: '#ef4444', pattern: 'SPORTY_MESH' },
+                         { id: 'TRADITIONAL_HERITAGE', name: 'Heritage Classic', icon: ShieldCheck, color: '#78350f', pattern: 'HERITAGE_PAPER' },
+                         { id: 'ELITE_DARK', name: 'Elite Dark Mode', icon: Maximize, color: '#facc15', pattern: 'CARBON' },
+                         { id: 'MINIMAL_PRO', name: 'Minimal White', icon: Layout, color: '#000000', pattern: 'CLEAN' }
+                       ] as const).map(t => (
+                         <button 
+                           key={t.id}
+                           onClick={() => {
+                             setCardTheme(t.id);
+                             setAccentColor(t.color);
+                             setBgPattern(t.pattern);
+                           }}
+                           className={`p-3 rounded-2xl border-2 transition-all flex flex-col gap-2 items-start group relative overflow-hidden ${cardTheme === t.id ? 'border-slate-900 bg-slate-900 text-white shadow-xl' : 'border-slate-100 bg-white text-slate-400 hover:border-slate-300'}`}
+                         >
+                           <t.icon className={`w-4 h-4 ${cardTheme === t.id ? 'text-white' : 'text-slate-400 group-hover:text-slate-900'}`} />
+                           <span className="text-[8px] font-black uppercase tracking-tighter text-left leading-tight">{t.name}</span>
+                           {cardTheme === t.id && <div className="absolute right-0 top-0 bottom-0 w-1 bg-white/20" />}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t border-slate-50">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Organisasi / Sponsor Logo</span>
                       <button 

@@ -30,6 +30,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     category: string;
     paymentProof: string;
     paymentType: 'MANUAL' | 'GATEWAY';
+    selectedPaymentMethodId: string;
     regType: 'ARCHER' | 'OFFICIAL';
   }>(() => {
     const saved = localStorage.getItem(`reg_draft_${event.id}`);
@@ -45,6 +46,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       category: '',
       paymentProof: '',
       paymentType: 'MANUAL',
+      selectedPaymentMethodId: '',
       regType: 'ARCHER'
     };
   });
@@ -78,6 +80,17 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       reader.readAsDataURL(file);
     }
   };
+
+  const availableManualMethods = (event.settings.paymentMethods && event.settings.paymentMethods.length > 0)
+    ? event.settings.paymentMethods
+    : [{ 
+        id: 'global_default', 
+        provider: globalSettings.bankProvider, 
+        accountNumber: globalSettings.bankAccountNumber, 
+        accountName: globalSettings.bankAccountName 
+      }];
+
+  const activeMethod = availableManualMethods.find((m: any) => m.id === formData.selectedPaymentMethodId) || availableManualMethods[0];
 
   const handleGatewayPayment = async (newReg: ParticipantRegistration) => {
     try {
@@ -131,11 +144,13 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             toast.info("Pembayaran Dibatalkan");
           }
         });
-      } else if (data.isReal === false) {
-        // Handle simulation if server key not set but we want to show it works
-        onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
+      } else if (data.success && data.qrData) {
+        // Simulation mode with QR
         setStep(3);
-        toast.info("Simulasi Pembayaran Berhasil");
+        onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
+        toast.success("Pembayaran Berhasil Diverifikasi (Mode Simulasi)");
+      } else {
+        toast.error(data.message || "Gagal membuat transaksi");
       }
     } catch (err) {
       toast.error("Gagal menghubungkan ke Gateway");
@@ -422,17 +437,35 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                     </p>
                   </div>
                 </div>
-                <div className="pt-4 md:pt-8 space-y-3 md:space-y-6">
-                  <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">Instruksi Transfer Manual</p>
+
+                <div className="pt-8 space-y-6">
+                   <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">Pilih Rekening Tujuan Transfer</p>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {availableManualMethods.map((pm: any) => (
+                        <button 
+                          key={pm.id}
+                          onClick={() => setFormData({ ...formData, selectedPaymentMethodId: pm.id })}
+                          className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${pm.id === activeMethod.id ? 'bg-slate-900 border-slate-900 text-white shadow-xl' : 'bg-white border-slate-100 text-slate-900 hover:border-slate-200'}`}
+                        >
+                           <p className={`text-[8px] font-black uppercase tracking-widest ${pm.id === activeMethod.id ? 'text-white/40' : 'text-slate-400'}`}>{pm.provider}</p>
+                           <p className="text-xs font-black truncate">{pm.accountNumber}</p>
+                           <p className={`text-[8px] font-bold uppercase truncate ${pm.id === activeMethod.id ? 'text-white/60' : 'text-slate-500'}`}>A/N {pm.accountName}</p>
+                        </button>
+                      ))}
+                   </div>
+                </div>
+
+                <div className="pt-4 md:pt-8 space-y-3 md:space-y-6 animate-in slide-in-from-top-4 duration-500" key={activeMethod.id}>
+                  <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">Rincian Rekening Terpilih</p>
                   <div className="bg-slate-900 rounded-xl md:rounded-[2.5rem] p-4 md:p-10 flex flex-col items-center justify-center text-center space-y-2 md:space-y-4 border-b-4 md:border-b-8 border-slate-800 shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10 space-y-1 md:space-y-3">
-                      <p className="text-white text-base md:text-3xl font-black font-oswald uppercase italic tracking-widest">{globalSettings.bankProvider}</p>
-                      <p className="text-xl md:text-5xl font-black font-mono text-arcus-red tracking-widest">{globalSettings.bankAccountNumber}</p>
-                      <p className="text-[8px] md:text-[12px] font-black text-white/40 uppercase tracking-[0.2em]">A/N {globalSettings.bankAccountName}</p>
+                      <p className="text-white text-base md:text-3xl font-black font-oswald uppercase italic tracking-widest">{activeMethod.provider}</p>
+                      <p className="text-xl md:text-5xl font-black font-mono text-arcus-red tracking-widest">{activeMethod.accountNumber}</p>
+                      <p className="text-[8px] md:text-[12px] font-black text-white/40 uppercase tracking-[0.2em]">A/N {activeMethod.accountName}</p>
                     </div>
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(globalSettings.bankAccountNumber);
+                        navigator.clipboard.writeText(activeMethod.accountNumber);
                         toast.success('Nomor rekening disalin!');
                       }}
                       className="relative z-10 mt-1 md:mt-2 px-4 py-2 md:px-6 md:py-3 bg-white/10 hover:bg-white text-white hover:text-slate-900 rounded-lg md:rounded-xl text-[7px] md:text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 md:gap-3 border border-white/10"

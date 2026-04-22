@@ -1130,6 +1130,50 @@ export function App() {
          </div>
        </div>
       </footer>
+
+      <AnimatePresence>
+        {showInstallBanner && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-8 sm:bottom-12 left-6 right-6 md:left-auto md:right-12 md:max-w-md z-[1000] bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl border border-white/10"
+          >
+            <div className="flex items-start gap-6">
+              <div className="w-16 h-16 bg-arcus-red rounded-[1.5rem] flex items-center justify-center shrink-0 shadow-lg rotate-3">
+                <ArcusLogo className="w-10 h-10 text-white" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <h3 className="text-xl font-black font-oswald uppercase italic tracking-tight">Instal Arcus Archery</h3>
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest leading-relaxed">
+                  Akses lebih cepat, offline ready, dan pengalaman aplikasi yang lebih lancar di perangkat Anda.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowInstallBanner(false)}
+                className="p-2 text-slate-500 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="mt-8 flex gap-3">
+              <button 
+                onClick={handleInstallClick}
+                className="flex-1 bg-white text-slate-900 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-arcus-red hover:text-white transition-all active:scale-95 shadow-xl"
+              >
+                Instal Sekarang
+              </button>
+              <button 
+                onClick={() => setShowInstallBanner(false)}
+                className="px-6 py-5 bg-white/5 border border-white/10 text-white/40 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:text-white transition-all"
+              >
+                Nanti
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ShareModal isOpen={shareData.isOpen} onClose={() => setShareData({ ...shareData, isOpen: false })} tournamentName={shareData.name} url={shareData.url} />
     </div>
   );

@@ -208,9 +208,14 @@ export default function EntryList({ event, onBack }: Props) {
               </p>
             </div>
           </div>
-          <button className={`px-8 py-4 bg-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all relative z-10 ${viewMode === 'ARCHERS' ? 'text-slate-900 hover:bg-arcus-red hover:text-white' : 'text-blue-900 hover:bg-blue-500 hover:text-white'}`}>
+          <a 
+            href="https://wa.me/6287834193339"
+            target="_blank"
+            rel="noreferrer"
+            className={`px-8 py-4 bg-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all relative z-10 flex items-center justify-center ${viewMode === 'ARCHERS' ? 'text-slate-900 hover:bg-arcus-red hover:text-white' : 'text-blue-900 hover:bg-blue-500 hover:text-white'}`}
+          >
             Hubungi Panitia
-          </button>
+          </a>
         </div>
       </div>
     </div>

@@ -1277,7 +1277,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                           <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400"><Landmark className="w-6 h-6" /></div>
                           <div>
                              <p className="font-black text-sm uppercase">Transfer Manual</p>
-                             <p className="text-[10px] font-bold text-slate-400 uppercase">Hubungi Support ARCUS</p>
+                             <p className="text-[10px] font-bold text-slate-400 uppercase">WA Support: 087834193339</p>
                           </div>
                        </div>
                        <ChevronRight className="w-5 h-5 text-slate-300" />

@@ -61,7 +61,7 @@ export function App() {
     const saved = localStorage.getItem(STORAGE_KEY);
     const initialSettings: GlobalSettings = {
       feeAdult: 10000, feeKids: 5000, maintenanceMode: false,
-      contactSupport: '08123456789', bankProvider: 'BCA',
+      contactSupport: '087834193339', bankProvider: 'BCA',
       bankAccountNumber: '0987654321', bankAccountName: 'ADMIN ARCUS CENTRAL',
       dataRetentionDays: 90, practiceRetentionDays: 7,
       paymentGatewayProvider: 'NONE',

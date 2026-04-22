@@ -104,7 +104,7 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
                       value={phone}
                       onChange={e => setPhone(e.target.value)}
                       className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-slate-900 focus:bg-white transition-all text-sm font-bold text-slate-900 placeholder:text-slate-300"
-                      placeholder="081234567890"
+                      placeholder="087834193339"
                     />
                   </div>
                 </div>

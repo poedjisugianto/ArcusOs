@@ -189,7 +189,7 @@ const ProfilePanel: React.FC<Props> = ({ user, eventsManaged, onUpdate, onBack }
                   <div>
                     <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1">Pusat Bantuan Profil</p>
                     <p className="text-[11px] text-blue-600 leading-relaxed italic">
-                      Jika Anda ingin mengubah email institusi atau status verifikasi, silakan hubungi tim support ARCUS melalui pusat bantuan.
+                      Jika Anda ingin mengubah email institusi atau status verifikasi, silakan hubungi tim support ARCUS (WA: 087834193339) melalui pusat bantuan.
                     </p>
                   </div>
                 </div>

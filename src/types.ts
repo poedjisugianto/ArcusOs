@@ -15,7 +15,9 @@ export enum TargetType {
   FACE_40 = 'FACE_40',
   FACE_3X20 = 'FACE_3X20',
   STANDARD = 'STANDARD',
-  PUTA = 'PUTA'
+  PUTA = 'PUTA',
+  TRADITIONAL_6_RING = 'TRADITIONAL_6_RING',
+  TRADITIONAL_PUTA = 'TRADITIONAL_PUTA'
 }
 
 export interface User {
@@ -142,6 +144,9 @@ export interface CategoryConfig {
   arrows: number;
   ends: number;
   targetType: TargetType;
+  // Konfigurasi Aduan/Eliminasi
+  h2hStartSize: 2 | 4 | 8 | 16 | 32 | 0; // 0 berarti tidak ada aduan
+  eliminationStages: number[]; // Contoh: [32, 16] berarti ada penyaringan skor top 32 lalu top 16 baru masuk aduan
 }
 
 export interface TournamentSettings {
@@ -206,6 +211,11 @@ export interface AppState {
   globalSettings: GlobalSettings;
   notifications: AppNotification[];
   activeScorer?: any;
+  drafts?: {
+    scoring?: Record<string, (number | 'X')[]>; // key: archerId_endIndex
+    adminSettings?: Record<string, TournamentSettings>; // key: eventId
+    activeCategory?: Record<string, CategoryType>; // key: viewName
+  };
 }
 
 export enum CategoryType {

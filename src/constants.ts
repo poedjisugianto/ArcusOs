@@ -17,6 +17,18 @@ export const DEFAULT_SETTINGS: TournamentSettings = {
   categoryConfigs: {}
 };
 
+export const TARGET_LABELS: Record<TargetType, string> = {
+  [TargetType.FACE_122]: 'Face 122cm',
+  [TargetType.FACE_80]: 'Face 80cm',
+  [TargetType.FACE_60]: 'Face 60cm',
+  [TargetType.FACE_40]: 'Face 40cm',
+  [TargetType.FACE_3X20]: 'Face 3x20cm (Vertical)',
+  [TargetType.STANDARD]: 'Standard Target',
+  [TargetType.PUTA]: 'Puta (Turkey)',
+  [TargetType.TRADITIONAL_6_RING]: 'Traditional 6-Ring (1-6)',
+  [TargetType.TRADITIONAL_PUTA]: 'Traditional Puta (1-2)'
+};
+
 export const CATEGORY_LABELS: Record<string, string> = {
   'ADULT_PUTRA': 'Dewasa Putra',
   'ADULT_PUTRI': 'Dewasa Putri',

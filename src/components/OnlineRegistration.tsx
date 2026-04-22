@@ -17,7 +17,10 @@ interface Props {
 }
 
 export default function OnlineRegistration({ event, globalSettings, onRegister, onBack, onViewParticipants }: Props) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(() => {
+    const saved = localStorage.getItem(`reg_step_${event.id}`);
+    return saved ? parseInt(saved) : 1;
+  });
   const isRegistrationClosed = event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline);
 
   const [formData, setFormData] = useState<{
@@ -28,15 +31,32 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     paymentProof: string;
     paymentType: 'MANUAL' | 'GATEWAY';
     regType: 'ARCHER' | 'OFFICIAL';
-  }>({
-    name: '',
-    email: '',
-    club: '',
-    category: '',
-    paymentProof: '',
-    paymentType: 'MANUAL',
-    regType: 'ARCHER'
+  }>(() => {
+    const saved = localStorage.getItem(`reg_draft_${event.id}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) { console.error("Reg draft parse failed", e); }
+    }
+    return {
+      name: '',
+      email: '',
+      club: '',
+      category: '',
+      paymentProof: '',
+      paymentType: 'MANUAL',
+      regType: 'ARCHER'
+    };
   });
+
+  // Persist form data and step
+  React.useEffect(() => {
+    localStorage.setItem(`reg_draft_${event.id}`, JSON.stringify(formData));
+  }, [formData, event.id]);
+
+  React.useEffect(() => {
+    localStorage.setItem(`reg_step_${event.id}`, step.toString());
+  }, [step, event.id]);
 
   const allCategories = (Object.keys(CategoryType) as CategoryType[]).filter(cat => cat !== CategoryType.OFFICIAL);
   const categories = event.settings.categoryConfigs && Object.keys(event.settings.categoryConfigs).length > 0
@@ -96,6 +116,8 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         window.snap.pay(data.token, {
           onSuccess: (result: any) => {
             onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
+            localStorage.removeItem(`reg_draft_${event.id}`);
+            localStorage.removeItem(`reg_step_${event.id}`);
             setStep(3);
           },
           onPending: (result: any) => {
@@ -161,6 +183,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       handleGatewayPayment(newReg);
     } else {
       onRegister(newReg);
+      // Clear drafts on success
+      localStorage.removeItem(`reg_draft_${event.id}`);
+      localStorage.removeItem(`reg_step_${event.id}`);
       setStep(3);
     }
   };

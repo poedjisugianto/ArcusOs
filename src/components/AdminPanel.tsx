@@ -9,9 +9,10 @@ import {
   FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
-import { CATEGORY_LABELS } from '../constants';
+import { CATEGORY_LABELS, TARGET_LABELS } from '../constants';
 
 interface Props {
+  eventId: string;
   settings: TournamentSettings;
   scorerAccess?: ScorerAccess[];
   onSave: (settings: TournamentSettings) => void;
@@ -22,13 +23,30 @@ interface Props {
   isSuperAdmin?: boolean;
 }
 
-const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, isSuperAdmin = false }) => {
-  const [localSettings, setLocalSettings] = useState<TournamentSettings>({
-    ...settings,
-    categoryConfigs: settings.categoryConfigs || {}
+const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, isSuperAdmin = false }) => {
+  const [localSettings, setLocalSettings] = useState<TournamentSettings>(() => {
+    const savedDraft = localStorage.getItem(`admin_draft_${eventId}`);
+    if (savedDraft) {
+      try {
+        return JSON.parse(savedDraft);
+      } catch (e) { console.error("Draft parse failed", e); }
+    }
+    return {
+      ...settings,
+      categoryConfigs: settings.categoryConfigs || {}
+    };
   });
   const isPractice = localSettings.isPractice;
+  const [isDirty, setIsDirty] = useState(false);
   const [localScorers, setLocalScorers] = useState<ScorerAccess[]>(scorerAccess);
+
+  // Sync draft to localStorage when settings change
+  useEffect(() => {
+    if (isDirty) {
+      localStorage.setItem(`admin_draft_${eventId}`, JSON.stringify(localSettings));
+    }
+  }, [localSettings, eventId, isDirty]);
+
   const [activeTab, setActiveTab] = useState<'GENERAL' | 'PAYMENT' | 'SCORERS'>('GENERAL');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -37,7 +55,6 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
   const [showDraftConfirm, setShowDraftConfirm] = useState(false);
   const [showModeConfirm, setShowModeConfirm] = useState<{ isOpen: boolean; next: boolean; msg: string }>({ isOpen: false, next: false, msg: '' });
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
   
   // Only sync from props if the tournament name changes (indicating a different event)
   // or if we're not currently editing (not dirty)
@@ -78,7 +95,9 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
           distance: '20m',
           arrows: 36,
           ends: 6,
-          targetType: TargetType.STANDARD
+          targetType: TargetType.STANDARD,
+          h2hStartSize: 0,
+          eliminationStages: []
         }
       }
     }));
@@ -148,6 +167,10 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
   const executeFinalSave = () => {
     onSave(localSettings);
     if (onUpdateScorers) onUpdateScorers(localScorers);
+    
+    // Clear draft
+    localStorage.removeItem(`admin_draft_${eventId}`);
+    
     setShowConfirmModal(false);
     setShowDraftConfirm(false);
     setShowSavedFlag(true);
@@ -587,7 +610,8 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                       )}
                     </div>
                     {cat !== CategoryType.OFFICIAL && (
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                         <label className="block space-y-1">
                           <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Jarak</span>
                           <input 
@@ -625,14 +649,102 @@ const AdminPanel: React.FC<Props> = ({ settings, scorerAccess = [], onSave, onUp
                             onChange={e => updateCategoryConfig(cat, 'targetType', e.target.value as TargetType)} 
                             className="w-full rounded-lg border-slate-200 p-3 border font-bold text-sm focus:border-arcus-red transition-all text-slate-900"
                           >
-                            {Object.values(TargetType).map(t => (
-                              <option key={t} value={t}>{t}</option>
+                            {(Object.values(TargetType) as TargetType[]).map(t => (
+                              <option key={t} value={t}>{TARGET_LABELS[t] || t}</option>
                             ))}
                           </select>
                         </label>
                       </div>
-                    )}
-                    {cat === CategoryType.OFFICIAL && (
+
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-6">
+                        <div className="flex items-center gap-2 mb-2">
+                           <Swords className="w-4 h-4 text-arcus-red" />
+                           <p className="text-xs font-black uppercase text-slate-900 tracking-widest">Alur Pertandingan (Eliminasi & Aduan)</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <label className="block space-y-2">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Aduan (H2H) Dimulai Dari:</span>
+                            <select 
+                              value={localSettings.categoryConfigs?.[cat]?.h2hStartSize || 0} 
+                              onChange={e => updateCategoryConfig(cat, 'h2hStartSize', parseInt(e.target.value))} 
+                              className="w-full rounded-xl border-slate-200 p-3 border font-black text-xs focus:border-arcus-red transition-all"
+                            >
+                              <option value="0">TIDAK ADA ADUAN (HANYA KUALIFIKASI)</option>
+                              <option value="32">32 BESAR (ADUAN)</option>
+                              <option value="16">16 BESAR (ADUAN)</option>
+                              <option value="8">8 BESAR (ADUAN)</option>
+                              <option value="4">FINAL 4 (ADUAN)</option>
+                            </select>
+                            <p className="text-[9px] font-bold text-slate-400 italic">Pilih kapan babak Head-to-Head (bracket) dimulai.</p>
+                          </label>
+
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Babak Penyaringan Skor (Eliminasi):</span>
+                            <div className="flex flex-wrap gap-2">
+                              {[32, 16, 8, 4].map(size => {
+                                const stages = localSettings.categoryConfigs?.[cat]?.eliminationStages || [];
+                                const isSelected = stages.includes(size);
+                                const h2hStart = localSettings.categoryConfigs?.[cat]?.h2hStartSize || 0;
+                                
+                                // DISABLE jika stage >= h2h start (karena sudah masuk aduan)
+                                const isDisabled = h2hStart > 0 && size <= h2hStart;
+
+                                return (
+                                  <button
+                                    key={size}
+                                    type="button"
+                                    disabled={isDisabled}
+                                    onClick={() => {
+                                      const currentStages = [...stages];
+                                      if (isSelected) {
+                                        updateCategoryConfig(cat, 'eliminationStages', currentStages.filter(s => s !== size));
+                                      } else {
+                                        updateCategoryConfig(cat, 'eliminationStages', [...currentStages, size].sort((a, b) => b - a));
+                                      }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black border transition-all ${
+                                      isSelected 
+                                        ? 'bg-slate-900 border-slate-900 text-white' 
+                                        : isDisabled 
+                                          ? 'bg-slate-50 border-slate-100 text-slate-200 cursor-not-allowed'
+                                          : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                    }`}
+                                  >
+                                    TOP {size}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <p className="text-[9px] font-bold text-slate-400 italic">Klik untuk menambah babak penyaringan skor sebelum masuk babak aduan.</p>
+                          </div>
+                        </div>
+                        
+                        {(localSettings.categoryConfigs?.[cat]?.eliminationStages?.length || 0) > 0 && (
+                          <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
+                            <div className="p-1 bg-emerald-500 rounded-full mt-0.5">
+                               <Check className="w-3 h-3 text-white" />
+                            </div>
+                            <div className="space-y-1">
+                               <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Alur yang Terbentuk:</p>
+                               <ol className="text-[9px] font-bold text-emerald-700 space-y-1 list-decimal pl-4 italic">
+                                  <li>Kualifikasi (Semua Peserta)</li>
+                                  {localSettings.categoryConfigs?.[cat]?.eliminationStages?.map(stage => (
+                                    <li key={stage}>Penyaringan Skor Top {stage}</li>
+                                  ))}
+                                  {localSettings.categoryConfigs?.[cat]?.h2hStartSize ? (
+                                    <li>Bagan Aduan (Head-to-Head) {localSettings.categoryConfigs?.[cat]?.h2hStartSize} Besar</li>
+                                  ) : (
+                                    <li>Penentuan Pemenang dari Hasil Terakhir</li>
+                                  )}
+                               </ol>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  {cat === CategoryType.OFFICIAL && (
                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex items-center gap-3">
                         <Info className="w-4 h-4 text-blue-500" />
                         <p className="text-[10px] font-bold text-blue-700 uppercase italic">Hanya biaya pendaftaran.</p>

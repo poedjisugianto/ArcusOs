@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Database, ArrowLeft, ShieldAlert, Edit3, 
   User, FileText, CheckCircle2, History, AlertCircle, 
@@ -15,18 +15,28 @@ interface Props {
 }
 
 const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
-  const [operatorName, setOperatorName] = useState('');
-  const [editReason, setEditReason] = useState('');
+  const [operatorName, setOperatorName] = useState(() => localStorage.getItem('op_name_draft') || '');
+  const [editReason, setEditReason] = useState(() => localStorage.getItem('op_reason_draft') || '');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'ALL'>('ALL');
   const [selectedArcherId, setSelectedArcherId] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'ARROW' | 'RAMBAHAN'>('ARROW');
   
+  // Persist operator name and reason
+  useEffect(() => {
+    localStorage.setItem('op_name_draft', operatorName);
+  }, [operatorName]);
+
+  useEffect(() => {
+    localStorage.setItem('op_reason_draft', editReason);
+  }, [editReason]);
+
   // States for Rambahan Input
   const [rambahanScore, setRambahanScore] = useState(0);
   const [rambahan6s, setRambahan6s] = useState(0);
   const [rambahan5s, setRambahan5s] = useState(0);
   const [targetEnd, setTargetEnd] = useState(0);
+  const [activeSession, setActiveSession] = useState<string>('QUAL');
 
   const availableCategories = useMemo(() => {
     return Array.from(new Set(event.archers.map(a => a.category)));
@@ -43,22 +53,29 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
   const selectedArcher = event.archers.find(a => a.id === selectedArcherId);
   const config = selectedArcher ? (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType] : null;
 
+  const availableSessions = useMemo(() => {
+    if (!selectedArcher || !config) return ['QUAL'];
+    const sessions = ['QUAL'];
+    if (config.eliminationStages) {
+      config.eliminationStages.forEach(size => {
+        sessions.push(`ELIM_${size}`);
+      });
+    }
+    return sessions;
+  }, [selectedArcher, config]);
+
   const handleSaveRambahan = () => {
     if (!selectedArcher || !operatorName || !editReason) {
       alert("Nama Operator dan Alasan Audit wajib diisi!");
       return;
     }
 
-    // Buat dummy arrows array untuk menyesuaikan sistem (karena data utama berbasis per-arrow)
-    // Dalam realitas, ini bisa disempurnakan dengan menyimpan metadata rambahan
     const dummyArrows: (number | 'X')[] = new Array(config?.arrows || 6).fill(0);
-    // Masukkan 6s jika ada
     for(let i=0; i<rambahan6s; i++) { if(i < dummyArrows.length) dummyArrows[i] = 'X'; }
-    // Sisanya diisi rata-rata atau dibiarkan 0, yang penting total sesuai input operator
     
     const scoreEntry: ScoreEntry = {
       archerId: selectedArcher.id,
-      sessionId: (selectedArcher.wave || 1).toString(),
+      sessionId: activeSession,
       endIndex: targetEnd,
       arrows: dummyArrows,
       total: rambahanScore,
@@ -70,7 +87,7 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     const log: ScoreLog = {
       id: 'log_' + Math.random().toString(36).substr(2, 9),
       archerId: selectedArcher.id,
-      sessionId: (selectedArcher.wave || 1).toString(),
+      sessionId: activeSession,
       endIndex: targetEnd,
       oldTotal: 0,
       newTotal: rambahanScore,
@@ -173,12 +190,26 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
 
                 {inputMode === 'RAMBAHAN' && (
                   <div className="space-y-8">
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="space-y-3">
+                           <label className="text-[10px] font-black uppercase text-slate-400">Babak Pertandingan</label>
+                           <select 
+                            value={activeSession} 
+                            onChange={e => setActiveSession(e.target.value)} 
+                            className="w-full p-5 bg-slate-50 border rounded-2xl font-black text-xs font-oswald uppercase italic outline-none focus:border-blue-500"
+                           >
+                              {availableSessions.map(s => (
+                                <option key={s} value={s}>
+                                  {s === 'QUAL' ? 'KUALIFIKASI' : s.replace('ELIM_', 'ELIMINASI TOP ')}
+                                </option>
+                              ))}
+                           </select>
+                        </div>
                         <div className="space-y-3">
                            <label className="text-[10px] font-black uppercase text-slate-400">Pilih Rambahan</label>
-                           <select value={targetEnd} onChange={e => setTargetEnd(Number(e.target.value))} className="w-full p-5 bg-slate-50 border rounded-2xl font-black">
+                           <select value={targetEnd} onChange={e => setTargetEnd(Number(e.target.value))} className="w-full p-5 bg-slate-50 border rounded-2xl font-black text-xs font-oswald italic outline-none focus:border-blue-500">
                               {Array.from({ length: config?.ends || 7 }).map((_, i) => {
-                                const existing = event.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i);
+                                const existing = event.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i && s.sessionId === activeSession);
                                 return (
                                   <option key={i} value={i}>
                                     Rambahan #{i + 1} {existing ? `(Skor: ${existing.total})` : '(Belum Ada)'}
@@ -189,12 +220,15 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                         </div>
                         <div className="space-y-3">
                            <label className="text-[10px] font-black uppercase text-slate-400">Total Skor Rambahan</label>
-                           <input type="number" value={rambahanScore} onChange={e => setRambahanScore(Number(e.target.value))} className="w-full p-5 bg-slate-50 border rounded-2xl font-black text-2xl" />
+                           <input type="number" value={rambahanScore} onChange={e => setRambahanScore(Number(e.target.value))} className="w-full p-5 bg-slate-50 border rounded-2xl font-black text-2xl font-oswald outline-none focus:border-blue-500" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                            <div className="space-y-3">
                               <label className="text-[10px] font-black uppercase text-slate-400">
-                                {selectedArcher && (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType]?.targetType === 'PUTA' ? 'Jumlah 2' : 'Jumlah 6 (X)'}
+                                {selectedArcher && (
+                                  (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType]?.targetType === TargetType.PUTA || 
+                                  (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType]?.targetType === TargetType.TRADITIONAL_PUTA
+                                ) ? 'Jumlah 2' : 'Jumlah 6 (X)'}
                               </label>
                               <div className="flex items-center gap-2">
                                 <button onClick={() => setRambahan6s(Math.max(0, rambahan6s - 1))} className="p-2 bg-slate-100 rounded-lg"><Minus className="w-4 h-4" /></button>
@@ -204,7 +238,10 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                            </div>
                            <div className="space-y-3">
                               <label className="text-[10px] font-black uppercase text-slate-400">
-                                {selectedArcher && (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType]?.targetType === 'PUTA' ? 'Jumlah 1' : 'Jumlah 5'}
+                                {selectedArcher && (
+                                  (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType]?.targetType === TargetType.PUTA || 
+                                  (event.settings.categoryConfigs || {})[selectedArcher.category as CategoryType]?.targetType === TargetType.TRADITIONAL_PUTA
+                                ) ? 'Jumlah 1' : 'Jumlah 5'}
                               </label>
                               <div className="flex items-center gap-2">
                                 <button onClick={() => setRambahan5s(Math.max(0, rambahan5s - 1))} className="p-2 bg-slate-100 rounded-lg"><Minus className="w-4 h-4" /></button>

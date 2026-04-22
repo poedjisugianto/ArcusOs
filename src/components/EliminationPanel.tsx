@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ArcheryEvent, CategoryType, Match, Archer } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import { Trophy, GitBranch, User, Save, RefreshCw, ChevronRight, Swords, ArrowLeft, Trash2, Settings2, Zap, Medal, Plus, Minus, Check, FileText, X } from 'lucide-react';
@@ -11,9 +11,17 @@ interface Props {
 }
 
 const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) => {
-  const [activeCategory, setActiveCategory] = useState<CategoryType>(CategoryType.ADULT_PUTRA);
+  const [activeCategory, setActiveCategory] = useState<CategoryType>(() => {
+    const saved = localStorage.getItem(`elim_cat_${event.id}`);
+    return (saved as CategoryType) || CategoryType.ADULT_PUTRA;
+  });
   const [showSavedFlag, setShowSavedFlag] = useState(false);
   const [flagMessage, setFlagMessage] = useState('');
+
+  // Persist active category
+  useEffect(() => {
+    localStorage.setItem(`elim_cat_${event.id}`, activeCategory);
+  }, [activeCategory, event.id]);
   
   const [selectedMatchForEnds, setSelectedMatchForEnds] = useState<Match | null>(null);
 
@@ -29,13 +37,42 @@ const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) =
     return event.archers.filter(a => a.category === activeCategory);
   }, [event.archers, activeCategory]);
 
+  const config = (event.settings.categoryConfigs || {})[activeCategory as CategoryType];
+
   const rankedArchers = useMemo(() => {
+    // Tentukan sesi mana yang menjadi dasar peringkat untuk aduan
+    // Jika ada eliminationStages, ambil yang terakhir (terkecil)
+    let baseSession = 'QUAL';
+    if (config?.eliminationStages && config.eliminationStages.length > 0) {
+      const smallestStage = Math.min(...config.eliminationStages);
+      baseSession = `ELIM_${smallestStage}`;
+    }
+
     return archersInCategory.map(archer => {
-      const archerScores = event.scores.filter(s => s.archerId === archer.id);
+      const archerScores = event.scores.filter(s => s.archerId === archer.id && s.sessionId === baseSession);
       const total = archerScores.reduce((acc, curr) => acc + curr.total, 0);
-      return { ...archer, total };
-    }).sort((a, b) => b.total - a.total);
-  }, [archersInCategory, event.scores]);
+      
+      const manualSixes = archerScores.reduce((acc, curr) => acc + (curr.count6 || 0), 0);
+      const manualFives = archerScores.reduce((acc, curr) => acc + (curr.count5 || 0), 0);
+      
+      const isSmallTarget = config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA;
+      const allArrows = archerScores.flatMap(s => s.arrows).filter(v => v !== -1);
+      const arrowSixes = allArrows.filter(v => isSmallTarget ? v === 2 : (v === 'X' || v === 6)).length;
+      const arrowFives = allArrows.filter(v => isSmallTarget ? v === 1 : v === 5).length;
+      
+      const hasManual = archerScores.some(s => s.count6 !== undefined);
+      const sixes = hasManual ? manualSixes : arrowSixes;
+      const fives = hasManual ? manualFives : arrowFives;
+
+      return { ...archer, total, sixes, fives };
+    })
+    .filter(a => baseSession === 'QUAL' || a.total > 0) // Pastikan hanya yang ikut eliminasi terakhir
+    .sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      if (b.sixes !== a.sixes) return b.sixes - a.sixes;
+      return b.fives - a.fives;
+    });
+  }, [archersInCategory, event.scores, config]);
 
   const initializeBracket = (size: number, fromQual = false) => {
     const newMatches: Match[] = [];
@@ -259,14 +296,29 @@ const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) =
             <h3 className="text-2xl font-black font-oswald uppercase italic text-slate-900">Mulai Babak Eliminasi</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6">
               <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Auto-Seeding Kualifikasi</p>
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Auto-Seeding Hasil Peringkat</p>
+                {config?.h2hStartSize && config.h2hStartSize > 0 && (
+                  <div className="flex items-center justify-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100 rounded-lg text-blue-600 mb-1">
+                    <Zap className="w-3 h-3 fill-current" />
+                    <span className="text-[9px] font-black uppercase tracking-wider">Sesuai Alur: {config.h2hStartSize} Besar</span>
+                  </div>
+                )}
                 <div className="flex flex-wrap justify-center gap-2">
-                  {[8, 16, 32, 64].map(s => (
-                    <button key={s} onClick={() => initializeBracket(s, true)} className="px-4 py-3 bg-purple-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-purple-500/20 hover:scale-105 transition-all flex flex-col items-center">
-                      <span>Top {s}</span>
-                      <span className="text-[7px] opacity-70 mt-0.5">{s === 8 ? 'Quarter' : s === 32 ? '1/16' : s === 64 ? '1/32' : ''}</span>
-                    </button>
-                  ))}
+                  {[8, 16, 32].map(s => {
+                    const isRecommended = config?.h2hStartSize === s;
+                    return (
+                      <button 
+                        key={s} 
+                        onClick={() => initializeBracket(s, true)} 
+                        className={`px-4 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg transition-all flex flex-col items-center ${
+                          isRecommended ? 'bg-blue-600 text-white shadow-blue-500/20 scale-110' : 'bg-purple-600 text-white shadow-purple-500/20 hover:scale-105'
+                        }`}
+                      >
+                        <span>Top {s}</span>
+                        <span className="text-[7px] opacity-70 mt-0.5">{s === 8 ? 'Quarter' : s === 32 ? '1/16' : ''}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">

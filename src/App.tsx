@@ -72,14 +72,20 @@ export function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return { ...parsed, globalSettings: parsed.globalSettings || initialSettings, notifications: parsed.notifications || [] };
+        return { 
+          ...parsed, 
+          globalSettings: parsed.globalSettings || initialSettings, 
+          notifications: parsed.notifications || [],
+          drafts: parsed.drafts || { scoring: {}, adminSettings: {}, activeCategory: {} }
+        };
       } catch (e) { console.error("Parse failed", e); }
     }
     
     return {
       events: [],
       users: [{ id: 'owner_1', email: 'admin@arcus.id', name: 'Master Admin', password: 'admin', isOrganizer: true, isSuperAdmin: true, isVerified: true }],
-      currentUser: null, activeEventId: null, globalSettings: initialSettings, notifications: []
+      currentUser: null, activeEventId: null, globalSettings: initialSettings, notifications: [],
+      drafts: { scoring: {}, adminSettings: {}, activeCategory: {} }
     };
   });
 
@@ -935,6 +941,7 @@ export function App() {
         )}
         {view === 'SETTINGS' && activeEvent && (
           <AdminPanel 
+            eventId={activeEvent.id}
             settings={activeEvent.settings} 
             scorerAccess={activeEvent.scorerAccess || []}
             isSuperAdmin={appState.currentUser?.isSuperAdmin}

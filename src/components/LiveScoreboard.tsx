@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Trophy, Clock, X, Swords, Medal, LayoutList, Target, ChevronRight, Info, Activity, Monitor, Search, Check } from 'lucide-react';
-import { ArcheryEvent, CategoryType, Match } from '../types';
+import { ArcheryEvent, CategoryType, Match, TargetType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
 
@@ -41,11 +41,23 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
   const [activeTab, setActiveTab] = useState<'KUALIFIKASI' | 'ELIMINASI'>('KUALIFIKASI');
   const [filterCategory, setFilterCategory] = useState<CategoryType>(CategoryType.ADULT_PUTRA);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeSession, setActiveSession] = useState<string>('QUAL');
 
   const config = (state.settings.categoryConfigs || {})[filterCategory];
-  const isPuta = config?.targetType === 'PUTA';
-  const labelSix = isPuta ? '2s' : '6s';
-  const labelFive = isPuta ? '1s' : '5s';
+  
+  const availableSessions = useMemo(() => {
+    const sessions = ['QUAL'];
+    if (config?.eliminationStages) {
+      config.eliminationStages.forEach(size => {
+        sessions.push(`ELIM_${size}`);
+      });
+    }
+    return sessions;
+  }, [config]);
+
+  const isSmallTarget = config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA;
+  const labelSix = isSmallTarget ? '2s' : '6s';
+  const labelFive = isSmallTarget ? '1s' : '5s';
 
   const matches = useMemo(() => {
     return state.matches[filterCategory] || [];
@@ -60,22 +72,29 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
     const data = state.archers
       .filter(a => a.category === filterCategory)
       .map(archer => {
-        const scores = state.scores.filter(s => s.archerId === archer.id);
+        const scores = state.scores.filter(s => s.archerId === archer.id && s.sessionId === activeSession);
         const total = scores.reduce((acc, curr) => acc + curr.total, 0);
         
         const manualSixes = scores.reduce((acc, curr) => acc + (curr.count6 || 0), 0);
         const manualFives = scores.reduce((acc, curr) => acc + (curr.count5 || 0), 0);
         
         const allArrows = scores.flatMap(s => s.arrows).filter(v => v !== -1);
-        const arrowSixes = allArrows.filter(v => isPuta ? v === 2 : (v === 'X' || v === 6)).length;
-        const arrowFives = allArrows.filter(v => isPuta ? v === 1 : v === 5).length;
+        const arrowSixes = allArrows.filter(v => isSmallTarget ? v === 2 : (v === 'X' || v === 6)).length;
+        const arrowFives = allArrows.filter(v => isSmallTarget ? v === 1 : v === 5).length;
         
         const hasManual = scores.some(s => s.count6 !== undefined);
         const sixes = hasManual ? manualSixes : arrowSixes;
         const fives = hasManual ? manualFives : arrowFives;
         
-        return { ...archer, total, sixes, fives };
+        // Map scores for each end
+        const endScores = Array.from({ length: config?.ends || 0 }).map((_, i) => {
+          const s = scores.find(sc => sc.endIndex === i && sc.sessionId === activeSession);
+          return s ? s.total : null;
+        });
+        
+        return { ...archer, total, sixes, fives, endScores };
       })
+      .filter(a => activeSession === 'QUAL' || a.total > 0)
       .sort((a, b) => {
         if (b.total !== a.total) return b.total - a.total;
         if (b.sixes !== a.sixes) return b.sixes - a.sixes;
@@ -134,11 +153,36 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
       <div className="bg-[#FBFBFD] border-b flex flex-col md:flex-row md:items-center gap-4 px-4 sm:px-12 py-3 shrink-0">
         <div className="flex gap-1 overflow-x-auto no-scrollbar flex-1 pb-1 md:pb-0">
           {(Object.keys(CategoryType) as CategoryType[]).map(cat => (
-            <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-3 sm:px-5 py-2 rounded-lg text-[7px] sm:text-[8px] font-black uppercase whitespace-nowrap border transition-all ${filterCategory === cat ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300'}`}>
+            <button key={cat} onClick={() => {
+              setFilterCategory(cat);
+              setActiveSession('QUAL');
+            }} className={`px-3 sm:px-5 py-2 rounded-lg text-[7px] sm:text-[8px] font-black uppercase whitespace-nowrap border transition-all ${filterCategory === cat ? 'bg-arcus-red border-arcus-red text-white shadow-sm' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300'}`}>
               {CATEGORY_LABELS[cat]}
             </button>
           ))}
         </div>
+      </div>
+
+      {activeTab === 'KUALIFIKASI' && availableSessions.length > 1 && (
+        <div className="bg-white border-b px-4 sm:px-12 py-2 flex items-center justify-between shrink-0 shadow-inner">
+           <div className="flex items-center gap-4">
+             <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest hidden md:block">Pilih Babak:</span>
+             <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                {availableSessions.map(sess => (
+                  <button 
+                   key={sess} 
+                   onClick={() => setActiveSession(sess)} 
+                   className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all ${activeSession === sess ? 'bg-slate-900 border-slate-900 text-white' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+                  >
+                    {sess === 'QUAL' ? 'KUALIFIKASI' : sess.replace('ELIM_', 'ELIMINASI TOP ')}
+                  </button>
+                ))}
+             </div>
+           </div>
+        </div>
+      )}
+
+      <div className="bg-[#FBFBFD] border-b flex flex-col md:flex-row md:items-center gap-4 px-4 sm:px-12 py-3 shrink-0">
         <div className="relative w-full md:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input 
@@ -163,7 +207,7 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
                           <th className="px-12 py-4 w-28 text-center">Rank</th>
                           <th className="px-6 py-4 w-28">Target</th>
                           <th className="px-6 py-4">Athlete Name</th>
-                          <th className="px-6 py-4">Club / Region</th>
+                          <th className="px-6 py-4">Detail Per-Rambahan</th>
                           <th className="px-4 py-4 text-center">{labelSix}</th>
                           <th className="px-4 py-4 text-center">{labelFive}</th>
                           <th className="px-12 py-4 text-right">Total</th>
@@ -193,15 +237,28 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
                                    <span className="text-xl font-black font-oswald text-blue-600 italic tracking-tighter">{row.targetNo > 0 ? `${row.targetNo}${row.position}` : 'TBA'}</span>
                                 </td>
                                 <td className="px-6 py-4 min-w-[200px]">
-                                   <div className="flex items-center gap-3">
-                                     <p className="text-xl font-black font-oswald italic uppercase leading-none tracking-tighter">{row.name}</p>
-                                     {isQualified && (
-                                       <span className="px-1.5 py-0.5 bg-emerald-500 text-[6px] font-black text-white rounded uppercase tracking-widest leading-none">Qualified</span>
-                                     )}
+                                   <div className="flex flex-col">
+                                      <div className="flex items-center gap-3">
+                                        <p className="text-xl font-black font-oswald italic uppercase leading-none tracking-tighter">{row.name}</p>
+                                        {isQualified && (
+                                          <span className="px-1.5 py-0.5 bg-emerald-500 text-[6px] font-black text-white rounded uppercase tracking-widest leading-none">Qualified</span>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest opacity-60 italic mt-1">{row.club}</p>
                                    </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest opacity-60 italic">{row.club}</p>
+                                   <div className="flex items-center gap-1 flex-wrap">
+                                      {(row.endScores || []).map((score, sIdx) => (
+                                        <div 
+                                          key={sIdx} 
+                                          className={`w-9 h-9 rounded-lg flex flex-col items-center justify-center border transition-all ${score !== null ? 'bg-slate-900 border-slate-900 text-white shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-300'}`}
+                                        >
+                                          <span className="text-[6px] font-bold opacity-50 leading-none">R{sIdx + 1}</span>
+                                          <span className="text-[11px] font-black font-oswald leading-none">{score !== null ? score : '-'}</span>
+                                        </div>
+                                      ))}
+                                   </div>
                                 </td>
                                 <td className="px-4 py-4 text-center">
                                    <span className="text-lg font-black font-oswald text-slate-300">{row.sixes}</span>
@@ -256,12 +313,19 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack }) => {
                                     {isQualified && <Check className="w-3 h-3 text-emerald-500" />}
                                   </p>
                                </div>
-                               <div className="flex items-center gap-2">
+                               <div className="flex items-center gap-2 mt-1">
                                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[100px]">{row.club}</p>
-                                  <div className="flex items-center gap-1.5">
-                                     <span className="text-[8px] font-black text-slate-300 uppercase">{labelSix}: {row.sixes}</span>
-                                     <span className="text-[8px] font-black text-slate-300 uppercase">{labelFive}: {row.fives}</span>
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                     {row.endScores.map((score, sIdx) => (
+                                       <span key={sIdx} className={`text-[10px] font-black font-oswald italic px-1.5 py-0.5 rounded ${score !== null ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-300'}`}>
+                                          {score !== null ? score : '-'}
+                                       </span>
+                                     ))}
                                   </div>
+                               </div>
+                               <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-[8px] font-black text-slate-300 uppercase">{labelSix}: {row.sixes}</span>
+                                  <span className="text-[8px] font-black text-slate-300 uppercase">{labelFive}: {row.fives}</span>
                                </div>
                             </div>
                             <div className="text-right">

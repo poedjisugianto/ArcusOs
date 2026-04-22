@@ -41,12 +41,29 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
 
   useEffect(() => {
     if (selectedArcher && config) {
-      const existing = state.scores.find(s => 
-        s.archerId === selectedArcherId && s.endIndex === currentEnd
-      );
-      setTempArrows(existing?.arrows ? [...existing.arrows] : new Array(config.arrows).fill(-1));
+      // 1. Check if there's a draft for THIS specific archer/end
+      const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
+      const savedDraft = localStorage.getItem(draftKey);
+      
+      if (savedDraft) {
+        setTempArrows(JSON.parse(savedDraft));
+      } else {
+        // 2. If no draft, check if there's already a SAVED score
+        const existing = state.scores.find(s => 
+          s.archerId === selectedArcherId && s.endIndex === currentEnd
+        );
+        setTempArrows(existing?.arrows ? [...existing.arrows] : new Array(config.arrows).fill(-1));
+      }
     }
-  }, [selectedArcherId, currentEnd, state.scores, config]);
+  }, [selectedArcherId, currentEnd, state.scores, config, state.id]);
+
+  // Persist tempArrows to draft as they are entered
+  useEffect(() => {
+    if (selectedArcherId && tempArrows.length > 0 && tempArrows.some(v => v !== -1)) {
+      const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
+      localStorage.setItem(draftKey, JSON.stringify(tempArrows));
+    }
+  }, [tempArrows, selectedArcherId, currentEnd, state.id]);
 
   const handleInput = (val: number | 'X') => {
     if (!config) return;
@@ -64,7 +81,14 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
 
   const handleSave = (arrows: (number | 'X')[]) => {
     if (!selectedArcherId || !config) return;
-    const maxVal = config.targetType === TargetType.PUTA ? 2 : 6;
+    
+    let maxVal = 6;
+    if (config.targetType === TargetType.PUTA || config.targetType === TargetType.TRADITIONAL_PUTA) {
+      maxVal = 2;
+    } else if (config.targetType === TargetType.TRADITIONAL_6_RING) {
+      maxVal = 6;
+    }
+
     const total = arrows.reduce<number>((acc, v) => {
       if (v === -1) return acc;
       const scoreVal = v === 'X' ? maxVal : Number(v);
@@ -72,11 +96,11 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     }, 0);
     
     // Calculate counts for tie-break
-    const isPuta = config.targetType === TargetType.PUTA;
-    const count6 = isPuta 
+    const isSmallTarget = config.targetType === TargetType.PUTA || config.targetType === TargetType.TRADITIONAL_PUTA;
+    const count6 = isSmallTarget 
       ? arrows.filter(v => v === 2).length 
       : arrows.filter(v => v === 'X' || v === 6).length;
-    const count5 = isPuta 
+    const count5 = isSmallTarget 
       ? arrows.filter(v => v === 1).length 
       : arrows.filter(v => v === 5).length;
     
@@ -90,6 +114,10 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
       count5,
       lastUpdated: Date.now()
     });
+
+    // Clear draft after successful save
+    const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
+    localStorage.removeItem(draftKey);
 
     setShowToast(`Skor ${selectedArcher?.name} Disimpan!`);
     setTimeout(() => setShowToast(null), 1500);
@@ -121,7 +149,12 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     }
   };
 
-  const keypadValues = config?.targetType === TargetType.PUTA ? [2, 1, 0] : ['X' as const, 6, 5, 4, 3, 2, 1, 0];
+  let keypadValues: (number | 'X')[] = ['X', 6, 5, 4, 3, 2, 1, 0];
+  if (config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA) {
+    keypadValues = [2, 1, 0];
+  } else if (config?.targetType === TargetType.TRADITIONAL_6_RING) {
+    keypadValues = [6, 5, 4, 3, 2, 1, 0];
+  }
 
   return (
     <div className="fixed inset-0 bg-white z-[100] flex flex-col font-inter overflow-hidden select-none">

@@ -77,8 +77,12 @@ const ScoringSheet: React.FC<Props> = ({ settings, eventId, archer }) => {
               <th key={i} className="border-2 border-black py-3 font-black text-lg">A{i + 1}</th>
             ))}
             <th className="border-2 border-black py-3 w-20 font-black text-lg">Tot</th>
-            <th className="border-2 border-black py-3 w-16 font-black text-lg">{config.targetType === TargetType.PUTA ? '6' : '10'}</th>
-            <th className="border-2 border-black py-3 w-16 font-black text-lg">{config.targetType === TargetType.PUTA ? '5' : 'X'}</th>
+            <th className="border-2 border-black py-3 w-16 font-black text-lg">
+              {(config.targetType === TargetType.PUTA || config.targetType === TargetType.TRADITIONAL_PUTA) ? '2' : '6'}
+            </th>
+            <th className="border-2 border-black py-3 w-16 font-black text-lg">
+              {(config.targetType === TargetType.PUTA || config.targetType === TargetType.TRADITIONAL_PUTA) ? '1' : '5/X'}
+            </th>
             <th className="border-2 border-black py-3 w-24 font-black text-lg">Kum.</th>
           </tr>
         </thead>

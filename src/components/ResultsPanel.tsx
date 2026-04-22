@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Trophy, Medal, Download, Printer, ArrowLeft, Target, Award, Info, Trash2, ChevronRight, BarChart3 } from 'lucide-react';
-import { ArcheryEvent, CategoryType, Archer } from '../types';
+import { ArcheryEvent, CategoryType, Archer, TargetType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import { toast } from 'sonner';
 import ArcusLogo from './ArcusLogo';
@@ -13,20 +13,35 @@ interface Props {
 
 export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
   const [activeCategory, setActiveCategory] = useState<CategoryType>(CategoryType.ADULT_PUTRA);
+  const [activeSession, setActiveSession] = useState<string>('QUAL');
+
+  const config = useMemo(() => (state.settings.categoryConfigs || {})[activeCategory], [state.settings, activeCategory]);
+
+  const availableSessions = useMemo(() => {
+    const sessions = ['QUAL'];
+    if (config?.eliminationStages) {
+      config.eliminationStages.forEach(size => {
+        sessions.push(`ELIM_${size}`);
+      });
+    }
+    return sessions;
+  }, [config]);
 
   const rankings = useMemo(() => {
     const data = state.archers
       .filter(a => a.category === activeCategory)
       .map(archer => {
-        const scores = state.scores.filter(s => s.archerId === archer.id);
+        const scores = state.scores.filter(s => s.archerId === archer.id && s.sessionId === activeSession);
         const total = scores.reduce((acc, curr) => acc + curr.total, 0);
         
         const manualSixes = scores.reduce((acc, curr) => acc + (curr.count6 || 0), 0);
         const manualFives = scores.reduce((acc, curr) => acc + (curr.count5 || 0), 0);
         
+        const isSmallTarget = config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA;
+        
         const allArrows = scores.flatMap(s => s.arrows).filter(v => v !== -1);
-        const arrowSixes = allArrows.filter(v => v === 'X' || v === 6).length;
-        const arrowFives = allArrows.filter(v => v === 5).length;
+        const arrowSixes = allArrows.filter(v => isSmallTarget ? v === 2 : (v === 'X' || v === 6)).length;
+        const arrowFives = allArrows.filter(v => isSmallTarget ? v === 1 : v === 5).length;
         
         const hasManual = scores.some(s => s.count6 !== undefined);
         const sixes = hasManual ? manualSixes : arrowSixes;
@@ -34,6 +49,7 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
         
         return { ...archer, total, sixes, fives };
       })
+      .filter(a => activeSession === 'QUAL' || a.total > 0) // Jika bukan kualifikasi, hanya tampilkan yang ada skor di sesi tersebut
       .sort((a, b) => {
         if (b.total !== a.total) return b.total - a.total;
         if (b.sixes !== a.sixes) return b.sixes - a.sixes;
@@ -130,25 +146,42 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
       <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-12">
         {/* Category Selector */}
         <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm mb-8 print:hidden">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-arcus-red">
-                <BarChart3 className="w-5 h-5" />
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-arcus-red">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black font-oswald uppercase italic text-slate-900 leading-none">Babak Pertandingan</h3>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Tampilkan hasil berdasarkan babak (Kualifikasi/Eliminasi)</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xl font-black font-oswald uppercase italic text-slate-900 leading-none">Filter Hasil</h3>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Pilih Kategori Pertandingan</p>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                {availableSessions.map(sess => (
+                  <button 
+                    key={sess}
+                    onClick={() => setActiveSession(sess)}
+                    className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${activeSession === sess ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {sess === 'QUAL' ? 'KUALIFIKASI' : sess.replace('ELIM_', 'ELIMINASI TOP ')}
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0">
+
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {(Object.keys(CategoryType) as CategoryType[])
                 .filter(c => c !== CategoryType.OFFICIAL)
                 .map(cat => (
                 <button 
                   key={cat}
-                  onClick={() => setActiveCategory(cat)}
+                  onClick={() => {
+                    setActiveCategory(cat);
+                    setActiveSession('QUAL');
+                  }}
                   className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${
-                    activeCategory === cat ? 'bg-arcus-red text-white shadow-lg shadow-arcus-red/10' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                    activeCategory === cat ? 'bg-arcus-red text-white shadow-lg shadow-arcus-red/20' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
                   }`}
                 >
                   {CATEGORY_LABELS[cat]}

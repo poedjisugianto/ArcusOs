@@ -76,7 +76,12 @@ app.post("/api/send-email-otp", async (req, res) => {
   const smtpUser = (process.env.SMTP_USER || "").trim();
   const smtpPass = (process.env.SMTP_PASS || "").trim();
   const smtpPort = parseInt(process.env.SMTP_PORT || "587");
-  const smtpSecure = process.env.SMTP_SECURE === "true";
+  
+  // Auto-detect secure based on port if SMTP_SECURE is not explicitly "true" or "false"
+  let smtpSecure = process.env.SMTP_SECURE === "true";
+  if (!process.env.SMTP_SECURE) {
+    smtpSecure = smtpPort === 465;
+  }
 
   const transporter = nodemailer.createTransport({
     host: smtpHost,
@@ -86,6 +91,9 @@ app.post("/api/send-email-otp", async (req, res) => {
       user: smtpUser,
       pass: smtpPass,
     },
+    // Add timeout to prevent hanging
+    connectionTimeout: 10000, 
+    greetingTimeout: 10000,
   });
 
   try {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ShieldCheck, ArrowLeft, RefreshCw, Mail } from 'lucide-react';
 import { ArcheryEvent } from '../types';
@@ -20,6 +20,14 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
 }) => {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
+
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendTimer]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +36,13 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
       return;
     }
     onActivate(code);
+  };
+
+  const handleResend = () => {
+    if (resendTimer === 0) {
+      onResend();
+      setResendTimer(60); // 60 seconds cooldown
+    }
   };
 
   return (
@@ -81,12 +96,19 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
 
         <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-4">
           <button
-            onClick={onResend}
-            className="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            onClick={handleResend}
+            disabled={resendTimer > 0}
+            className="flex items-center justify-center gap-2 text-sm font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50 disabled:text-slate-400"
           >
-            <RefreshCw className="w-4 h-4" />
-            Kirim Ulang Kode
+            <RefreshCw className={`w-4 h-4 ${resendTimer > 0 ? 'animate-spin' : ''}`} />
+            {resendTimer > 0 ? `Kirim Ulang dalam ${resendTimer}s` : 'Kirim Ulang Kode Aktivasi'}
           </button>
+          
+          <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] text-slate-500 text-center space-y-1">
+             <p className="font-bold flex items-center justify-center gap-1"><Info className="w-3 h-3" /> Tidak menerima email?</p>
+             <p>Coba cek folder <strong>Spam</strong> atau <strong>Promosi</strong>. Pastikan email Anda sudah benar.</p>
+          </div>
+
           <button
             onClick={onBack}
             className="flex items-center justify-center gap-2 text-sm font-medium text-slate-400 hover:text-slate-600 transition-colors"

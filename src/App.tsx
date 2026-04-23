@@ -668,7 +668,7 @@ export function App() {
                   });
                   const result = await response.json();
                   if (!response.ok || !result.success) {
-                    throw new Error(result.message || "Gagal mengirim email");
+                    throw new Error(result.error || result.message || "Gagal mengirim email");
                   }
 
                   if (result.isSimulated) {
@@ -676,9 +676,9 @@ export function App() {
                   } else {
                     pushNotification("Email Terkirim", "Kode aktivasi telah dikirim ulang ke email Anda.", "INFO");
                   }
-                } catch (err) {
+                } catch (err: any) {
                   console.error("Failed to resend activation email", err);
-                  pushNotification("Gagal Kirim Email", "Gagal mengirim ulang kode aktivasi.", "WARNING");
+                  pushNotification("Gagal Kirim Email", err.message, "WARNING");
                 }
               }
             }}

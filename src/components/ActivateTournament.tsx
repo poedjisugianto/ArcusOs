@@ -21,6 +21,7 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (resendTimer > 0) {
@@ -38,10 +39,15 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
     onActivate(code);
   };
 
-  const handleResend = () => {
-    if (resendTimer === 0) {
-      onResend();
-      setResendTimer(60); // 60 seconds cooldown
+  const handleResend = async () => {
+    if (resendTimer === 0 && !isSending) {
+      setIsSending(true);
+      try {
+        await onResend();
+        setResendTimer(60); // 60 seconds cooldown
+      } finally {
+        setIsSending(false);
+      }
     }
   };
 
@@ -97,11 +103,11 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
         <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-4">
           <button
             onClick={handleResend}
-            disabled={resendTimer > 0}
+            disabled={resendTimer > 0 || isSending}
             className="flex items-center justify-center gap-2 text-sm font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50 disabled:text-slate-400"
           >
-            <RefreshCw className={`w-4 h-4 ${resendTimer > 0 ? 'animate-spin' : ''}`} />
-            {resendTimer > 0 ? `Kirim Ulang dalam ${resendTimer}s` : 'Kirim Ulang Kode Aktivasi'}
+            <RefreshCw className={`w-4 h-4 ${(resendTimer > 0 || isSending) ? 'animate-spin' : ''}`} />
+            {isSending ? 'Sedang Mengirim...' : (resendTimer > 0 ? `Kirim Ulang dalam ${resendTimer}s` : 'Kirim Ulang Kode')}
           </button>
           
           <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] text-slate-500 text-center space-y-1">

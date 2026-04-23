@@ -96,7 +96,9 @@ app.post("/api/send-email-otp", async (req, res) => {
     greetingTimeout: 10000,
   });
 
+  const startTime = Date.now();
   try {
+    console.log(`[EMAIL START] Attempting to send email to ${email}...`);
     await transporter.sendMail({
       from: `"ARCUS Archery System" <${smtpUser}>`,
       to: email,
@@ -118,10 +120,12 @@ app.post("/api/send-email-otp", async (req, res) => {
       `,
     });
 
-    console.log(`[EMAIL SUCCESS] OTP sent to ${email}`);
-    res.json({ success: true, message: "OTP sent to email" });
+    const duration = Date.now() - startTime;
+    console.log(`[EMAIL SUCCESS] OTP sent to ${email} in ${duration}ms`);
+    res.json({ success: true, message: "OTP sent to email", duration });
   } catch (error: any) {
-    console.error("[EMAIL API ERROR] Detailed log:", {
+    const duration = Date.now() - startTime;
+    console.error(`[EMAIL API ERROR] Failed after ${duration}ms:`, {
       code: error.code,
       command: error.command,
       response: error.response,

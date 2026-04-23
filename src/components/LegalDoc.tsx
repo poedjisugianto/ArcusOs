@@ -13,21 +13,65 @@ export default function LegalDoc({ type, onBack }: Props) {
       icon: ShieldCheck,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
-      text: `ARCUS DIGITAL berkomitmen untuk melindungi privasi Anda. Kami hanya mengumpulkan data yang diperlukan untuk manajemen turnamen panahan, seperti nama, email, dan klub panahan. Data Anda tidak akan dibagikan kepada pihak ketiga tanpa persetujuan Anda.`
+      text: (
+        <div className="space-y-6 text-slate-500 font-medium italic">
+          <p>ARCUS DIGITAL berkomitmen untuk melindungi privasi Anda. Halaman ini menjelaskan bagaimana kami mengumpulkan dan menggunakan data Anda.</p>
+          <div className="space-y-4">
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">1. Data yang Dikumpulkan</h4>
+            <p>Kami mengumpulkan data peserta meliputi Nama Lengkap, Alamat Email, Nomor WhatsApp, dan Nama Klub untuk keperluan administrasi turnamen dan verifikasi skor.</p>
+            
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">2. Penggunaan Data</h4>
+            <p>Data digunakan untuk pembuatan ID Card peserta, pengiriman informasi turnamen via email/WhatsApp, serta sinkronisasi skor pada sistem live-results.</p>
+            
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">3. Keamanan</h4>
+            <p>Semua data pribadi disimpan secara aman dan tidak akan dibagikan kepada pihak ketiga atau pengiklan tanpa izin tertulis dari Anda.</p>
+          </div>
+        </div>
+      )
     },
     TERMS: {
       title: 'Syarat & Ketentuan',
       icon: Gavel,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
-      text: `Dengan menggunakan platform ARCUS DIGITAL, Anda setuju untuk mematuhi semua aturan dan regulasi yang ditetapkan oleh panitia turnamen. Penyalahgunaan sistem scoring atau manipulasi data dapat mengakibatkan diskualifikasi.`
+      text: (
+        <div className="space-y-6 text-slate-500 font-medium italic">
+          <p>Harap baca Syarat dan Ketentuan berikut sebelum menggunakan layanan ARCUS DIGITAL.</p>
+          <div className="space-y-4">
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">1. Pendaftaran & Pembayaran</h4>
+            <p>Pendaftaran dianggap sah apabila peserta telah menyelesaikan pembayaran sesuai nominal yang ditentukan. Kami mendukung pembayaran via Transfer Manual dan Payment Gateway (QRIS, VA, E-Wallet).</p>
+            
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">2. Kebijakan Refund (Pengembalian Dana)</h4>
+            <p>Dana yang sudah dibayarkan tidak dapat dikembalikan (Non-Refundable) kecuali turnamen dibatalkan sepenuhnya oleh pihak panitia. Dalam hal pembatalan event, proses refund akan dilakukan dalam 7-14 hari kerja.</p>
+            
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">3. Perilaku Peserta</h4>
+            <p>Setiap bentuk kecurangan atau manipulasi skor akan berujung pada diskualifikasi permanen dari sistem ARCUS DIGITAL.</p>
+            
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">4. Layanan Pelanggan</h4>
+            <p>Jika terdapat kendala transaksi, hubungi Support WhatsApp di nomor yang tertera di menu Kontak Support.</p>
+          </div>
+        </div>
+      )
     },
     DOCUMENTATION: {
-      title: 'Dokumentasi',
+      title: 'Dokumentasi & Fitur',
       icon: FileText,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
-      text: `ARCUS DIGITAL Tournament OS adalah platform manajemen turnamen panahan modern. Fitur utama meliputi scoring real-time, manajemen eliminasi otomatis, dan live scoreboard publik.`
+      text: (
+        <div className="space-y-6 text-slate-500 font-medium italic">
+          <p>ARCUS DIGITAL Tournament OS adalah solusi manajemen data digital untuk olahraga Panahan.</p>
+          <div className="space-y-4">
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest">Fitur Utama:</h4>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>Manajemen Registrasi Online Terintegrasi.</li>
+              <li>Sistem Scoring Digital & Live Scoreboard.</li>
+              <li>Manajemen Bagan Eliminasi (H2H) Otomatis.</li>
+              <li>PWA Ready (Dapat diinstal di Android/iOS).</li>
+            </ul>
+          </div>
+        </div>
+      )
     }
   };
 

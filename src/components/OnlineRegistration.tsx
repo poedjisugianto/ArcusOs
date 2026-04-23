@@ -92,6 +92,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
 
   const activeMethod = availableManualMethods.find((m: any) => m.id === formData.selectedPaymentMethodId) || availableManualMethods[0];
 
+  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
+  const [simulatedQR, setSimulatedQR] = useState<string | null>(null);
+
   const handleGatewayPayment = async (newReg: ParticipantRegistration) => {
     try {
       let amount = 0;
@@ -145,10 +148,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           }
         });
       } else if (data.success && data.qrData) {
-        // Simulation mode with QR
-        setStep(3);
-        onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
-        toast.success("Pembayaran Berhasil Diverifikasi (Mode Simulasi)");
+        // Show simulation screen instead of immediate success
+        setSimulatedQR(data.qrData);
+        setIsSimulatingPayment(true);
       } else {
         toast.error(data.message || "Gagal membuat transaksi");
       }
@@ -157,8 +159,22 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     }
   };
 
+  const completeSimulation = (newReg: ParticipantRegistration) => {
+    setIsSimulatingPayment(false);
+    setStep(3);
+    onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
+    toast.success("Pembayaran Berhasil (Mode Simulasi)");
+  };
+
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!agreedToTerms) {
+      toast.error("Anda harus menyetujui Syarat & Ketentuan untuk melanjutkan");
+      return;
+    }
     
     if (formData.paymentType === 'MANUAL' && !formData.paymentProof) {
       toast.error("Silakan unggah bukti pembayaran terlebih dahulu");
@@ -278,6 +294,90 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             </React.Fragment>
           ))}
         </div>
+
+        {isSimulatingPayment && (
+          <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+             <div className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-500">
+               <div className="bg-slate-900 p-8 text-center space-y-2">
+                  <p className="text-[10px] font-black text-arcus-red uppercase tracking-[0.3em]">Checkout Pembayaran</p>
+                  <h3 className="text-2xl font-black font-oswald text-white uppercase italic">SIMULASI PEMBAYARAN</h3>
+                  <div className="pt-4">
+                     <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Total Tagihan</p>
+                     <p className="text-3xl font-black text-white font-oswald italic">
+                        Rp {(formData.regType === 'OFFICIAL' ? (event.settings.officialFee || 0) : (event.settings.categoryConfigs?.[formData.category as CategoryType]?.registrationFee || 0)).toLocaleString()}
+                     </p>
+                  </div>
+               </div>
+               
+               <div className="p-8 space-y-6">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Pilih Akun Pembayaran (Simulasi)</p>
+                    <div className="space-y-3">
+                       {[
+                         { id: 'qris', name: 'QRIS / DANA / OVO', icon: <Landmark className="w-5 h-5 text-emerald-500" /> },
+                         { id: 'gopay', name: 'GOPAY / SHOPEEPAY', icon: <Smartphone className="w-5 h-5 text-blue-500" /> },
+                         { id: 'va_bca', name: 'VIRTUAL ACCOUNT BCA', icon: <CreditCard className="w-5 h-5 text-indigo-500" /> },
+                         { id: 'va_mandiri', name: 'VIRTUAL ACCOUNT MANDIRI', icon: <CreditCard className="w-5 h-5 text-orange-500" /> }
+                       ].map(choice => (
+                         <button 
+                           key={choice.id}
+                           onClick={() => {
+                             // If it's QRIS, maybe show the QR, otherwise just complete
+                             if (choice.id === 'qris') {
+                               // Keep showing QR
+                             } else {
+                               completeSimulation({
+                                 id: 'reg_' + Math.random().toString(36).substr(2, 9),
+                                 name: formData.name, email: formData.email, club: formData.club,
+                                 category: formData.category, status: 'PAID', paymentType: 'GATEWAY'
+                               });
+                             }
+                           }}
+                           className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-100 transition-all text-left group"
+                         >
+                            <div className="flex items-center gap-4">
+                               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                  {choice.icon}
+                               </div>
+                               <span className="text-xs font-black text-slate-900 uppercase">{choice.name}</span>
+                            </div>
+                            <Check className="w-4 h-4 text-slate-200 group-hover:text-emerald-500" />
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+
+                  {simulatedQR && (
+                    <div className="pt-6 border-t border-slate-100 text-center space-y-4">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Opsi: Scan QR Code di bawah</p>
+                       <div className="bg-slate-50 p-6 rounded-3xl inline-block border-2 border-slate-100">
+                          <img src={simulatedQR} alt="QR Code" className="w-32 h-32 md:w-48 md:h-48" />
+                       </div>
+                       <div>
+                          <button 
+                            onClick={() => completeSimulation({
+                              id: 'reg_' + Math.random().toString(36).substr(2, 9),
+                              name: formData.name, email: formData.email, club: formData.club,
+                              category: formData.category, status: 'PAID', paymentType: 'GATEWAY'
+                            })}
+                            className="text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline"
+                          >
+                            Klik di sini setelah scan berhasil
+                          </button>
+                       </div>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => setIsSimulatingPayment(false)}
+                    className="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors"
+                  >
+                    Batal
+                  </button>
+               </div>
+             </div>
+          </div>
+        )}
 
         {step === 1 && (
           <div className="space-y-3 md:space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
@@ -529,6 +629,23 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                 </div>
               </div>
 
+              <div className="pt-6 border-t border-slate-100">
+                 <label className="flex items-start gap-4 cursor-pointer group">
+                    <div className="relative flex items-center">
+                       <input 
+                         type="checkbox" 
+                         checked={agreedToTerms}
+                         onChange={(e) => setAgreedToTerms(e.target.checked)}
+                         className="peer h-6 w-6 cursor-pointer appearance-none rounded-lg border-2 border-slate-200 bg-white transition-all checked:bg-arcus-red checked:border-arcus-red hover:border-arcus-red"
+                       />
+                       <Check className="absolute left-1 top-1 h-4 w-4 text-white opacity-0 transition-opacity peer-checked:opacity-100 pointer-events-none" />
+                    </div>
+                    <span className="text-[10px] md:text-xs font-medium text-slate-500 leading-relaxed italic">
+                       Saya telah membaca dan menyetujui <button type="button" onClick={() => window.open('?view=TERMS', '_blank')} className="text-arcus-red font-black underline hover:text-red-700transition-colors">Syarat & Ketentuan</button> serta <button type="button" onClick={() => window.open('?view=PRIVACY', '_blank')} className="text-arcus-red font-black underline hover:text-red-700 transition-colors">Kebijakan Pembatalan</button> Arcus Digital.
+                    </span>
+                 </label>
+              </div>
+
               <div className="flex flex-col sm:flex-row gap-4 md:gap-6">
                 <button 
                   onClick={() => setStep(1)}
@@ -577,6 +694,23 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                   <p className="text-[8px] font-bold text-slate-400 text-center uppercase tracking-widest mt-2 italic">
                     Didukung oleh Midtrans Payment Gateway
                   </p>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100/10">
+                   <label className="flex items-start gap-4 cursor-pointer group">
+                      <div className="relative flex items-center">
+                         <input 
+                           type="checkbox" 
+                           checked={agreedToTerms}
+                           onChange={(e) => setAgreedToTerms(e.target.checked)}
+                           className="peer h-6 w-6 cursor-pointer appearance-none rounded-lg border-2 border-white/20 bg-transparent transition-all checked:bg-arcus-red checked:border-arcus-red hover:border-white/40"
+                         />
+                         <Check className="absolute left-1 top-1 h-4 w-4 text-white opacity-0 transition-opacity peer-checked:opacity-100 pointer-events-none" />
+                      </div>
+                      <span className="text-[10px] md:text-xs font-medium text-white/60 leading-relaxed italic">
+                         Saya telah membaca dan menyetujui <button type="button" onClick={() => window.open('?view=TERMS', '_blank')} className="text-arcus-red font-black underline hover:text-red-400 transition-colors">Syarat & Ketentuan</button> serta <button type="button" onClick={() => window.open('?view=PRIVACY', '_blank')} className="text-arcus-red font-black underline hover:text-red-400 transition-colors">Kebijakan Pembatalan</button> Arcus Digital.
+                      </span>
+                   </label>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 md:gap-6">

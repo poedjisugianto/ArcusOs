@@ -145,7 +145,7 @@ const simulatedPayments: Record<string, { status: string, amount: number }> = {}
 // API Route for creating a payment transaction
 app.post("/api/payment/create", async (req, res) => {
   const { amount, method, provider, customerDetails, itemDetails } = req.body;
-  const orderId = "ARCUS-" + Math.random().toString(36).toUpperCase().substr(2, 10);
+  const orderId = "ARCUS-" + Date.now() + "-" + Math.random().toString(36).toUpperCase().substr(2, 4);
   
   console.log(`[PAYMENT] Initiating ${amount} via ${method} using provider: ${provider}`);
 

@@ -251,8 +251,11 @@ app.get("/api/payment/webhook", (req, res) => {
 app.post("/api/payment/webhook", async (req, res) => {
   const notification = req.body;
   
+  // Midtrans validation pings often don't contain order_id or use dummy data
+  // We return 200 OK so Midtrans can verify the endpoint is reachable
   if (!notification || !notification.order_id) {
-    return res.status(400).json({ success: false, message: "Invalid notification data" });
+    console.log("[WEBHOOK] Received empty or invalid notification, acknowledging for validation.");
+    return res.status(200).json({ success: true, message: "Endpoint reached" });
   }
 
   console.log(`[WEBHOOK] Received update for ${notification.order_id}: ${notification.transaction_status}`);
@@ -262,8 +265,7 @@ app.post("/api/payment/webhook", async (req, res) => {
 
   if (!serverKey) {
     console.warn("[WEBHOOK] Midtrans Server Key not configured. Skipping verification.");
-    // In simulation mode, we might still want to return 200
-    return res.json({ success: true, message: "Simulated Webhook" });
+    return res.status(200).json({ success: true, message: "Simulated Webhook" });
   }
 
   try {

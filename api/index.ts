@@ -90,25 +90,39 @@ app.post("/api/send-email-otp", async (req, res) => {
 
   try {
     await transporter.sendMail({
-      from: `"ARCUS Security" <${smtpUser}>`,
+      from: `"ARCUS Archery System" <${smtpUser}>`,
       to: email,
-      subject: subject || "ARCUS Security OTP",
+      subject: subject || "Kode OTP Anda",
       text: message,
-      html: `<div style="font-family: sans-serif; padding: 20px;">
-              <h2>ARCUS Security</h2>
-              <p>${message.replace(/\n/g, '<br>')}</p>
-              <hr>
-              <p style="font-size: 12px; color: #666;">&copy; ${new Date().getFullYear()} Arcus Digital Archery System</p>
-             </div>`,
+      html: `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; background-color: #f8fafc; color: #1e293b;">
+          <div style="background-color: #0f172a; padding: 20px; border-radius: 20px 20px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-style: italic; letter-spacing: -0.05em;">ARCUS DIGITAL</h1>
+          </div>
+          <div style="background-color: white; padding: 40px; border-radius: 0 0 20px 20px; border: 1px solid #e2e8f0; border-top: none;">
+            <h2 style="color: #0f172a; margin-top: 0;">Keamanan Akun</h2>
+            <p style="font-size: 16px; line-height: 1.6; color: #475569;">${message.replace(/\n/g, '<br>')}</p>
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center;">
+              &copy; ${new Date().getFullYear()} Arcus Digital Archery System. Pesan ini dikirim secara otomatis, harap jangan membalas.
+            </div>
+          </div>
+        </div>
+      `,
     });
 
+    console.log(`[EMAIL SUCCESS] OTP sent to ${email}`);
     res.json({ success: true, message: "OTP sent to email" });
   } catch (error: any) {
-    console.error("Email API Error:", error);
+    console.error("[EMAIL API ERROR] Detailed log:", {
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      message: error.message
+    });
     res.status(500).json({ 
       success: false, 
-      message: "Gagal mengirim email.",
-      error: error.message 
+      error: error.message,
+      message: "Gagal mengirim email. Silakan cek kredensial SMTP di dashboard Vercel." 
     });
   }
 });

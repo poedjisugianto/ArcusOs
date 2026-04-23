@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ArcheryEvent, CategoryType, Match, Archer } from '../types';
+import { ArcheryEvent, CategoryType, Match, Archer, TargetType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import { Trophy, GitBranch, User, Save, RefreshCw, ChevronRight, Swords, ArrowLeft, Trash2, Settings2, Zap, Medal, Plus, Minus, Check, FileText, X } from 'lucide-react';
 

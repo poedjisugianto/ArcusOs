@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ShieldCheck, ArrowLeft, RefreshCw, Mail } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, RefreshCw, Mail, Info } from 'lucide-react';
 import { ArcheryEvent } from '../types';
 
 interface ActivateTournamentProps {

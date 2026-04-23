@@ -6,7 +6,7 @@ import {
   Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
   Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
   Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
-  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock
+  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
 import { CATEGORY_LABELS, TARGET_LABELS } from '../constants';

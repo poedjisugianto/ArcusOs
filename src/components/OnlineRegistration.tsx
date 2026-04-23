@@ -5,7 +5,7 @@ import { CATEGORY_LABELS } from '../constants';
 import { 
   ArrowLeft, User, Mail, ShieldCheck, CreditCard, 
   Upload, Check, AlertCircle, Zap, Sparkles, 
-  Target, Trophy, Users, Activity, Info, FileText, Landmark
+  Target, Trophy, Users, Activity, Info, FileText, Landmark, Smartphone
 } from 'lucide-react';
 
 interface Props {
@@ -553,10 +553,30 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                     </div>
                     <h3 className="text-3xl font-black font-oswald text-white uppercase italic tracking-tighter">Otomatisasi Pembayaran</h3>
                     <p className="text-white/60 font-medium italic text-sm md:text-base max-w-sm mx-auto leading-relaxed">
-                      Bayar via QRIS, GoPay, ShopeePay atau Virtual Account. Status pendaftaran akan langsung <span className="text-arcus-red font-black">LUNAS</span> secara otomatis.
+                      Layanan pembayaran instan via e-wallet dan virtual account. Status pendaftaran akan langsung <span className="text-arcus-red font-black">LUNAS</span> secara otomatis.
                     </p>
                   </div>
                   <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl opacity-50" />
+                </div>
+
+                <div className="space-y-4">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] text-center">Metode Pembayaran Instan Didukung</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[
+                      { name: 'QRIS / DANA', icon: <Landmark className="w-5 h-5" />, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                      { name: 'GOPAY', icon: <Smartphone className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-50' },
+                      { name: 'OVO', icon: <Activity className="w-5 h-5" />, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                      { name: 'VIRTUAL ACCOUNT', icon: <CreditCard className="w-5 h-5" />, color: 'text-slate-600', bg: 'bg-slate-50' },
+                    ].map((m, idx) => (
+                      <div key={idx} className={`p-4 rounded-2xl border border-slate-100 ${m.bg} flex flex-col items-center gap-2 group hover:scale-105 transition-all shadow-sm`}>
+                        <div className={`${m.color}`}>{m.icon}</div>
+                        <span className={`text-[8px] font-black uppercase tracking-widest ${m.color}`}>{m.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[8px] font-bold text-slate-400 text-center uppercase tracking-widest mt-2 italic">
+                    Didukung oleh Midtrans Payment Gateway
+                  </p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 md:gap-6">

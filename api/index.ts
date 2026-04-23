@@ -244,11 +244,27 @@ app.get("/api/payment/status/:id", async (req, res) => {
 });
 
 // Webhook Endpoint for Midtrans
+app.get("/api/payment/webhook", (req, res) => {
+  res.send("Webhook Arcus aktif! Gunakan metode POST untuk mengirim notifikasi pembayaran.");
+});
+
 app.post("/api/payment/webhook", async (req, res) => {
   const notification = req.body;
+  
+  if (!notification || !notification.order_id) {
+    return res.status(400).json({ success: false, message: "Invalid notification data" });
+  }
+
   console.log(`[WEBHOOK] Received update for ${notification.order_id}: ${notification.transaction_status}`);
   
   const snap = await getSnapInstance() as any;
+  const serverKey = snap.apiConfig.serverKey;
+
+  if (!serverKey) {
+    console.warn("[WEBHOOK] Midtrans Server Key not configured. Skipping verification.");
+    // In simulation mode, we might still want to return 200
+    return res.json({ success: true, message: "Simulated Webhook" });
+  }
 
   try {
     const statusResponse = await snap.transaction.notification(notification);

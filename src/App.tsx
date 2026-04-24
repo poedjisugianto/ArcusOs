@@ -104,9 +104,9 @@ export function App() {
     }));
   };
 
-  const fetchCloudData = async () => {
+  const fetchCloudData = async (manual = false) => {
     if (!supabase) return;
-    setIsSyncing(true);
+    if (manual) setIsSyncing(true);
     try {
       const { data: configData } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
       
@@ -177,16 +177,16 @@ export function App() {
         };
       });
       setLastSync(new Date());
-      if (appState.currentUser) {
+      if (manual && appState.currentUser) {
         pushNotification("Data Sinkron", "Data terbaru telah dimuat dari cloud.", "SUCCESS");
       }
     } catch (err) { 
       console.error("Fetch error", err);
-      if (appState.currentUser) {
+      if (manual && appState.currentUser) {
         pushNotification("Gagal Sinkron", "Gagal memuat data terbaru dari cloud.", "WARNING");
       }
     } finally {
-      setIsSyncing(false);
+      if (manual) setIsSyncing(false);
     }
   };
 
@@ -194,19 +194,52 @@ export function App() {
     fetchCloudData();
   }, [appState.currentUser?.id]);
 
+  const [isCheckingLink, setIsCheckingLink] = useState(false);
+
   // Handle URL Parameters for Sharing
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const eventId = params.get('event');
-    const registerId = params.get('register');
-    const viewParam = params.get('view');
+    const handleDeepLink = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get('event');
+      const registerId = params.get('register');
+      const viewParam = params.get('view');
 
-    if (eventId && appState.events.length > 0) {
-      const eventExists = appState.events.some(e => e.id === eventId);
-      if (eventExists) {
-        setAppState(prev => ({ ...prev, activeEventId: eventId }));
+      if (!eventId && !registerId) return;
+
+      setIsCheckingLink(true);
+
+      // 1. Check if we already have it in state
+      let targetEvent = appState.events.find(e => e.id === (eventId || registerId));
+
+      // 2. If not in state, try to fetch it directly from Supabase (crucial for guest users)
+      if (!targetEvent && supabase) {
+        try {
+          const idToFetch = eventId || registerId;
+          const { data, error } = await supabase
+            .from('events')
+            .select('data')
+            .eq('id', idToFetch)
+            .single();
+
+          if (data && !error) {
+            targetEvent = data.data as ArcheryEvent;
+            // Inject into state temporarily so other components can use it
+            setAppState(prev => {
+              if (prev.events.some(e => e.id === targetEvent!.id)) return prev;
+              return { ...prev, events: [targetEvent!, ...prev.events] };
+            });
+          }
+        } catch (err) {
+          console.error("Deep link fetch error:", err);
+        }
+      }
+
+      if (targetEvent) {
+        setAppState(prev => ({ ...prev, activeEventId: targetEvent!.id }));
         
-        if (viewParam === 'live') {
+        if (registerId) {
+          setView('REGISTER_PARTICIPANT');
+        } else if (viewParam === 'live') {
           setView('PUBLIC_LIVE');
         } else if (viewParam === 'entry-list') {
           setView('PUBLIC_ENTRY_LIST');
@@ -217,17 +250,12 @@ export function App() {
         // Clear URL params to avoid re-triggering
         window.history.replaceState({}, document.title, window.location.pathname);
       }
-    } else if (registerId && appState.events.length > 0) {
-      const eventExists = appState.events.some(e => e.id === registerId);
-      if (eventExists) {
-        setAppState(prev => ({ ...prev, activeEventId: registerId }));
-        setView('REGISTER_PARTICIPANT');
-        
-        // Clear URL params
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    }
-  }, [appState.events.length]);
+      
+      setIsCheckingLink(false);
+    };
+
+    handleDeepLink();
+  }, [supabase, appState.events.length > 0]); // Re-run when events load, but also handles direct fetch
 
   // Multi-tab synchronization
   useEffect(() => {
@@ -622,12 +650,63 @@ export function App() {
         } : e)
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      
+      // For scores, we want to sync faster so the scoreboard updates in real-time
+      setTimeout(() => syncCloudData(false), 500);
+      
       return newState;
     });
   };
 
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white">
+      <AnimatePresence>
+        {(isSplashVisible || isCheckingLink) && (
+          <motion.div 
+            key="splash"
+            exit={{ opacity: 0, scale: 1.1 }}
+            className="fixed inset-0 z-[10000] bg-slate-900 flex flex-col items-center justify-center p-8 overflow-hidden"
+          >
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="relative"
+            >
+              <div className="absolute inset-0 bg-arcus-red/20 blur-[120px] rounded-full scale-150 animate-pulse" />
+              <ArcusLogo className="w-40 h-40 md:w-56 md:h-56 text-white relative z-10 filter drop-shadow-[0_0_50px_rgba(239,68,68,0.5)]" />
+            </motion.div>
+            
+            <motion.div 
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="mt-12 text-center relative z-10"
+            >
+              <h1 className="text-5xl md:text-7xl font-black font-oswald text-white uppercase italic tracking-tighter leading-none">
+                ARCUS <span className="text-arcus-red">ARCHERY</span>
+              </h1>
+              <div className="mt-6 flex flex-col items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 bg-arcus-red rounded-full animate-ping" />
+                  <p className="text-[12px] font-black text-white/40 uppercase tracking-[0.5em]">
+                    {isCheckingLink ? 'VALIDATING LINK...' : 'TOURNAMENT OS INITIALIZING'}
+                  </p>
+                </div>
+                <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ x: "-100%" }}
+                    animate={{ x: "100%" }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                    className="w-1/2 h-full bg-arcus-red shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {updateAvailable && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
           <div className="bg-slate-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-700">
@@ -883,7 +962,7 @@ export function App() {
             }} 
             onUpdateEvent={handleUpdateEvent} 
             onDeleteEvent={handleDeleteEvent} 
-            onRefreshData={fetchCloudData} 
+            onRefreshData={() => fetchCloudData(true)} 
             onSyncNow={() => syncCloudData(true)}
             isSyncing={isSyncing}
             lastSync={lastSync}

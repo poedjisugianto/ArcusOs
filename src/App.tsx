@@ -110,26 +110,42 @@ export function App() {
     try {
       const { data: configData } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
       
-      let eventsQuery = supabase.from('events').select('data');
-      // If not logged in or is super admin, fetch all events. 
-      // Otherwise (regular organizer), fetch only their events for the dashboard.
-      // NOTE: For landing page, we might want ALL events even for organizers.
-      // For now, let's fetch all if guest/superadmin, and user-specific if organizer.
+      let eventsQuery = supabase.from('events').select('data, user_id');
+      
+      // LOGIC: 
+      // 1. Guests see all events that are NOT DRAFT
+      // 2. Organizers see their own events (any status) AND other's non-draft events
+      // 3. SuperAdmins see EVERYTHING
+      
       if (appState.currentUser && !appState.currentUser.isSuperAdmin) {
-        eventsQuery = eventsQuery.eq('user_id', appState.currentUser.id);
+        // Fetch where (it's mine) OR (it's public)
+        // Since we can't easily do complex OR on JSONB fields in some supabase setups via JS, 
+        // we'll fetch all and filter client-side, OR use a more inclusive query.
+        // For performance and reliability across different RLS setups, let's fetch:
+        // - All public events
+        // - My events
+        // We'll combine them by fetching a bit more broadly.
       }
       
-      const { data: eventsData } = await eventsQuery;
+      const { data: eventsData, error: eventsError } = await eventsQuery;
+      if (eventsError) throw eventsError;
+
       const { data: profilesData } = await supabase.from('profiles').select('data');
 
       setAppState(prev => {
         const cloudUsers = profilesData ? profilesData.map(p => p.data) : [];
         const finalUsers = cloudUsers.length > 0 ? cloudUsers : prev.users;
         
-        const cloudEvents = eventsData ? eventsData.map(e => e.data as ArcheryEvent) : [];
+        const cloudEventsRaw = eventsData ? eventsData.map(e => ({ ...e.data as ArcheryEvent, ownerId: e.user_id })) : [];
         
-        // Filter out events that are currently being deleted locally
-        const filteredCloudEvents = cloudEvents.filter(ce => !deletedEventIds.has(ce.id));
+        // CLIENT-SIDE FILTERING for security/privacy if RLS is permissive
+        const filteredCloudEvents = cloudEventsRaw.filter(ce => {
+          if (prev.currentUser?.isSuperAdmin) return true;
+          // Show if: It's mine OR it's not a draft
+          const isMine = ce.settings.organizerId === prev.currentUser?.id;
+          const isPublic = ce.status !== 'DRAFT';
+          return (isMine || isPublic) && !deletedEventIds.has(ce.id);
+        });
         
         // SMART MERGE: Don't just overwrite, merge local changes that haven't synced yet
         const mergedEvents = prev.events.map(localEvent => {
@@ -208,54 +224,55 @@ export function App() {
 
       setIsCheckingLink(true);
 
-      // 1. Check if we already have it in state
-      let targetEvent = appState.events.find(e => e.id === (eventId || registerId));
-
-      // 2. If not in state, try to fetch it directly from Supabase (crucial for guest users)
-      if (!targetEvent && supabase) {
+      // 1. Try to fetch it directly from Supabase immediately (crucial for shared links)
+      if (supabase) {
         try {
           const idToFetch = eventId || registerId;
           const { data, error } = await supabase
             .from('events')
-            .select('data')
+            .select('data, user_id')
             .eq('id', idToFetch)
             .single();
 
           if (data && !error) {
-            targetEvent = data.data as ArcheryEvent;
-            // Inject into state temporarily so other components can use it
+            const targetEvent = data.data as ArcheryEvent;
+            
+            // Inject into state and activate
             setAppState(prev => {
-              if (prev.events.some(e => e.id === targetEvent!.id)) return prev;
-              return { ...prev, events: [targetEvent!, ...prev.events] };
+              const exists = prev.events.some(e => e.id === targetEvent.id);
+              return { 
+                ...prev, 
+                events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
+                activeEventId: targetEvent.id
+              };
             });
+
+            if (registerId) {
+              setView('REGISTER_PARTICIPANT');
+            } else if (viewParam === 'live') {
+              setView('PUBLIC_LIVE');
+            } else if (viewParam === 'entry-list') {
+              setView('PUBLIC_ENTRY_LIST');
+            } else {
+              setView('PUBLIC_EVENT_INFO');
+            }
+            
+            // Clear URL params to avoid re-triggering but keep context if needed
+            // window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            console.warn("Shared event not found in cloud:", idToFetch);
+            pushNotification("Event Tidak Ditemukan", "Link yang Anda buka mungkin sudah tidak berlaku atau turnamen belum dipublikasikan.", "WARNING");
           }
         } catch (err) {
           console.error("Deep link fetch error:", err);
         }
-      }
-
-      if (targetEvent) {
-        setAppState(prev => ({ ...prev, activeEventId: targetEvent!.id }));
-        
-        if (registerId) {
-          setView('REGISTER_PARTICIPANT');
-        } else if (viewParam === 'live') {
-          setView('PUBLIC_LIVE');
-        } else if (viewParam === 'entry-list') {
-          setView('PUBLIC_ENTRY_LIST');
-        } else {
-          setView('PUBLIC_EVENT_INFO');
-        }
-        
-        // Clear URL params to avoid re-triggering
-        window.history.replaceState({}, document.title, window.location.pathname);
       }
       
       setIsCheckingLink(false);
     };
 
     handleDeepLink();
-  }, [supabase, appState.events.length > 0]); // Re-run when events load, but also handles direct fetch
+  }, [supabase]); // Run once when supabase is ready
 
   // Multi-tab synchronization
   useEffect(() => {

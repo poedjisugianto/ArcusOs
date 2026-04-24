@@ -32,6 +32,9 @@ interface Props {
   onUpdateEvent: (id: string, updated: Partial<ArcheryEvent>) => void;
   onDeleteEvent: (id: string) => void;
   onRefreshData?: () => void;
+  onSyncNow?: () => void;
+  isSyncing?: boolean;
+  lastSync?: Date | null;
   onActivateEvent?: (id: string) => void;
   onShare: (id: string, name: string) => void;
   onSendNotif?: (notif: AppNotification) => void;
@@ -42,7 +45,7 @@ type CreationStep = 'LIST' | 'AGREEMENT' | 'NAME_INPUT' | 'FINAL_CONFIRM' | 'PRA
 type BillingStep = 'INVOICE' | 'PAYMENT_SELECTION' | 'GATEWAY_PROCESS' | 'SUCCESS';
 type InboxTab = 'RECEIVED' | 'COMPOSE' | 'SENT';
 
-const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentUser, isSuperAdmin, onGoToSuperAdmin, notifications, onMarkNotifRead, globalSettings, events, onCreateEvent, onCreatePractice, onCreateSelfPractice, onManageEvent, onViewLive, onUpdateEvent, onDeleteEvent, onRefreshData, onActivateEvent, onShare, onSendNotif, onLogout }) => {
+const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentUser, isSuperAdmin, onGoToSuperAdmin, notifications, onMarkNotifRead, globalSettings, events, onCreateEvent, onCreatePractice, onCreateSelfPractice, onManageEvent, onViewLive, onUpdateEvent, onDeleteEvent, onRefreshData, onSyncNow, isSyncing, lastSync, onActivateEvent, onShare, onSendNotif, onLogout }) => {
   const [step, setStep] = useState<CreationStep>('LIST');
   const [agreed, setAgreed] = useState(false);
   const [name, setName] = useState('');
@@ -55,7 +58,6 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const [practiceDistance, setPracticeDistance] = useState(20);
   const [showInbox, setShowInbox] = useState(false);
   const [inboxTab, setInboxTab] = useState<InboxTab>('RECEIVED');
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string, name: string, isPractice?: boolean } | null>(null);
   
@@ -157,9 +159,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
   const handleRefresh = () => {
     if (onRefreshData) {
-      setIsRefreshing(true);
       onRefreshData();
-      setTimeout(() => setIsRefreshing(false), 2000);
     }
   };
 
@@ -359,6 +359,21 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
         </div>
         
         <div className="flex flex-wrap items-center gap-4 relative z-10">
+          {/* Sync Status Label */}
+          <div className="hidden sm:flex flex-col items-end gap-1 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
+             <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {isSyncing ? 'Syncing...' : 'Cloud Synced'}
+                </span>
+             </div>
+             {lastSync && (
+               <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">
+                 Terakhir: {lastSync.toLocaleTimeString('id-ID')}
+               </span>
+             )}
+          </div>
+
           {/* Notifications Trigger */}
           <button 
             onClick={() => { setShowInbox(true); onMarkNotifRead(); }}
@@ -374,11 +389,22 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
           
           <div className="flex flex-wrap sm:flex-nowrap gap-3 items-center">
              <button 
-                onClick={handleRefresh}
-                className={`p-3.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all shadow-md active:scale-95 flex items-center justify-center ${isRefreshing ? 'animate-spin text-arcus-red' : ''}`}
-                title="Refresh Data Cloud"
+                onClick={onSyncNow}
+                disabled={isSyncing}
+                className={`p-3.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${isSyncing ? 'opacity-50' : ''}`}
+                title="Simpan Ke Cloud"
               >
-                <RefreshCw className="w-5 h-5" />
+                <Database className={`w-5 h-5 ${isSyncing ? 'animate-bounce text-orange-500' : ''}`} />
+                <span className="hidden lg:inline text-[9px] font-black uppercase tracking-widest">PUSH</span>
+              </button>
+             <button 
+                onClick={onRefreshData}
+                disabled={isSyncing}
+                className={`p-3.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${isSyncing ? 'opacity-50' : ''}`}
+                title="Ambil Dari Cloud"
+              >
+                <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin text-arcus-red' : ''}`} />
+                <span className="hidden lg:inline text-[9px] font-black uppercase tracking-widest">PULL</span>
               </button>
              <button 
               onClick={handleStartSelfPractice}

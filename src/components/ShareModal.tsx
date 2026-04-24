@@ -5,18 +5,19 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   tournamentName: string;
-  url: string;
+  url: string; // The primary URL (tournament info)
+  registerUrl?: string; // Optional registration URL
 }
 
-export default function ShareModal({ isOpen, onClose, tournamentName, url }: Props) {
-  const [copied, setCopied] = React.useState(false);
+export default function ShareModal({ isOpen, onClose, tournamentName, url, registerUrl }: Props) {
+  const [copied, setCopied] = React.useState<'info' | 'register' | null>(null);
 
   if (!isOpen) return null;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = (link: string, type: 'info' | 'register') => {
+    navigator.clipboard.writeText(link);
+    setCopied(type);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   const shareOptions = [
@@ -44,22 +45,44 @@ export default function ShareModal({ isOpen, onClose, tournamentName, url }: Pro
             </button>
           </div>
 
-          <div className="space-y-4">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Link Turnamen</p>
-            <div className="flex gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-100">
-              <input 
-                readOnly
-                value={url}
-                className="flex-1 bg-transparent px-4 text-xs font-bold text-slate-900 outline-none"
-              />
-              <button 
-                onClick={handleCopy}
-                className={`px-4 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all flex items-center gap-2 ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
-              >
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                {copied ? 'Copied' : 'Copy'}
-              </button>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Link Informasi Turnamen</p>
+              <div className="flex gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                <input 
+                  readOnly
+                  value={url}
+                  className="flex-1 bg-transparent px-4 text-xs font-bold text-slate-900 outline-none"
+                />
+                <button 
+                  onClick={() => handleCopy(url, 'info')}
+                  className={`px-4 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all flex items-center gap-2 ${copied === 'info' ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                >
+                  {copied === 'info' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {copied === 'info' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
             </div>
+
+            {registerUrl && (
+              <div className="space-y-3">
+                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 font-bold">Link Pendaftaran Online</p>
+                <div className="flex gap-2 p-2 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <input 
+                    readOnly
+                    value={registerUrl}
+                    className="flex-1 bg-transparent px-4 text-xs font-bold text-emerald-900 outline-none"
+                  />
+                  <button 
+                    onClick={() => handleCopy(registerUrl, 'register')}
+                    className={`px-4 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all flex items-center gap-2 ${copied === 'register' ? 'bg-emerald-500 text-white' : 'bg-emerald-900 text-white hover:bg-emerald-800'}`}
+                  >
+                    {copied === 'register' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    {copied === 'register' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-4">

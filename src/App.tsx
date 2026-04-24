@@ -52,7 +52,7 @@ export function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
-  const [shareData, setShareData] = useState<{ isOpen: boolean; name: string; url: string }>({ isOpen: false, name: '', url: '' });
+  const [shareData, setShareData] = useState<{ isOpen: boolean; name: string; url: string; registerUrl?: string }>({ isOpen: false, name: '', url: '' });
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
@@ -198,6 +198,7 @@ export function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const eventId = params.get('event');
+    const registerId = params.get('register');
     const viewParam = params.get('view');
 
     if (eventId && appState.events.length > 0) {
@@ -214,6 +215,15 @@ export function App() {
         }
         
         // Clear URL params to avoid re-triggering
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } else if (registerId && appState.events.length > 0) {
+      const eventExists = appState.events.some(e => e.id === registerId);
+      if (eventExists) {
+        setAppState(prev => ({ ...prev, activeEventId: registerId }));
+        setView('REGISTER_PARTICIPANT');
+        
+        // Clear URL params
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
@@ -296,54 +306,76 @@ export function App() {
     setHasPendingChanges(true);
   }, [appState.events, appState.globalSettings, appState.currentUser]);
 
-  useEffect(() => {
-    const syncToCloud = async () => {
-      if (!supabase || !isOnline || !hasPendingChanges) return;
-      
-      setIsSyncing(true);
-      try {
-        // 1. Sync User Profile (Only if logged in)
-        if (appState.currentUser) {
-          if (appState.currentUser.isSuperAdmin) {
-            await supabase.from('system_configs').upsert({ id: 'global', data: appState.globalSettings, updated_at: new Date() });
-          }
-          await supabase.from('profiles').upsert({ id: appState.currentUser.id, data: appState.currentUser, updated_at: new Date() });
-        }
-        
-        // 2. Sync Events
-        let eventsToSync: ArcheryEvent[] = [];
-        if (appState.currentUser) {
-          eventsToSync = appState.events.filter(e => 
-            (e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin) &&
-            !e.settings.isPractice && 
-            !e.settings.isSelfPractice
-          );
-        } else if (appState.activeEventId) {
-          const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
-          if (activeEvent && !activeEvent.settings.isPractice && !activeEvent.settings.isSelfPractice) {
-            eventsToSync = [activeEvent];
-          }
-        }
-        
-        for (const event of eventsToSync) {
-          await supabase.from('events').upsert({ 
-            id: event.id, 
-            user_id: event.settings.organizerId, 
-            data: event, 
-            updated_at: new Date() 
-          });
-        }
-        
-        setLastSync(new Date());
-        setHasPendingChanges(false);
-      } catch (err) { 
-        console.error("Sync error", err); 
-      } finally {
-        setIsSyncing(false);
-      }
-    };
+  const syncCloudData = async (manual = false) => {
+    if (!supabase || !isOnline) return;
     
-    const debounce = setTimeout(syncToCloud, 3000); // 3s for batching
+    setIsSyncing(true);
+    try {
+      // 1. Sync User Profile (Only if logged in)
+      if (appState.currentUser) {
+        if (appState.currentUser.isSuperAdmin) {
+          await supabase.from('system_configs').upsert({ id: 'global', data: appState.globalSettings, updated_at: new Date().toISOString() });
+        }
+        await supabase.from('profiles').upsert({ id: appState.currentUser.id, data: appState.currentUser, updated_at: new Date().toISOString() });
+      }
+      
+      // 2. Sync Events
+      let eventsToSync: ArcheryEvent[] = [];
+      if (appState.currentUser) {
+        eventsToSync = appState.events.filter(e => 
+          (e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin) &&
+          !e.settings.isPractice && 
+          !e.settings.isSelfPractice
+        );
+      } else if (appState.activeEventId) {
+        const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
+        if (activeEvent && !activeEvent.settings.isPractice && !activeEvent.settings.isSelfPractice) {
+          eventsToSync = [activeEvent];
+        }
+      }
+      
+      for (const event of eventsToSync) {
+        await supabase.from('events').upsert({ 
+          id: event.id, 
+          user_id: event.settings.organizerId, 
+          data: event, 
+          updated_at: new Date().toISOString() 
+        });
+      }
+      
+      setLastSync(new Date());
+      setHasPendingChanges(false);
+      if (manual) pushNotification("Sinkronisasi Selesai", "Data Anda telah aman di cloud.", "SUCCESS");
+    } catch (err) { 
+      console.error("Sync error", err); 
+      if (manual) pushNotification("Gagal Sinkron", "Gagal menyimpan data ke cloud.", "WARNING");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Real-time Subscriptions
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channel = supabase.channel('event-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+        // When any event changes in the cloud, trigger a fetch to update local state
+        // This ensures the landing page and other users see updates immediately
+        fetchCloudData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_configs' }, () => {
+        fetchCloudData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    const debounce = setTimeout(syncCloudData, 3000); // 3s for batching
     return () => clearTimeout(debounce);
   }, [appState.events, appState.globalSettings, appState.currentUser, isOnline, hasPendingChanges]);
 
@@ -624,7 +656,13 @@ export function App() {
             onScorerLogin={() => setView('SCORER_LOGIN')}
             onShare={(id) => {
               const event = appState.events.find(e => e.id === id);
-              setShareData({ isOpen: true, name: event?.settings.tournamentName || 'Event', url: `${window.location.origin}?event=${id}` });
+              const baseUrl = window.location.origin;
+              setShareData({ 
+                isOpen: true, 
+                name: event?.settings.tournamentName || 'Event', 
+                url: `${baseUrl}?event=${id}`,
+                registerUrl: `${baseUrl}?register=${id}`
+              });
             }} 
             currentUser={appState.currentUser}
             onLogout={handleLogout}
@@ -697,6 +735,9 @@ export function App() {
                 }));
                 setView('EVENT_ADMIN');
                 pushNotification("Aktivasi Berhasil", `Turnamen "${event.settings.tournamentName}" telah diaktifkan dan sekarang publik.`, "SUCCESS");
+                
+                // Immediate sync for high-priority change
+                setTimeout(() => syncCloudData(false), 500);
               } else {
                 pushNotification("Kode Salah", "Kode aktivasi yang Anda masukkan tidak valid.", "WARNING");
               }
@@ -771,7 +812,8 @@ export function App() {
               setAppState(prev => ({ ...prev, events: [e, ...prev.events], activeEventId: e.id })); 
               setView('ACTIVATE_TOURNAMENT'); 
               
-              // Send Activation Email in background
+              // Immediate sync for high-priority change
+              setTimeout(() => syncCloudData(false), 100);
               fetch('/api/send-email-otp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -842,7 +884,18 @@ export function App() {
             onUpdateEvent={handleUpdateEvent} 
             onDeleteEvent={handleDeleteEvent} 
             onRefreshData={fetchCloudData} 
-            onShare={(id, name) => setShareData({ isOpen: true, name, url: `${window.location.origin}?event=${id}` })} 
+            onSyncNow={() => syncCloudData(true)}
+            isSyncing={isSyncing}
+            lastSync={lastSync}
+            onShare={(id, name) => {
+              const baseUrl = window.location.origin;
+              setShareData({ 
+                isOpen: true, 
+                name, 
+                url: `${baseUrl}?event=${id}`,
+                registerUrl: `${baseUrl}?register=${id}`
+              });
+            }} 
             onGoToSuperAdmin={() => setView('SUPER_ADMIN')} 
           />
         )}
@@ -1141,7 +1194,15 @@ export function App() {
             event={activeEvent} 
             onBack={() => setView('LANDING')} 
             onRegister={() => setView('REGISTER_PARTICIPANT')} 
-            onShare={() => setShareData({ isOpen: true, name: activeEvent.settings.tournamentName, url: `${window.location.origin}?event=${appState.activeEventId}` })} 
+            onShare={() => {
+              const baseUrl = window.location.origin;
+              setShareData({ 
+                isOpen: true, 
+                name: activeEvent.settings.tournamentName, 
+                url: `${baseUrl}?event=${appState.activeEventId}`,
+                registerUrl: `${baseUrl}?register=${appState.activeEventId}`
+              });
+            }} 
             onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')}
           />
         )}
@@ -1221,7 +1282,13 @@ export function App() {
         )}
       </AnimatePresence>
 
-      <ShareModal isOpen={shareData.isOpen} onClose={() => setShareData({ ...shareData, isOpen: false })} tournamentName={shareData.name} url={shareData.url} />
+      <ShareModal 
+        isOpen={shareData.isOpen} 
+        onClose={() => setShareData(prev => ({ ...prev, isOpen: false }))} 
+        tournamentName={shareData.name} 
+        url={shareData.url} 
+        registerUrl={shareData.registerUrl}
+      />
     </div>
   );
 }

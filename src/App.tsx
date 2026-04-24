@@ -235,6 +235,55 @@ export function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Supabase Auth Listener
+  useEffect(() => {
+    if (!supabase) return;
+
+    // Check for active session on load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        handleBackgroundLogin(session.user);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        handleBackgroundLogin(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setAppState(prev => ({ ...prev, currentUser: null, activeEventId: null }));
+        setView('LANDING');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleBackgroundLogin = async (user: any) => {
+    try {
+      const { data: profile } = await supabase!
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      const loggedInUser: User = {
+        id: user.id,
+        email: user.email || '',
+        name: profile?.full_name || user.user_metadata?.full_name || 'User',
+        phone: profile?.phone || '',
+        isOrganizer: true,
+        isVerified: true,
+        isSuperAdmin: profile?.role === 'superadmin' || user.email === 'admin@arcus.id',
+        role: (profile?.role as UserRole) || UserRole.ORGANIZER
+      };
+
+      setAppState(prev => ({ ...prev, currentUser: loggedInUser }));
+    } catch (err) {
+      console.error("Profile sync error:", err);
+    }
+  };
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   }, [appState]);
@@ -720,18 +769,18 @@ export function App() {
               }; 
               
               setAppState(prev => ({ ...prev, events: [e, ...prev.events], activeEventId: e.id })); 
+              setView('ACTIVATE_TOURNAMENT'); 
               
-              // Send Activation Email
-              try {
-                const response = await fetch('/api/send-email-otp', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    email: appState.currentUser!.email,
-                    subject: "Aktivasi Turnamen ARCUS",
-                    message: `Halo ${appState.currentUser!.name},\n\nKode aktivasi untuk turnamen "${n}" adalah: ${activationCode}\n\nSilakan masukkan kode ini di dashboard untuk mengaktifkan turnamen Anda.`
-                  })
-                });
+              // Send Activation Email in background
+              fetch('/api/send-email-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: appState.currentUser!.email,
+                  subject: "Aktivasi Turnamen ARCUS",
+                  message: `Halo ${appState.currentUser!.name},\n\nKode aktivasi untuk turnamen "${n}" adalah: ${activationCode}\n\nSilakan masukkan kode ini di dashboard untuk mengaktifkan turnamen Anda.`
+                })
+              }).then(async (response) => {
                 const result = await response.json();
                 if (!response.ok || !result.success) {
                   throw new Error(result.message || "Gagal mengirim email");
@@ -742,12 +791,10 @@ export function App() {
                 } else {
                   pushNotification("Email Terkirim", "Kode aktivasi telah dikirim ke email Anda.", "INFO");
                 }
-              } catch (err) {
+              }).catch((err) => {
                 console.error("Failed to send activation email", err);
-                pushNotification("Gagal Kirim Email", "Gagal mengirim kode aktivasi. Cek koneksi Anda.", "WARNING");
-              }
-
-              setView('ACTIVATE_TOURNAMENT'); 
+                pushNotification("Gagal Kirim Email", "Gagal mengirim kode aktivasi otomatis. Gunakan tombol Kirim Ulang.", "WARNING");
+              });
             }} 
             onCreatePractice={(n, isFree) => { 
               const e: ArcheryEvent = { 

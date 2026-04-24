@@ -12,10 +12,11 @@ app.use(express.json());
 
 // Initialize Supabase for backend
 const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
+// Prefer Service Role Key for backend to bypass RLS for administrative tasks
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
-const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
+const supabase = supabaseUrl && supabaseKey 
+  ? createClient(supabaseUrl, supabaseKey)
   : null;
 
 // Helper to get global settings from Supabase
@@ -55,6 +56,9 @@ const getSnapInstance = async () => {
 };
 
 // API Route for sending Email OTP via Nodemailer
+// Cache the transporter outside the request handler for serverless efficiency
+let cachedTransporter: any = null;
+
 app.post("/api/send-email-otp", async (req, res) => {
   const { email, message, subject } = req.body;
   
@@ -72,35 +76,37 @@ app.post("/api/send-email-otp", async (req, res) => {
     });
   }
 
-  const smtpHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
-  const smtpUser = (process.env.SMTP_USER || "").trim();
-  const smtpPass = (process.env.SMTP_PASS || "").trim();
-  const smtpPort = parseInt(process.env.SMTP_PORT || "587");
-  
-  // Auto-detect secure based on port if SMTP_SECURE is not explicitly "true" or "false"
-  let smtpSecure = process.env.SMTP_SECURE === "true";
-  if (!process.env.SMTP_SECURE) {
-    smtpSecure = smtpPort === 465;
-  }
+  if (!cachedTransporter) {
+    const smtpHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
+    const smtpUser = (process.env.SMTP_USER || "").trim();
+    const smtpPass = (process.env.SMTP_PASS || "").trim();
+    const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    
+    // Auto-detect secure based on port if SMTP_SECURE is not explicitly "true" or "false"
+    let smtpSecure = process.env.SMTP_SECURE === "true";
+    if (!process.env.SMTP_SECURE) {
+      smtpSecure = smtpPort === 465;
+    }
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpSecure,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-    // Add timeout to prevent hanging
-    connectionTimeout: 10000, 
-    greetingTimeout: 10000,
-  });
+    cachedTransporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      // Add timeout to prevent hanging
+      connectionTimeout: 10000, 
+      greetingTimeout: 10000,
+    });
+  }
 
   const startTime = Date.now();
   try {
     console.log(`[EMAIL START] Attempting to send email to ${email}...`);
-    await transporter.sendMail({
-      from: `"ARCUS Archery System" <${smtpUser}>`,
+    await cachedTransporter.sendMail({
+      from: `"ARCUS Archery System" <${(process.env.SMTP_USER || "").trim()}>`,
       to: email,
       subject: subject || "Kode OTP Anda",
       text: message,

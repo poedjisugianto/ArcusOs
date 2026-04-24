@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { User as UserIcon, LogIn, Mail, Lock, ArrowLeft, ShieldCheck, Zap, Sparkles, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { User as UserIcon, LogIn, Mail, Lock, ArrowLeft, ShieldCheck, Zap, Sparkles, UserPlus, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import ArcusLogo from './ArcusLogo';
+import { supabase } from '../supabase';
 
 interface Props {
   users: User[];
@@ -21,39 +22,88 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === 'LOGIN') {
-      const user = users.find(u => u.email === email && u.password === password);
-      if (user) {
-        onLogin(user);
-      } else if (email === 'admin@arcus.id' && password === 'admin') {
-        onLogin({ id: 'owner_1', email: 'admin@arcus.id', name: 'Master Admin', isOrganizer: true, isSuperAdmin: true, isVerified: true });
+    if (!supabase) {
+      setError('Koneksi database tidak tersedia.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      if (mode === 'LOGIN') {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (authError) throw authError;
+
+        if (data.user) {
+          // Fetch additional profile data
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+
+          const loggedInUser: User = {
+            id: data.user.id,
+            email: data.user.email || '',
+            name: profile?.full_name || data.user.user_metadata.full_name || 'User',
+            phone: profile?.phone || '',
+            isOrganizer: true,
+            isVerified: true,
+            isSuperAdmin: profile?.role === 'superadmin' || data.user.email === 'admin@arcus.id',
+            role: (profile?.role as UserRole) || UserRole.ORGANIZER
+          };
+          onLogin(loggedInUser);
+        }
       } else {
-        setError('Email atau password salah.');
+        if (password !== confirmPassword) {
+          setError('Konfirmasi password tidak cocok.');
+          setIsLoading(false);
+          return;
+        }
+
+        const { data, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: name,
+              phone: phone
+            }
+          }
+        });
+
+        if (authError) throw authError;
+
+        if (data.user) {
+          const newUser: User = {
+            id: data.user.id,
+            email,
+            name,
+            phone,
+            isOrganizer: true,
+            isVerified: true,
+            role: UserRole.ORGANIZER
+          };
+          
+          // Triggers in Supabase handles the profiles table entry
+          onRegister(newUser);
+          onLogin(newUser);
+        }
       }
-    } else {
-      if (password !== confirmPassword) {
-        setError('Konfirmasi password tidak cocok.');
-        return;
-      }
-      if (users.some(u => u.email === email)) {
-        setError('Email sudah terdaftar.');
-        return;
-      }
-      const newUser: User = {
-        id: 'usr_' + Math.random().toString(36).substr(2, 9),
-        email,
-        name,
-        phone,
-        password,
-        isOrganizer: true,
-        isVerified: true,
-        role: UserRole.ORGANIZER
-      };
-      onRegister(newUser);
-      onLogin(newUser);
+    } catch (err: any) {
+      console.error("Auth error:", err);
+      setError(err.message || 'Terjadi kesalahan autentikasi.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -167,10 +217,20 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             
             <button 
               type="submit"
-              className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-3"
+              disabled={isLoading}
+              className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {mode === 'LOGIN' ? 'Sign In' : 'Daftar Sekarang'}
-              {mode === 'LOGIN' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  {mode === 'LOGIN' ? 'Sign In' : 'Daftar Sekarang'}
+                  {mode === 'LOGIN' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                </>
+              )}
             </button>
           </form>
 

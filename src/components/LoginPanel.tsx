@@ -305,6 +305,15 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             >
               {mode === 'LOGIN' ? 'Belum punya akun? Daftar gratis' : 'Sudah punya akun? Silahkan Login'}
             </button>
+            {mode === 'LOGIN' && (
+              <button 
+                onClick={handleResetPassword}
+                type="button"
+                className="block w-full text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+              >
+                Lupa Password?
+              </button>
+            )}
             <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">ARCUS DIGITAL TOURNAMENT OS</p>
           </div>
         </div>

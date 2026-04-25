@@ -5,7 +5,8 @@ import {
   Users as UsersIcon, Monitor, Plus, Clock, X, CreditCard, ChevronLeft, GitBranch, 
   ShieldCheck, Settings as SettingsIcon, User as UserIcon, List, Info, CloudOff,
   FileText, Activity, Trophy, Download, Target, Swords, Share2, Check, ShieldAlert,
-  RefreshCw, Sparkles, DollarSign, FileDown, Cloud, Zap, LayoutDashboard
+  RefreshCw, Sparkles, DollarSign, FileDown, Cloud, Zap, LayoutDashboard,
+  AlertTriangle
 } from 'lucide-react';
 import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole } from './types';
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
@@ -106,15 +107,28 @@ export function App() {
   };
 
   const fetchCloudData = async (manual = false) => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.warn("Supabase not configured, skipping cloud fetch.");
+      return;
+    }
     if (manual) setIsSyncing(true);
     try {
       console.log("Fetching cloud data...");
+      
+      // Test basic connectivity
+      const { count, error: testError } = await supabase.from('events').select('*', { count: 'exact', head: true });
+      if (testError) {
+        console.error("Connectivity test failed:", testError);
+        if (manual) pushNotification("Koneksi Cloud Gagal", "Gagal menghubungi database. Periksa konfigurasi Supabase Anda.", "WARNING");
+      } else {
+        console.log(`Supabase connection healthy. Total events in cloud: ${count}`);
+      }
+
       const { data: configData } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
       
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('data, user_id, updated_at');
+        .select('id, data, user_id, updated_at');
         
       if (eventsError) throw eventsError;
       console.log(`Fetched ${eventsData?.length || 0} events from cloud.`);
@@ -131,26 +145,51 @@ export function App() {
           cloudUpdatedAt: e.updated_at 
         })) : [];
         
+        // Detailed log to help user debug
+        console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
+        if (cloudEventsRaw.length > 0) {
+          console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings.tournamentName, status: ce.status, owner: ce.ownerId })));
+        }
+
         const filteredCloudEvents = cloudEventsRaw.filter(ce => {
           if (prev.currentUser?.isSuperAdmin) return true;
-          const isMine = prev.currentUser && ce.settings.organizerId === prev.currentUser.id;
+          // Important: Status !== 'DRAFT' makes it visible to everyone
+          const isMine = prev.currentUser && (ce.settings.organizerId === prev.currentUser.id || ce.ownerId === prev.currentUser.id);
           const isPublic = ce.status !== 'DRAFT';
+          
+          if (!isMine && isPublic) console.log(`Event ${ce.id} is PUBLIC and visible to guest.`);
+          
           return (isMine || isPublic) && !deletedEventIds.has(ce.id);
         });
         
+        console.log(`Filtered cloud events count: ${filteredCloudEvents.length}`);
+        
         const eventMap = new Map<string, ArcheryEvent>();
+        // Initialize with local events
         prev.events.forEach(e => eventMap.set(e.id, e));
         
         filteredCloudEvents.forEach(ce => {
           const local = eventMap.get(ce.id);
           if (!local) {
+            console.log(`New event from cloud: ${ce.settings.tournamentName}`);
             eventMap.set(ce.id, ce);
           } else {
-            // Priority merge: if cloud event is UPCOMING but local is DRAFT, cloud wins (probably just activated)
+            // Priority merge logic
+            const cloudDate = ce.cloudUpdatedAt ? new Date(ce.cloudUpdatedAt).getTime() : 0;
+            const localDate = local.settings.createdAt || 0; // Fallback to creation date if no sync date
+
+            // If cloud is activated but local is not, cloud always wins
             if (ce.status !== 'DRAFT' && local.status === 'DRAFT') {
+              console.log(`Priority update: Event ${ce.settings.tournamentName} is now ACTIVE in cloud.`);
               eventMap.set(ce.id, { ...local, ...ce });
-            } else {
-              // Deep merge for others
+            } 
+            // If cloud data is newer, accept it
+            else if (cloudDate > localDate) {
+              console.log(`Cloud update for ${ce.settings.tournamentName} is newer than local.`);
+              eventMap.set(ce.id, { ...local, ...ce });
+            }
+            else {
+              // Deep merge for others keep local changes but ensure registrations/archers are synced
               const merged = {
                 ...ce,
                 ...local,
@@ -181,7 +220,7 @@ export function App() {
         pushNotification("Data Diperbarui", "Sinkronisasi awan selesai.", "SUCCESS");
       }
     } catch (err: any) { 
-      console.error("Fetch error", err);
+      console.error("Fetch error detail:", err);
       if (manual) {
         pushNotification("Gagal Sinkron", `Error: ${err.message || 'Unknown'}`, "WARNING");
       }
@@ -343,7 +382,14 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser]);
 
   const syncCloudData = async (manual = false) => {
-    if (!supabase || !isOnline) return;
+    if (!supabase) {
+      if (manual) pushNotification("Mode Lokal", "Data disimpan di memori browser saja.", "INFO");
+      return;
+    }
+    if (!isOnline) {
+      if (manual) pushNotification("Sedang Offline", "Data akan disinkronkan saat koneksi kembali.", "WARNING");
+      return;
+    }
     
     setIsSyncing(true);
     try {
@@ -356,10 +402,11 @@ export function App() {
       }
       
       // 2. Sync Events
+      // Ambil semua event yang dimiliki user atau sedang aktif
       let eventsToSync: ArcheryEvent[] = [];
       if (appState.currentUser) {
         eventsToSync = appState.events.filter(e => 
-          (e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin) &&
+          (e.settings.organizerId === appState.currentUser?.id || (e as any).ownerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin) &&
           !e.settings.isPractice && 
           !e.settings.isSelfPractice
         );
@@ -595,6 +642,29 @@ export function App() {
     }, 10000);
   };
 
+  const handleShare = (id: string, name?: string) => {
+    const event = appState.events.find(e => e.id === id);
+    const eventName = name || event?.settings.tournamentName || 'Tournament';
+    
+    // Gunakan origin jika bukan localhost, jika localhost coba gunakan Fallback Production URL jika ada
+    const currentOrigin = window.location.origin;
+    const isLocal = currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1');
+    const baseUrl = isLocal 
+      ? 'https://arcus-digital.arcus.field' // Nama alias jika lokal (informasi saja)
+      : currentOrigin;
+
+    setShareData({
+      isOpen: true,
+      name: eventName,
+      url: `${baseUrl}?event=${id}`,
+      registerUrl: `${baseUrl}?register=${id}`
+    });
+
+    if (isLocal) {
+      pushNotification("Lokal Detected", "Link berbagi menggunakan alamat lokal. Pastikan sinkronisasi cloud aktif agar orang lain bisa melihat data ini.", "INFO");
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     const user = appState.users.find(u => u.id === userId);
     if (!user) return;
@@ -707,6 +777,47 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white">
+      {/* Global Cloud Sync Status Bar */}
+      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm ${
+        !supabase ? 'bg-amber-500 text-white border-amber-600' :
+        isSyncing ? 'bg-blue-600 text-white border-blue-700' :
+        'bg-slate-900 text-white border-slate-800'
+      }`}>
+        <div className="flex items-center gap-3">
+          {!supabase ? (
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-3 h-3 text-white animate-pulse" />
+              <span className="text-[9px] font-black uppercase tracking-widest">MODE LOKAL (Supabase OFF)</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : 'bg-emerald-500'}`} />
+              <span className="text-[9px] font-black uppercase tracking-widest">
+                {isSyncing ? 'Sinkronisasi Cloud...' : 'Cloud Terhubung'}
+              </span>
+            </div>
+          )}
+          {lastSync && (
+            <span className="hidden sm:inline text-[8px] font-bold opacity-50 uppercase tracking-tighter">
+              Update: {lastSync.toLocaleTimeString('id-ID')}
+            </span>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-4">
+          {(window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) && (
+            <div className="hidden md:flex items-center gap-1 bg-red-601 px-2 py-0.5 rounded text-[8px] font-black animate-pulse">
+              <Monitor className="w-3 h-3" /> LOCAL ENVIRONMENT
+            </div>
+          )}
+          {appState.currentUser && (
+            <span className="text-[9px] font-black uppercase tracking-widest opacity-70">
+              {appState.currentUser.email}
+            </span>
+          )}
+        </div>
+      </div>
+
       <AnimatePresence>
         {(isSplashVisible || isCheckingLink) && (
           <motion.div 
@@ -782,16 +893,7 @@ export function App() {
             onScorerLogin={() => setView('SCORER_LOGIN')}
             onRefresh={() => fetchCloudData(true)}
             isSyncing={isSyncing}
-            onShare={(id) => {
-              const event = appState.events.find(e => e.id === id);
-              const baseUrl = window.location.origin;
-              setShareData({ 
-                isOpen: true, 
-                name: event?.settings.tournamentName || 'Event', 
-                url: `${baseUrl}?event=${id}`,
-                registerUrl: `${baseUrl}?register=${id}`
-              });
-            }} 
+            onShare={handleShare} 
             currentUser={appState.currentUser}
             onLogout={handleLogout}
             onLogin={() => setView('LOGIN')}
@@ -1047,15 +1149,7 @@ export function App() {
             onSyncNow={() => syncCloudData(true)}
             isSyncing={isSyncing}
             lastSync={lastSync}
-            onShare={(id, name) => {
-              const baseUrl = window.location.origin;
-              setShareData({ 
-                isOpen: true, 
-                name, 
-                url: `${baseUrl}?event=${id}`,
-                registerUrl: `${baseUrl}?register=${id}`
-              });
-            }} 
+            onShare={handleShare} 
             onGoToSuperAdmin={() => setView('SUPER_ADMIN')} 
           />
         )}
@@ -1354,15 +1448,7 @@ export function App() {
             event={activeEvent} 
             onBack={() => setView('LANDING')} 
             onRegister={() => setView('REGISTER_PARTICIPANT')} 
-            onShare={() => {
-              const baseUrl = window.location.origin;
-              setShareData({ 
-                isOpen: true, 
-                name: activeEvent.settings.tournamentName, 
-                url: `${baseUrl}?event=${appState.activeEventId}`,
-                registerUrl: `${baseUrl}?register=${appState.activeEventId}`
-              });
-            }} 
+            onShare={() => handleShare(appState.activeEventId!)} 
             onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')}
           />
         )}

@@ -8,7 +8,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Activity,
-  Monitor
+  Monitor,
+  Share2
 } from 'lucide-react';
 import { ArcheryEvent, User } from '../types';
 import ArcusLogo from './ArcusLogo';
@@ -247,55 +248,77 @@ export default function LandingPage({
           </div>
 
           {activeEvents.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-              {activeEvents.map((event, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {activeEvents.map((event, idx) => (
                 <motion.div 
                   key={event.id}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
                   viewport={{ once: true }}
-                  className="bg-white p-6 md:p-8 rounded-lg border-l-4 border-arcus-red shadow-sm group relative hover:shadow-md transition-all duration-300"
+                  transition={{ delay: idx * 0.1, duration: 0.8, ease: [0.21, 0.45, 0.32, 0.9] }}
+                  className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-700 relative overflow-hidden"
                 >
-                  <div className="flex items-center justify-between mb-4 relative z-10">
-                    <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                      event.status === 'ACTIVE' ? 'bg-arcus-red text-white' : 'bg-slate-900 text-white'
-                    }`}>
-                      {event.status === 'ACTIVE' ? 'LIVE NOW' : 'UPCOMING'}
+                  <div className="p-8">
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all duration-500 shadow-inner">
+                        <Trophy className="w-7 h-7" />
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                          event.status === 'ACTIVE' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 
+                          event.status === 'UPCOMING' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' :
+                          event.status === 'ONGOING' ? 'bg-arcus-red text-white shadow-lg shadow-red-200 animate-pulse' :
+                          'bg-slate-900 text-white'
+                        }`}>
+                          {event.status === 'ACTIVE' ? 'OPEN' : 
+                           event.status === 'UPCOMING' ? 'COMING SOON' :
+                           event.status === 'ONGOING' ? 'LIVE NOW' :
+                           event.status}
+                        </span>
+                        <div className="mt-2 flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                          ID: {event.id.slice(-6).toUpperCase()}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <h3 className="text-xl md:text-2xl font-black font-oswald uppercase italic text-slate-900 mb-4 leading-none tracking-tighter truncate">
-                    {event.settings.tournamentName}
-                  </h3>
 
-                  <div className="space-y-2 mb-6 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-arcus-red" />
-                      {event.settings.eventDate || 'Coming Soon'}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Users className="w-3.5 h-3.5 text-arcus-red" />
-                        {event.archers.length} Archer Terdaftar
-                    </div>
-                  </div>
+                    <h3 className="text-2xl font-black font-oswald uppercase italic tracking-tighter text-slate-900 mb-2 leading-none group-hover:text-arcus-red transition-colors duration-300 min-h-[3rem] line-clamp-2">
+                      {event.settings.tournamentName}
+                    </h3>
+                    
+                    <p className="text-slate-500 text-xs font-medium mb-8 line-clamp-2 italic leading-relaxed opacity-70">
+                      {event.settings.description || 'Turnamen panahan prestasi yang dikelola oleh ekosistem ARCUS DIGITAL.'}
+                    </p>
 
-                  <div className="space-y-2.5">
+                    <div className="space-y-4 mb-10 pb-6 border-b border-slate-50">
+                      <div className="flex items-center gap-4 text-slate-600">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                          <MapPin className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest truncate">{event.settings.location || 'Lokasi Menunggu Update'}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-slate-600">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">{event.settings.eventDate || 'Tanggal Pending'}</span>
+                      </div>
+                    </div>
+
                     {event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline) ? (
-                      <div className="w-full py-3.5 bg-slate-100 text-slate-400 flex items-center justify-center gap-3 rounded-xl text-[11px] font-black uppercase tracking-widest cursor-not-allowed border border-slate-200">
+                      <div className="w-full py-4 bg-slate-100 text-slate-400 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 cursor-not-allowed mb-3">
                         <X className="w-4 h-4" />
                         PENDAFTARAN TUTUP
                       </div>
                     ) : (
                       <button 
                         onClick={() => onRegister(event.id)}
-                        className="w-full py-3.5 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg active:scale-95 group"
+                        className="w-full py-4 bg-slate-900 text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl shadow-slate-200 active:scale-95 mb-3"
                       >
-                        <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
-                        PENDAFTARAN ONLINE
+                        <Plus className="w-4 h-4" />
+                        DAFTAR SEKARANG
                       </button>
                     )}
-                    
+
                     <button 
                       onClick={() => onViewParticipants(event.id)}
                       className="w-full py-3 bg-white text-slate-900 border-2 border-slate-100 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all shadow-sm active:scale-95"
@@ -304,7 +327,7 @@ export default function LandingPage({
                       DAFTAR PESERTA
                     </button>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-2 mt-3">
                       <button 
                         onClick={() => onViewInfo(event.id)}
                         className="py-2.5 bg-slate-50 text-slate-500 border border-slate-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
@@ -318,11 +341,11 @@ export default function LandingPage({
                         LIVE SCORE
                       </button>
                       <button 
-                        onClick={onScorerLogin}
+                        onClick={() => onShare(event.id)}
                         className="col-span-2 py-2 bg-slate-50 text-slate-400 border border-dashed border-slate-200 rounded-lg text-[8px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all flex items-center justify-center gap-2"
                       >
-                        <ShieldCheck className="w-3 h-3" />
-                        PETUGAS SCORER
+                        <Share2 className="w-3 h-3" />
+                        BAGIKAN TURNAMEN
                       </button>
                     </div>
                   </div>
@@ -330,27 +353,52 @@ export default function LandingPage({
               ))}
             </div>
           ) : (
-            <div className="bg-slate-50/50 rounded-[2.5rem] p-16 md:p-24 text-center border border-dashed border-slate-200">
-              {isSyncing ? (
-                <div className="flex flex-col items-center gap-4">
-                  <Activity className="w-12 h-12 text-arcus-red animate-spin" />
-                  <p className="text-xl font-black font-oswald uppercase italic text-slate-400 tracking-tight">Menghubungkan ke server...</p>
-                </div>
-              ) : (
-                <>
-                  <Trophy className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <p className="text-xl font-black font-oswald uppercase italic text-slate-300 tracking-tight mb-6">Belum ada event publik yang tersedia</p>
-                  {onRefresh && (
+            <div className="bg-white rounded-[2.5rem] p-16 md:p-24 text-center border-2 border-dashed border-slate-200 shadow-sm relative overflow-hidden group">
+               <div className="relative z-10">
+                  <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-8 text-slate-200 group-hover:scale-110 transition-transform duration-700">
+                    <Trophy className="w-12 h-12" />
+                  </div>
+                  <h3 className="text-3xl font-black font-oswald uppercase italic text-slate-900 tracking-tighter mb-4">Tidak ada Turnamen Publik</h3>
+                  <p className="max-w-xl mx-auto text-sm text-slate-500 font-medium leading-relaxed mb-10">
+                    Saat ini belum ada turnamen yang berstatus <span className="font-bold text-blue-600">Publik</span>. Turnamen yang baru dibuat tetap bersifat <span className="font-bold text-amber-600">Draf</span> sampai diaktivasi oleh penyelenggara melalui Dashboard.
+                  </p>
+                  
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    {onRefresh && (
+                      <button 
+                        onClick={onRefresh}
+                        disabled={isSyncing}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl active:scale-95 shadow-red-200"
+                      >
+                        <Activity className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Menghubungkan...' : 'Refresh Cloud'}
+                      </button>
+                    )}
                     <button 
-                      onClick={onRefresh}
-                      className="inline-flex items-center gap-2 px-6 py-2 border-2 border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:border-arcus-red hover:text-arcus-red transition-all"
+                      onClick={onLogin}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-white text-slate-900 border-2 border-slate-100 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-slate-900 transition-all active:scale-95"
                     >
-                      <Activity className="w-4 h-4" />
-                      Cek Ulang
+                      <Plus className="w-4 h-4 text-arcus-red" />
+                      Buat Turnamen
                     </button>
+                  </div>
+
+                  {!currentUser && (
+                    <div className="mt-12 p-6 bg-slate-50 rounded-2xl border border-slate-100 max-w-lg mx-auto">
+                       <div className="flex items-center gap-3 justify-center mb-2">
+                          <Monitor className="w-4 h-4 text-slate-400" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Catatan Data</span>
+                       </div>
+                       <p className="text-[11px] text-slate-400 font-medium italic">
+                         Jika Anda penyelenggara dan tidak melihat turnamen Anda di sini, pastikan Anda sudah <span className="text-arcus-red font-bold">Login</span> dan melakukan Sinkronisasi Cloud. Data lokal hanya tersimpan di perangkat ini.
+                       </p>
+                    </div>
                   )}
-                </>
-              )}
+               </div>
+
+               {/* Background Decorative */}
+               <div className="absolute top-0 right-0 w-64 h-64 bg-arcus-red/5 rounded-full blur-3xl -mr-32 -mt-32" />
+               <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -ml-32 -mb-32" />
             </div>
           )}
         </div>

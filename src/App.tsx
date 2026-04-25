@@ -128,7 +128,7 @@ export function App() {
       
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('id, data, user_id, updated_at');
+        .select('id, data, user_id, status, updated_at');
         
       if (eventsError) throw eventsError;
       console.log(`Fetched ${eventsData?.length || 0} events from cloud.`);
@@ -142,6 +142,7 @@ export function App() {
         const cloudEventsRaw = eventsData ? eventsData.map(e => ({ 
           ...e.data as ArcheryEvent, 
           ownerId: e.user_id,
+          status: (e as any).status || (e.data as any).status,
           cloudUpdatedAt: e.updated_at 
         })) : [];
         
@@ -419,11 +420,12 @@ export function App() {
       
       for (const event of eventsToSync) {
         // Log explicitly for debugging
-        console.log(`Syncing event ${event.id} to cloud...`);
+        console.log(`Syncing event ${event.id} to cloud with status ${event.status}...`);
         const { error } = await supabase.from('events').upsert({ 
           id: event.id, 
           user_id: event.settings.organizerId || appState.currentUser?.id || 'guest', 
-          data: event, 
+          data: event,
+          status: event.status, // EXPLICIT update here too
           updated_at: new Date().toISOString() 
         });
         if (error) {
@@ -547,11 +549,12 @@ export function App() {
         id: event.id,
         user_id: event.settings.organizerId || appState.currentUser?.id || 'guest',
         data: event,
+        status: event.status,
         updated_at: new Date().toISOString()
       });
       
       if (error) throw error;
-      console.log(`Cloud sync success for event: ${event.id}`);
+      console.log(`Cloud sync success for event: ${event.id} (Status: ${event.status})`);
     } catch (err: any) {
       console.error(`Cloud sync failed for event ${event.id}:`, err);
       // We don't necessarily want to notify on every auto-sync failure to avoid spam
@@ -989,6 +992,9 @@ export function App() {
                 });
                 setView('EVENT_ADMIN');
                 pushNotification("Aktivasi Berhasil", `Turnamen "${event.settings.tournamentName}" telah diaktifkan dan sekarang publik.`, "SUCCESS");
+                
+                // Force comprehensive sync to ensure everyone else sees it
+                setTimeout(() => syncCloudData(true), 800);
               } else {
                 pushNotification("Kode Salah", "Kode aktivasi yang Anda masukkan tidak valid.", "WARNING");
               }

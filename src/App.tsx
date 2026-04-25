@@ -380,12 +380,18 @@ export function App() {
       }
       
       for (const event of eventsToSync) {
-        await supabase.from('events').upsert({ 
+        // Log explicitly for debugging
+        console.log(`Syncing event ${event.id} to cloud...`);
+        const { error } = await supabase.from('events').upsert({ 
           id: event.id, 
-          user_id: event.settings.organizerId, 
+          user_id: event.settings.organizerId || appState.currentUser?.id || 'guest', 
           data: event, 
           updated_at: new Date().toISOString() 
         });
+        if (error) {
+          console.error(`Error syncing event ${event.id}:`, error);
+          if (manual) pushNotification("Gagal Sinkron Turnamen", `Turnamen "${event.settings.tournamentName}" gagal disinkronkan: ${error.message}`, "WARNING");
+        }
       }
       
       setLastSync(new Date());
@@ -495,8 +501,41 @@ export function App() {
     setView('LANDING');
   };
 
+  const saveEventToCloud = async (event: ArcheryEvent) => {
+    if (!supabase || event.settings.isPractice || event.settings.isSelfPractice) return;
+    
+    try {
+      const { error } = await supabase.from('events').upsert({
+        id: event.id,
+        user_id: event.settings.organizerId || appState.currentUser?.id || 'guest',
+        data: event,
+        updated_at: new Date().toISOString()
+      });
+      
+      if (error) throw error;
+      console.log(`Cloud sync success for event: ${event.id}`);
+    } catch (err: any) {
+      console.error(`Cloud sync failed for event ${event.id}:`, err);
+      // We don't necessarily want to notify on every auto-sync failure to avoid spam
+    }
+  };
+
   const handleUpdateEvent = (id: string, updated: Partial<ArcheryEvent>) => {
-     setAppState(prev => ({ ...prev, events: prev.events.map(e => e.id === id ? { ...e, ...updated } : e) }));
+    setAppState(prev => {
+      const event = prev.events.find(e => e.id === id);
+      if (!event) return prev;
+
+      const updatedEvent = { ...event, ...updated };
+      const newState = { 
+        ...prev, 
+        events: prev.events.map(e => e.id === id ? updatedEvent : e) 
+      };
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      saveEventToCloud(updatedEvent);
+      
+      return newState;
+    });
   };
 
   const handleDeleteEvent = async (id: string) => {
@@ -821,19 +860,12 @@ export function App() {
             onActivate={(code: string) => {
               const event = appState.events.find(e => e.id === appState.activeEventId);
               if (event && event.settings.activationCode === code) {
-                setAppState(prev => ({
-                  ...prev,
-                  events: prev.events.map(e => 
-                    e.id === appState.activeEventId 
-                      ? { ...e, status: 'UPCOMING', settings: { ...e.settings, isActivated: true } } 
-                      : e
-                  )
-                }));
+                handleUpdateEvent(event.id, { 
+                  status: 'UPCOMING', 
+                  settings: { ...event.settings, isActivated: true } 
+                });
                 setView('EVENT_ADMIN');
                 pushNotification("Aktivasi Berhasil", `Turnamen "${event.settings.tournamentName}" telah diaktifkan dan sekarang publik.`, "SUCCESS");
-                
-                // Immediate sync for high-priority change
-                setTimeout(() => syncCloudData(false), 500);
               } else {
                 pushNotification("Kode Salah", "Kode aktivasi yang Anda masukkan tidak valid.", "WARNING");
               }
@@ -905,11 +937,15 @@ export function App() {
                 status: 'DRAFT' as const 
               }; 
               
-              setAppState(prev => ({ ...prev, events: [e, ...prev.events], activeEventId: e.id })); 
+              setAppState(prev => {
+                const newState = { ...prev, events: [e, ...prev.events], activeEventId: e.id };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+                return newState;
+              });
+              
+              saveEventToCloud(e);
               setView('ACTIVATE_TOURNAMENT'); 
               
-              // Immediate sync for high-priority change
-              setTimeout(() => syncCloudData(false), 100);
               fetch('/api/send-email-otp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

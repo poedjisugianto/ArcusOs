@@ -22,6 +22,7 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,6 +34,7 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
 
     setIsLoading(true);
     setError('');
+    setSuccess('');
 
     try {
       if (mode === 'LOGIN') {
@@ -137,13 +139,14 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
       return;
     }
     setError('');
+    setSuccess('');
     setIsLoading(true);
     try {
       const { error: resetError } = await supabase!.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
       });
       if (resetError) throw resetError;
-      setError('Instruksi reset password telah dikirim ke email Anda.');
+      setSuccess('Instruksi reset password telah dikirim ke email Anda. Silakan cek kotak masuk atau folder spam.');
     } catch (err: any) {
       setError(err.message || 'Gagal mengirim email reset password.');
     } finally {
@@ -271,6 +274,7 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             )}
             
             {error && <p className="text-xs text-arcus-red font-bold uppercase tracking-widest text-center">{error}</p>}
+            {success && <p className="text-xs text-green-600 font-bold uppercase tracking-widest text-center bg-green-50 p-3 rounded-xl border border-green-100">{success}</p>}
             
             <button 
               type="submit"

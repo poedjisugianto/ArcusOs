@@ -35,8 +35,9 @@ import ScorerLogin from './components/ScorerLogin';
 import ActivateTournament from './components/ActivateTournament';
 import OfficialList from './components/OfficialList';
 import IdCardEditor from './components/IdCardEditor';
+import ResetPasswordPanel from './components/ResetPasswordPanel';
 
-type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SELF_PRACTICE' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
+type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'RESET_PASSWORD' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SELF_PRACTICE' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
 
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -198,6 +199,12 @@ export function App() {
   // Handle URL Parameters for Sharing
   useEffect(() => {
     const handleDeepLink = async () => {
+      const hash = window.location.hash;
+      if (hash.includes('type=recovery')) {
+        setView('RESET_PASSWORD');
+        return;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const eventId = params.get('event');
       const registerId = params.get('register');
@@ -914,6 +921,13 @@ export function App() {
                 }
               }
             }}
+          />
+        )}
+
+        {view === 'RESET_PASSWORD' && (
+          <ResetPasswordPanel 
+            onSuccess={() => setView('LOGIN')}
+            onBack={() => setView('LANDING')}
           />
         )}
 

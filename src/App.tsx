@@ -108,27 +108,15 @@ export function App() {
     if (!supabase) return;
     if (manual) setIsSyncing(true);
     try {
+      console.log("Fetching cloud data...");
       const { data: configData } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
       
-      let eventsQuery = supabase.from('events').select('data, user_id');
-      
-      // LOGIC: 
-      // 1. Guests see all events that are NOT DRAFT
-      // 2. Organizers see their own events (any status) AND other's non-draft events
-      // 3. SuperAdmins see EVERYTHING
-      
-      if (appState.currentUser && !appState.currentUser.isSuperAdmin) {
-        // Fetch where (it's mine) OR (it's public)
-        // Since we can't easily do complex OR on JSONB fields in some supabase setups via JS, 
-        // we'll fetch all and filter client-side, OR use a more inclusive query.
-        // For performance and reliability across different RLS setups, let's fetch:
-        // - All public events
-        // - My events
-        // We'll combine them by fetching a bit more broadly.
-      }
-      
-      const { data: eventsData, error: eventsError } = await eventsQuery;
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('data, user_id, updated_at');
+        
       if (eventsError) throw eventsError;
+      console.log(`Fetched ${eventsData?.length || 0} events from cloud.`);
 
       const { data: profilesData } = await supabase.from('profiles').select('data');
 
@@ -136,70 +124,65 @@ export function App() {
         const cloudUsers = profilesData ? profilesData.map(p => p.data) : [];
         const finalUsers = cloudUsers.length > 0 ? cloudUsers : prev.users;
         
-        const cloudEventsRaw = eventsData ? eventsData.map(e => ({ ...e.data as ArcheryEvent, ownerId: e.user_id })) : [];
+        const cloudEventsRaw = eventsData ? eventsData.map(e => ({ 
+          ...e.data as ArcheryEvent, 
+          ownerId: e.user_id,
+          cloudUpdatedAt: e.updated_at 
+        })) : [];
         
-        // CLIENT-SIDE FILTERING for security/privacy if RLS is permissive
         const filteredCloudEvents = cloudEventsRaw.filter(ce => {
           if (prev.currentUser?.isSuperAdmin) return true;
-          // Show if: It's mine OR it's not a draft
-          const isMine = ce.settings.organizerId === prev.currentUser?.id;
+          const isMine = prev.currentUser && ce.settings.organizerId === prev.currentUser.id;
           const isPublic = ce.status !== 'DRAFT';
           return (isMine || isPublic) && !deletedEventIds.has(ce.id);
         });
         
-        // SMART MERGE: Don't just overwrite, merge local changes that haven't synced yet
-        const mergedEvents = prev.events.map(localEvent => {
-          const cloudEvent = filteredCloudEvents.find(ce => ce.id === localEvent.id);
-          if (!cloudEvent) return localEvent;
-          
-          // Merge archers: Keep all from cloud, add local ones that are missing in cloud
-          const mergedArchers = [...cloudEvent.archers];
-          localEvent.archers.forEach(la => {
-            if (!mergedArchers.some(ca => ca.id === la.id)) {
-              mergedArchers.push(la);
-            }
-          });
-          
-          // Merge registrations
-          const mergedRegs = [...cloudEvent.registrations];
-          localEvent.registrations.forEach(lr => {
-            if (!mergedRegs.some(cr => cr.id === lr.id)) {
-              mergedRegs.push(lr);
-            }
-          });
-          
-          return {
-            ...cloudEvent,
-            archers: mergedArchers,
-            registrations: mergedRegs,
-            // Keep local scores if cloud is empty (prevent race condition during registration)
-            scores: cloudEvent.scores.length > 0 ? cloudEvent.scores : localEvent.scores,
-            scoreLogs: cloudEvent.scoreLogs.length > 0 ? cloudEvent.scoreLogs : localEvent.scoreLogs
-          };
-        });
+        const eventMap = new Map<string, ArcheryEvent>();
+        prev.events.forEach(e => eventMap.set(e.id, e));
         
-        // Add cloud events that aren't in local state
         filteredCloudEvents.forEach(ce => {
-          if (!mergedEvents.some(me => me.id === ce.id)) {
-            mergedEvents.push(ce);
+          const local = eventMap.get(ce.id);
+          if (!local) {
+            eventMap.set(ce.id, ce);
+          } else {
+            // Priority merge: if cloud event is UPCOMING but local is DRAFT, cloud wins (probably just activated)
+            if (ce.status !== 'DRAFT' && local.status === 'DRAFT') {
+              eventMap.set(ce.id, { ...local, ...ce });
+            } else {
+              // Deep merge for others
+              const merged = {
+                ...ce,
+                ...local,
+                archers: [...ce.archers],
+                registrations: [...ce.registrations]
+              };
+              local.archers.forEach(la => {
+                if (!merged.archers.some(ca => ca.id === la.id)) merged.archers.push(la);
+              });
+              local.registrations.forEach(lr => {
+                if (!merged.registrations.some(cr => cr.id === lr.id)) merged.registrations.push(lr);
+              });
+              eventMap.set(ce.id, merged);
+            }
           }
         });
         
         return {
           ...prev,
           globalSettings: configData ? { ...prev.globalSettings, ...configData.data } : prev.globalSettings,
-          events: mergedEvents,
-          users: finalUsers
+          events: Array.from(eventMap.values()),
+          users: finalUsers,
+          isDataLoaded: true
         };
       });
       setLastSync(new Date());
-      if (manual && appState.currentUser) {
-        pushNotification("Data Sinkron", "Data terbaru telah dimuat dari cloud.", "SUCCESS");
+      if (manual) {
+        pushNotification("Data Diperbarui", "Sinkronisasi awan selesai.", "SUCCESS");
       }
-    } catch (err) { 
+    } catch (err: any) { 
       console.error("Fetch error", err);
-      if (manual && appState.currentUser) {
-        pushNotification("Gagal Sinkron", "Gagal memuat data terbaru dari cloud.", "WARNING");
+      if (manual) {
+        pushNotification("Gagal Sinkron", `Error: ${err.message || 'Unknown'}`, "WARNING");
       }
     } finally {
       if (manual) setIsSyncing(false);
@@ -227,7 +210,7 @@ export function App() {
       // 1. Try to fetch it directly from Supabase immediately (crucial for shared links)
       if (supabase) {
         try {
-          const idToFetch = eventId || registerId;
+          console.log("Deep link validation starting for:", idToFetch);
           const { data, error } = await supabase
             .from('events')
             .select('data, user_id')
@@ -235,6 +218,7 @@ export function App() {
             .single();
 
           if (data && !error) {
+            console.log("Deep link data found in cloud.");
             const targetEvent = data.data as ArcheryEvent;
             
             // Inject into state and activate
@@ -247,21 +231,18 @@ export function App() {
               };
             });
 
-            if (registerId) {
-              setView('REGISTER_PARTICIPANT');
-            } else if (viewParam === 'live') {
-              setView('PUBLIC_LIVE');
-            } else if (viewParam === 'entry-list') {
-              setView('PUBLIC_ENTRY_LIST');
-            } else {
-              setView('PUBLIC_EVENT_INFO');
-            }
+            // Navigate based on view
+            if (registerId) setView('REGISTER_PARTICIPANT');
+            else if (viewParam === 'live') setView('PUBLIC_LIVE');
+            else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
+            else setView('PUBLIC_EVENT_INFO');
             
-            // Clear URL params to avoid re-triggering but keep context if needed
-            // window.history.replaceState({}, document.title, window.location.pathname);
           } else {
-            console.warn("Shared event not found in cloud:", idToFetch);
-            pushNotification("Event Tidak Ditemukan", "Link yang Anda buka mungkin sudah tidak berlaku atau turnamen belum dipublikasikan.", "WARNING");
+            console.warn("Shared event not found in cloud:", idToFetch, error);
+            // Don't show notification immediately as it might be a local-only event for the owner 
+            // BUT for others (deep link) it's likely a cloud missing issue.
+            // If they are on a shared link, we should probably tell them if not found.
+            pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
           }
         } catch (err) {
           console.error("Deep link fetch error:", err);
@@ -789,6 +770,8 @@ export function App() {
             onViewInfo={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_EVENT_INFO'); }} 
             onRegister={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('REGISTER_PARTICIPANT'); }}
             onScorerLogin={() => setView('SCORER_LOGIN')}
+            onRefresh={() => fetchCloudData(true)}
+            isSyncing={isSyncing}
             onShare={(id) => {
               const event = appState.events.find(e => e.id === id);
               const baseUrl = window.location.origin;

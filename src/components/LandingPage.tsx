@@ -25,6 +25,8 @@ interface Props {
   onShare: (eventId: string) => void;
   currentUser?: User | null;
   onLogout?: () => void;
+  onRefresh?: () => void;
+  isSyncing?: boolean;
 }
 
 export default function LandingPage({ 
@@ -38,7 +40,9 @@ export default function LandingPage({
   onCreateEvent,
   onShare,
   currentUser,
-  onLogout
+  onLogout,
+  onRefresh,
+  isSyncing
 }: Props) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const activeEvents = events.filter(e => e.status !== 'DRAFT');
@@ -224,7 +228,18 @@ export default function LandingPage({
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 md:mb-16 gap-6 md:gap-8 border-l-4 border-arcus-red pl-6">
             <div className="space-y-2">
               <div className="tech-label">TOURNAMENT BOARD</div>
-              <h2 className="text-4xl md:text-5xl font-black font-oswald uppercase italic text-slate-900 leading-none">EVENT AKTIF</h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-4xl md:text-5xl font-black font-oswald uppercase italic text-slate-900 leading-none">EVENT AKTIF</h2>
+                {onRefresh && (
+                  <button 
+                    onClick={onRefresh}
+                    disabled={isSyncing}
+                    className={`p-2 rounded-lg border border-slate-100 hover:border-arcus-red hover:text-arcus-red transition-all ${isSyncing ? 'animate-spin text-arcus-red' : 'text-slate-400'}`}
+                  >
+                    <Activity className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
             <p className="max-w-xs text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">
               Turnamen yang sedang berlangsung dan membutuhkan pantauan skor real-time.
@@ -316,8 +331,26 @@ export default function LandingPage({
             </div>
           ) : (
             <div className="bg-slate-50/50 rounded-[2.5rem] p-16 md:p-24 text-center border border-dashed border-slate-200">
-              <Trophy className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-              <p className="text-xl font-black font-oswald uppercase italic text-slate-300 tracking-tight">Belum ada event publik yang tersedia</p>
+              {isSyncing ? (
+                <div className="flex flex-col items-center gap-4">
+                  <Activity className="w-12 h-12 text-arcus-red animate-spin" />
+                  <p className="text-xl font-black font-oswald uppercase italic text-slate-400 tracking-tight">Menghubungkan ke server...</p>
+                </div>
+              ) : (
+                <>
+                  <Trophy className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                  <p className="text-xl font-black font-oswald uppercase italic text-slate-300 tracking-tight mb-6">Belum ada event publik yang tersedia</p>
+                  {onRefresh && (
+                    <button 
+                      onClick={onRefresh}
+                      className="inline-flex items-center gap-2 px-6 py-2 border-2 border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:border-arcus-red hover:text-arcus-red transition-all"
+                    >
+                      <Activity className="w-4 h-4" />
+                      Cek Ulang
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

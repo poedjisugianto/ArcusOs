@@ -210,6 +210,7 @@ export function App() {
       // 1. Try to fetch it directly from Supabase immediately (crucial for shared links)
       if (supabase) {
         try {
+          const idToFetch = eventId || registerId;
           console.log("Deep link validation starting for:", idToFetch);
           const { data, error } = await supabase
             .from('events')
@@ -253,6 +254,7 @@ export function App() {
     };
 
     handleDeepLink();
+    fetchCloudData();
   }, [supabase]); // Run once when supabase is ready
 
   // Multi-tab synchronization
@@ -310,11 +312,12 @@ export function App() {
         phone: profile?.phone || '',
         isOrganizer: true,
         isVerified: true,
-        isSuperAdmin: profile?.role === 'superadmin' || user.email === 'admin@arcus.id',
+        isSuperAdmin: profile?.role === 'superadmin' || user.email === 'admin@arcus.id' || user.email === 'poedji.sugianto@gmail.com',
         role: (profile?.role as UserRole) || UserRole.ORGANIZER
       };
 
       setAppState(prev => ({ ...prev, currentUser: loggedInUser }));
+      fetchCloudData();
     } catch (err) {
       console.error("Profile sync error:", err);
     }
@@ -820,19 +823,47 @@ export function App() {
             initialMode={view === 'REGISTER' ? 'REGISTER' : 'LOGIN'}
             onLogin={(u) => { 
               setAppState(prev => {
-                // Update local events that don't have an organizerId to the new user's ID
                 const updatedEvents = prev.events.map(e => {
-                  if (!e.settings.organizerId) {
-                    return { ...e, settings: { ...e.settings, organizerId: u.id } };
+                  if (!e.settings.organizerId || e.settings.organizerId === 'guest') {
+                    const updated = { ...e, settings: { ...e.settings, organizerId: u.id } };
+                    // Sync this specific event to cloud
+                    saveEventToCloud(updated);
+                    return updated;
                   }
                   return e;
                 });
                 return { ...prev, currentUser: u, events: updatedEvents };
               }); 
               setView('MEMBER_DASHBOARD'); 
+              // Clear URL params to avoid re-triggering login view if we came from a link
+              window.history.replaceState({}, document.title, window.location.pathname);
             }} 
-            onRegister={(u) => setAppState(prev => ({ ...prev, users: [...prev.users, u] }))} 
-            onUpdateUser={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }))} 
+            onRegister={async (u) => {
+              setAppState(prev => ({ ...prev, users: [...prev.users, u] }));
+              if (supabase) {
+                await supabase.from('profiles').upsert({
+                  id: u.id,
+                  data: u,
+                  full_name: u.name,
+                  phone: u.phone,
+                  role: u.role,
+                  updated_at: new Date().toISOString()
+                });
+              }
+            }} 
+            onUpdateUser={async (u) => {
+              setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }));
+              if (supabase) {
+                await supabase.from('profiles').upsert({
+                  id: u.id,
+                  data: u,
+                  full_name: u.name,
+                  phone: u.phone,
+                  role: u.role,
+                  updated_at: new Date().toISOString()
+                });
+              }
+            }} 
             onBack={() => setView('LANDING')} 
           />
         )}

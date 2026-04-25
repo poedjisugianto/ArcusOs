@@ -41,7 +41,16 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
           password
         });
 
-        if (authError) throw authError;
+        if (authError) {
+          // Improve error message for common cases
+          if (authError.message.includes('Email not confirmed')) {
+            throw new Error('Email Anda belum dikonfirmasi. Silakan cek kotak masuk email Anda (termasuk folder spam).');
+          }
+          if (authError.message.includes('Invalid login credentials')) {
+            throw new Error('Email atau Password salah. Silakan coba lagi atau daftar akun baru jika belum punya.');
+          }
+          throw authError;
+        }
 
         if (data.user) {
           // Fetch additional profile data
@@ -57,8 +66,8 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             name: profile?.full_name || data.user.user_metadata.full_name || 'User',
             phone: profile?.phone || '',
             isOrganizer: true,
-            isVerified: true,
-            isSuperAdmin: profile?.role === 'superadmin' || data.user.email === 'admin@arcus.id',
+            isVerified: !!data.user.email_confirmed_at,
+            isSuperAdmin: profile?.role === 'superadmin' || data.user.email === 'admin@arcus.id' || data.user.email === 'poedji.sugianto@gmail.com',
             role: (profile?.role as UserRole) || UserRole.ORGANIZER
           };
           onLogin(loggedInUser);
@@ -77,7 +86,8 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             data: {
               full_name: name,
               phone: phone
-            }
+            },
+            emailRedirectTo: window.location.origin
           }
         });
 
@@ -90,18 +100,52 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             name,
             phone,
             isOrganizer: true,
-            isVerified: true,
+            isVerified: false, // Initially false until confirmed
             role: UserRole.ORGANIZER
           };
           
-          // Triggers in Supabase handles the profiles table entry
-          onRegister(newUser);
-          onLogin(newUser);
+          // Explicitly create profile in case triggers are not set up
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            data: newUser,
+            full_name: name,
+            phone: phone,
+            role: 'organizer',
+            updated_at: new Date().toISOString()
+          });
+          
+          if (!data.session) {
+            setError('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi akun sebelum login.');
+            setMode('LOGIN');
+          } else {
+            onRegister(newUser);
+            onLogin(newUser);
+          }
         }
       }
     } catch (err: any) {
       console.error("Auth error:", err);
       setError(err.message || 'Terjadi kesalahan autentikasi.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!email) {
+      setError('Silakan masukkan email Anda terlebih dahulu.');
+      return;
+    }
+    setError('');
+    setIsLoading(true);
+    try {
+      const { error: resetError } = await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      if (resetError) throw resetError;
+      setError('Instruksi reset password telah dikirim ke email Anda.');
+    } catch (err: any) {
+      setError(err.message || 'Gagal mengirim email reset password.');
     } finally {
       setIsLoading(false);
     }
@@ -175,16 +219,28 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
+              <div className="flex items-center justify-between ml-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</label>
+                {mode === 'LOGIN' && (
+                  <button 
+                    type="button"
+                    onClick={handleResetPassword}
+                    className="text-[10px] font-bold text-slate-400 underline hover:text-arcus-red transition-colors"
+                  >
+                    Lupa Password?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                 <input 
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
+                  minLength={6}
                   onChange={e => setPassword(e.target.value)}
                   className="w-full pl-14 pr-14 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-slate-900 focus:bg-white transition-all text-sm font-bold text-slate-900 placeholder:text-slate-300"
-                  placeholder="••••••••"
+                  placeholder="Minimal 6 karakter"
                 />
                 <button 
                   type="button"
@@ -205,9 +261,10 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
                     type={showPassword ? "text" : "password"}
                     required
                     value={confirmPassword}
+                    minLength={6}
                     onChange={e => setConfirmPassword(e.target.value)}
                     className="w-full pl-14 pr-14 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-slate-900 focus:bg-white transition-all text-sm font-bold text-slate-900 placeholder:text-slate-300"
-                    placeholder="••••••••"
+                    placeholder="Minimal 6 karakter"
                   />
                 </div>
               </div>

@@ -13,7 +13,8 @@ import {
   UserPlus,
   Printer,
   Image as ImageIcon,
-  RefreshCw
+  RefreshCw,
+  Cloud
 } from "lucide-react";
 import {
   Archer,
@@ -33,6 +34,8 @@ interface Props {
   onBulkUpdate: (updated: Archer[]) => void;
   onGoToIdCardEditor: () => void;
   onRefreshData?: () => void;
+  onPushToCloud?: () => void;
+  isPushing?: boolean;
   archersPerTarget: number;
   totalTargets: number;
   settings: TournamentSettings;
@@ -49,6 +52,8 @@ const ArcherList: React.FC<Props> = ({
   onBulkUpdate,
   onGoToIdCardEditor,
   onRefreshData,
+  onPushToCloud,
+  isPushing,
   archersPerTarget,
   totalTargets,
   settings,
@@ -248,13 +253,29 @@ const ArcherList: React.FC<Props> = ({
             </div>
           </div>
           {onRefreshData && (
-            <button 
-              onClick={onRefreshData}
-              className="p-2.5 bg-white rounded-lg border border-slate-100 shadow-sm text-emerald-500 hover:bg-emerald-50 transition-all active:scale-90"
-              title="Segarkan Data dari Cloud"
-            >
-              <RefreshCw className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={onRefreshData}
+                className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm text-emerald-500 hover:bg-emerald-50 transition-all active:scale-90"
+                title="Tarik Data dari Cloud (Pull)"
+              >
+                <RefreshCw className={`w-4 h-4 ${(onRefreshData as any).isSyncing ? 'animate-spin' : ''}`} />
+              </button>
+              {onPushToCloud && (
+                <button 
+                  onClick={onPushToCloud}
+                  disabled={isPushing}
+                  className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm text-blue-500 hover:bg-blue-50 transition-all active:scale-90 disabled:opacity-50"
+                  title="Kirim Data ke Cloud (Push)"
+                >
+                  {isPushing ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  ) : (
+                    <Cloud className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div className="flex flex-wrap items-center justify-center md:justify-end gap-2">

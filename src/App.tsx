@@ -219,17 +219,21 @@ export function App() {
               }
             });
 
-            // If it's the active event or cloud is newer/active, update full object
-            if ((ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate || ce.id === prev.activeEventId) {
+            // If cloud is strictly newer OR it's a draft-to-active transition, favors cloud structure
+            // BUT always keep our merged arrays
+            const shouldFavorCloud = (ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate;
+            
+            if (shouldFavorCloud || ce.id === prev.activeEventId) {
               eventMap.set(ce.id, { 
                 ...local, 
                 ...ce, 
                 archers: mergedArchers, 
                 registrations: mergedRegistrations,
-                localUpdatedAt: new Date().toISOString()
+                // Keep local updatedAt if it was newer, otherwise use cloud date
+                localUpdatedAt: localDate > cloudDate ? (local as any).localUpdatedAt : new Date().toISOString()
               });
             } else {
-              // Local is potentially newer, but still keep all merged participants
+              // Local is newer, just keep the merged archers/registrations
               eventMap.set(ce.id, { 
                 ...local, 
                 archers: mergedArchers, 
@@ -618,7 +622,7 @@ export function App() {
       const interval = setInterval(() => {
         console.log("Auto-polling registrations...");
         fetchCloudData();
-      }, 30000); // Check every 30 seconds
+      }, 15000); // Check every 15 seconds
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);
@@ -671,13 +675,6 @@ export function App() {
       };
       
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      
-      // Only auto-sync to cloud if user is owner or admin 
-      // (Online registration has its own backend sync)
-      const isAdmin = prev.currentUser && (event.settings.organizerId === prev.currentUser.id || event.ownerId === prev.currentUser.id || prev.currentUser.isSuperAdmin);
-      if (isAdmin) {
-        saveEventToCloud(updatedEvent);
-      }
       
       return newState;
     });
@@ -1435,6 +1432,8 @@ export function App() {
             onBulkUpdate={(updated) => handleUpdateEvent(activeEvent.id, { archers: updated })} 
             onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
             onRefreshData={() => fetchCloudData(true)}
+            onPushToCloud={() => syncCloudData(true)}
+            isPushing={isSyncing}
             onBack={() => setView('EVENT_ADMIN')} 
           />
         )}

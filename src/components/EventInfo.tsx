@@ -19,7 +19,7 @@ interface Props {
 export default function EventInfo({ event, onBack, onRegister, onShare, onViewParticipants }: Props) {
   const isExpired = event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline);
   const isRegistrationOpen = event.status !== 'DRAFT' && event.status !== 'FINISHED';
-  const verifiedArchers = event.archers.filter(a => (a.status === 'APPROVED' || a.status === 'PAID' || a.status === 'CONFIRMED') && a.category !== CategoryType.OFFICIAL);
+  const verifiedArchers = event.archers.filter(a => (a.status === 'APPROVED' || a.status === 'PAID' || a.status === 'CONFIRMED' || a.status === 'PENDING') && a.category !== CategoryType.OFFICIAL);
   const totalParticipants = event.archers.filter(a => a.category !== CategoryType.OFFICIAL).length;
 
   return (
@@ -133,7 +133,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-lg md:text-2xl font-black font-oswald uppercase italic text-slate-900 flex items-center gap-3">
                   <Users className="w-4 h-4 md:w-6 md:h-6 text-arcus-red" />
-                  Peserta Terverifikasi
+                  Daftar Peserta
                 </h3>
                 <button 
                   onClick={onViewParticipants}
@@ -175,7 +175,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
               ) : (
                 <div className="p-12 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">
-                     Belum ada peserta yang diverifikasi.<br/>
+                     Belum ada peserta yang mendaftar.<br/>
                      Daftarkan diri Anda sekarang untuk menjadi yang pertama.
                    </p>
                 </div>

@@ -105,13 +105,7 @@ export default function LandingPage({
                 </div>
               ) : (
                 <div className="flex items-center gap-6">
-                  <button onClick={onLogin} className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 hover:text-slate-900 transition-colors">LOGIN</button>
-                  <button 
-                    onClick={onCreateEvent}
-                    className="bg-arcus-red text-white px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-md active:scale-95"
-                  >
-                    DAFTAR AKUN
-                  </button>
+                  <button onClick={onLogin} className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 hover:text-slate-900 transition-colors">LOGIN PANITIA</button>
                 </div>
               )}
             </div>
@@ -148,8 +142,7 @@ export default function LandingPage({
                 </>
               ) : (
                 <>
-                  <button onClick={onLogin} className="w-full py-4 bg-slate-50 rounded-lg text-xs font-black uppercase tracking-widest text-slate-900">Login Admin</button>
-                  <button onClick={onCreateEvent} className="w-full py-4 bg-arcus-red text-white rounded-lg text-xs font-black uppercase tracking-widest">Daftar Akun</button>
+                  <button onClick={onLogin} className="w-full py-4 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest">Login Panitia</button>
                 </>
               )}
             </div>
@@ -179,7 +172,7 @@ export default function LandingPage({
               Platform manajemen turnamen panahan modern. Scoring real-time, manajemen peserta, dan publikasi hasil dalam satu jangkauan.
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto px-4 md:px-0">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full sm:w-auto px-4 md:px-0">
               <button 
                 onClick={onScorerLogin}
                 className="w-full sm:w-auto px-10 py-3.5 bg-arcus-red text-white border-2 border-arcus-red rounded-lg font-black font-oswald uppercase italic text-lg hover:bg-white hover:text-arcus-red transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 group active:scale-95"
@@ -188,17 +181,11 @@ export default function LandingPage({
                 SCORER ACCESS
               </button>
               <button 
-                onClick={onCreateEvent}
+                onClick={onLogin}
                 className="w-full sm:w-auto px-10 py-3.5 bg-slate-900 text-white rounded-lg font-black font-oswald uppercase italic text-lg hover:bg-slate-700 transition-all shadow-md flex items-center justify-center gap-3 group active:scale-95"
               >
-                IKUT TURNAMEN
-                <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
-              </button>
-              <button 
-                onClick={onLogin}
-                className="w-full sm:w-auto px-10 py-3.5 bg-white text-slate-900 border border-slate-200 rounded-lg font-black font-oswald uppercase italic text-lg hover:border-slate-900 transition-all active:scale-95"
-              >
-                LOGIN ADMIN
+                <Plus className="w-5 h-5 text-arcus-red" />
+                PANEL PANITIA
               </button>
             </div>
           </motion.div>

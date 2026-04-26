@@ -129,7 +129,7 @@ export function App() {
       // 2. Fetch Events
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('id, data, user_id, status, updated_at');
+        .select('id, data, user_id, updated_at');
         
       if (eventsError) {
         // Handle "Table not found" specifically
@@ -147,12 +147,15 @@ export function App() {
         const cloudUsers = profilesData ? profilesData.map(p => p.data) : [];
         const finalUsers = cloudUsers.length > 0 ? cloudUsers : prev.users;
         
-        const cloudEventsRaw = eventsData ? eventsData.map(e => ({ 
-          ...e.data as ArcheryEvent, 
-          ownerId: e.user_id,
-          status: (e as any).status || (e.data as any).status,
-          cloudUpdatedAt: e.updated_at 
-        })) : [];
+        const cloudEventsRaw = eventsData ? eventsData.map(e => {
+          const data = e.data as any;
+          return { 
+            ...data, 
+            ownerId: e.user_id,
+            status: data.status || 'DRAFT',
+            cloudUpdatedAt: e.updated_at 
+          };
+        }) : [];
         
         // Detailed log to help user debug
         console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
@@ -1498,6 +1501,11 @@ export function App() {
             });
 
             pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, Anda telah terdaftar!`, "SUCCESS");
+            
+            // Re-fetch after a short delay to ensure everything is synced
+            setTimeout(() => {
+              fetchCloudData();
+            }, 3000);
 
             // Auto-send confirmation email
             const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';

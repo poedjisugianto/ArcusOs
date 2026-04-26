@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ArrowLeft, Users, Trophy, Target, ChevronRight, Filter, CheckCircle2, Info } from 'lucide-react';
+import { Search, ArrowLeft, Users, Trophy, Target, ChevronRight, Filter, CheckCircle2, Info, RefreshCw } from 'lucide-react';
 import { ArcheryEvent, CategoryType, Archer } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
@@ -74,9 +74,17 @@ export default function EntryList({ event, onBack }: Props) {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1 md:gap-2 px-2 md:px-6 py-1.5 md:py-3 bg-slate-50 rounded-lg md:rounded-2xl border border-slate-100 whitespace-nowrap">
-            {viewMode === 'ARCHERS' ? <Users className="w-2.5 h-2.5 md:w-4 md:h-4 text-arcus-red" /> : <Users className="w-2.5 h-2.5 md:w-4 md:h-4 text-blue-600" />}
-            <span className="text-[7px] md:text-[10px] font-black text-slate-900 uppercase tracking-widest">{filteredData.length} <span className="hidden xs:inline">{viewMode === 'ARCHERS' ? 'Atlet' : 'Official'}</span></span>
+          <div className="flex items-center gap-1 md:gap-3">
+            <button 
+              onClick={() => window.location.reload()}
+              className="p-1 px-2 md:p-3 md:px-5 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-2xl border border-emerald-100 text-[7px] md:text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all"
+            >
+              <RefreshCw className="w-2.5 h-2.5 md:w-4 md:h-4 animate-spin-slow" /> REFRESH
+            </button>
+            <div className="flex items-center gap-1 md:gap-2 px-2 md:px-6 py-1.5 md:py-3 bg-slate-50 rounded-lg md:rounded-2xl border border-slate-100 whitespace-nowrap">
+              {viewMode === 'ARCHERS' ? <Users className="w-2.5 h-2.5 md:w-4 md:h-4 text-arcus-red" /> : <Users className="w-2.5 h-2.5 md:w-4 md:h-4 text-blue-600" />}
+              <span className="text-[7px] md:text-[10px] font-black text-slate-900 uppercase tracking-widest">{filteredData.length} <span className="hidden xs:inline">{viewMode === 'ARCHERS' ? 'Atlet' : 'Official'}</span></span>
+            </div>
           </div>
         </div>
       </div>

@@ -59,6 +59,7 @@ export function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
+  const isSyncingFromCloud = React.useRef(false);
 
   const [appState, setAppState] = useState<AppState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -115,6 +116,7 @@ export function App() {
     if (manual) setIsSyncing(true);
     try {
       console.log("Fetching cloud data...");
+      isSyncingFromCloud.current = true;
       
       if (!supabase) {
         if (manual) pushNotification("Mode Lokal", "Hubungkan Supabase di pengaturan untuk sinkronisasi cloud.", "INFO");
@@ -163,10 +165,11 @@ export function App() {
           // Important: Status !== 'DRAFT' makes it visible to everyone
           const isMine = prev.currentUser && (ce.settings.organizerId === prev.currentUser.id || ce.ownerId === prev.currentUser.id);
           const isPublic = ce.status !== 'DRAFT';
+          const isActive = ce.id === prev.activeEventId;
           
           if (!isMine && isPublic) console.log(`Event ${ce.id} is PUBLIC and visible to guest.`);
           
-          return (isMine || isPublic) && !deletedEventIds.has(ce.id);
+          return (isMine || isPublic || isActive) && !deletedEventIds.has(ce.id);
         });
         
         console.log(`Filtered cloud events count: ${filteredCloudEvents.length}`);
@@ -193,30 +196,41 @@ export function App() {
             // If cloud data is newer, accept it
             else if (cloudDate > localDate) {
               console.log(`Cloud update for ${ce.settings.tournamentName} is newer than local.`);
+              // Even if cloud is newer, we keep some local-only properties if needed, 
+              // but mostly ce should win.
               eventMap.set(ce.id, { ...local, ...ce });
             }
             else {
-              // Cloud is older or same as local, but we might still want to merge registrations/archers 
-              // that were added in cloud by others (multi-user support)
+              // Cloud is older or same as local (according to timestamp), 
+              // BUT for multi-user safety, we ALWAYS merge participants from cloud
+              // because online registrations happen directly on the cloud via API.
+              
               const merged = {
                 ...local,
-                archers: [...local.archers],
-                registrations: [...local.registrations]
+                archers: [...(local.archers || [])],
+                registrations: [...(local.registrations || [])]
               };
               
-              // Add cloud archers that are not in local
+              // 1. Add cloud archers that are not in local
               ce.archers.forEach(ca => {
-                if (!merged.archers.some(la => la.id === ca.id)) {
+                const existingIdx = merged.archers.findIndex(la => la.id === ca.id);
+                if (existingIdx === -1) {
                   merged.archers.push(ca);
+                } else if (ca.updatedAt && (!merged.archers[existingIdx].updatedAt || ca.updatedAt > merged.archers[existingIdx].updatedAt)) {
+                  // Update existing if cloud version has newer timestamp (if provided)
+                  merged.archers[existingIdx] = ca;
                 }
               });
               
-              // Add cloud registrations that are not in local
+              // 2. Add cloud registrations that are not in local
               ce.registrations.forEach(cr => {
                 if (!merged.registrations.some(lr => lr.id === cr.id)) {
                   merged.registrations.push(cr);
                 }
               });
+              
+              // 3. Keep most recent scores as well
+              // In a real multi-user app, this would be more granular
               
               eventMap.set(ce.id, merged);
             }
@@ -235,6 +249,11 @@ export function App() {
       if (manual) {
         pushNotification("Data Diperbarui", "Sinkronisasi awan selesai.", "SUCCESS");
       }
+      // Reset flag after state update propagation
+      setTimeout(() => {
+        isSyncingFromCloud.current = false;
+        setHasPendingChanges(false);
+      }, 500);
     } catch (err: any) { 
       console.error("Fetch error detail:", err);
       if (manual) {
@@ -396,7 +415,9 @@ export function App() {
   }, [view]);
 
   useEffect(() => {
-    setHasPendingChanges(true);
+    if (!isSyncingFromCloud.current) {
+      setHasPendingChanges(true);
+    }
   }, [appState.events, appState.globalSettings, appState.currentUser]);
 
   const syncCloudData = async (manual = false) => {
@@ -1456,9 +1477,24 @@ export function App() {
             }
 
             // Sync local state for immediate feedback
-            handleUpdateEvent(activeEvent.id, { 
-              registrations: [...activeEvent.registrations, r],
-              archers: [...activeEvent.archers, newArcher]
+            // IMPORTANT: We use functional update to ensure we don't overwrite other changes
+            setAppState(prev => {
+              const event = prev.events.find(e => e.id === activeEvent.id);
+              if (!event) return prev;
+              
+              const updatedEvent = { 
+                ...event, 
+                registrations: [...(event.registrations || []), r],
+                archers: [...(event.archers || []), newArcher],
+                localUpdatedAt: new Date().toISOString()
+              };
+              
+              const newState = {
+                ...prev,
+                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+              return newState;
             });
 
             pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, Anda telah terdaftar!`, "SUCCESS");

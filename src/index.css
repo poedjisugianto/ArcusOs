@@ -19,11 +19,19 @@
   --radius-xl: 1.5rem;
   --radius-2xl: 2rem;
   --radius-3xl: 3rem;
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
   @keyframes shimmer {
     100% {
       transform: translateX(100%);
     }
   }
+}
+
+@utility animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
 }
 
 @utility animate-shimmer {

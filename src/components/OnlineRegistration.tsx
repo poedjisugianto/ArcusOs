@@ -254,8 +254,19 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             </div>
 
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-100 max-w-sm mx-auto space-y-6">
+              <div className="space-y-3">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Pendaftaran Anda Berhasil</p>
+                <button 
+                  onClick={onViewParticipants} 
+                  className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase text-xs hover:bg-arcus-red transition-all flex items-center justify-center gap-3"
+                >
+                  <Users className="w-4 h-4" /> CEK DAFTAR PESERTA
+                </button>
+                <p className="text-[9px] font-bold text-slate-400 italic">Pastikan nama Anda sudah muncul di daftar peserta.</p>
+              </div>
+
               {event.settings.waGroupLink && (
-                <div className="space-y-3">
+                <div className="pt-4 border-t border-slate-100 space-y-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">GABUNG GRUP WHATSAPP</p>
                   <a 
                     href={event.settings.waGroupLink}
@@ -265,20 +276,19 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                   >
                     <Smartphone className="w-4 h-4" /> KLIK GABUNG GRUP WA
                   </a>
-                  <p className="text-[9px] font-bold text-slate-400 italic">Silakan bergabung untuk mendapatkan info teknis pertandingan.</p>
                 </div>
               )}
               
               <div className="pt-4 border-t border-slate-100 space-y-3">
                 <button 
                   onClick={resetRegistration} 
-                  className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                  className="w-full py-4 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black uppercase text-xs hover:bg-emerald-100 transition-all"
                 >
                   DAFTAR PESERTA LAIN
                 </button>
                 <button 
                   onClick={onBack} 
-                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs hover:bg-arcus-red transition-all"
+                  className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs hover:bg-slate-200 transition-all"
                 >
                   KEMBALI KE BERANDA
                 </button>

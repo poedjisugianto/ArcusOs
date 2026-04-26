@@ -122,6 +122,7 @@ export interface Archer extends ParticipantRegistration {
   totalPaid?: number;
   platformFee?: number;
   createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface Match {
@@ -203,6 +204,7 @@ export interface ArcheryEvent {
   matches: Record<CategoryType, Match[]>;
   scorerAccess?: any;
   disbursementRequests?: DisbursementRequest[];
+  ownerId?: string;
 }
 
 export interface AppState {

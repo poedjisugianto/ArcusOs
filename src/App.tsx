@@ -153,7 +153,12 @@ export function App() {
             ...data, 
             ownerId: e.user_id,
             status: data.status || 'DRAFT',
-            cloudUpdatedAt: e.updated_at 
+            cloudUpdatedAt: e.updated_at,
+            // Ensure arrays exist
+            archers: data.archers || [],
+            registrations: data.registrations || [],
+            scores: data.scores || [],
+            scoreLogs: data.scoreLogs || []
           };
         }) : [];
         
@@ -196,12 +201,35 @@ export function App() {
               console.log(`Priority update: Event ${ce.settings.tournamentName} is now ACTIVE in cloud.`);
               eventMap.set(ce.id, { ...local, ...ce });
             } 
-            // If cloud data is newer, accept it
+            // If cloud data is newer, accept it but merge archers/registrations for safety
             else if (cloudDate > localDate) {
-              console.log(`Cloud update for ${ce.settings.tournamentName} is newer than local.`);
-              // Even if cloud is newer, we keep some local-only properties if needed, 
-              // but mostly ce should win.
-              eventMap.set(ce.id, { ...local, ...ce });
+              console.log(`Cloud update for ${ce.settings.tournamentName} is newer than local. Merging participants...`);
+              
+              const mergedStatus = ce.status || local.status;
+              const mergedArchers = [...(ce.archers || [])];
+              const mergedRegistrations = [...(ce.registrations || [])];
+              
+              // Add local-only archers that might be in flight
+              (local.archers || []).forEach(la => {
+                if (!mergedArchers.some(ca => ca.id === la.id)) {
+                  mergedArchers.push(la);
+                }
+              });
+
+              // Add local-only registrations
+              (local.registrations || []).forEach(lr => {
+                if (!mergedRegistrations.some(cr => cr.id === lr.id)) {
+                  mergedRegistrations.push(lr);
+                }
+              });
+
+              eventMap.set(ce.id, { 
+                ...local, 
+                ...ce, 
+                status: mergedStatus,
+                archers: mergedArchers, 
+                registrations: mergedRegistrations 
+              });
             }
             else {
               // Cloud is older or same as local (according to timestamp), 
@@ -215,7 +243,7 @@ export function App() {
               };
               
               // 1. Add cloud archers that are not in local
-              ce.archers.forEach(ca => {
+              (ce.archers || []).forEach(ca => {
                 const existingIdx = merged.archers.findIndex(la => la.id === ca.id);
                 if (existingIdx === -1) {
                   merged.archers.push(ca);
@@ -226,14 +254,11 @@ export function App() {
               });
               
               // 2. Add cloud registrations that are not in local
-              ce.registrations.forEach(cr => {
+              (ce.registrations || []).forEach(cr => {
                 if (!merged.registrations.some(lr => lr.id === cr.id)) {
                   merged.registrations.push(cr);
                 }
               });
-              
-              // 3. Keep most recent scores as well
-              // In a real multi-user app, this would be more granular
               
               eventMap.set(ce.id, merged);
             }
@@ -461,14 +486,41 @@ export function App() {
       
       for (const event of eventsToSync) {
         // Log explicitly for debugging
-        console.log(`Syncing event ${event.id} to cloud with status ${event.status}...`);
+        console.log(`Syncing event ${event.id} to cloud...`);
+        
+        // Safety Merge: Fetch latest from cloud to avoid overwriting online registrations 
+        // that happened while the organizer was editing.
+        const { data: cloudRes } = await supabase
+          .from('events')
+          .select('data')
+          .eq('id', event.id)
+          .single();
+          
+        let finalData = { ...event };
+        if (cloudRes && cloudRes.data) {
+          const ce = cloudRes.data;
+          const mergedArchers = [...(finalData.archers || [])];
+          const mergedRegistrations = [...(finalData.registrations || [])];
+          
+          (ce.archers || []).forEach((ca: any) => {
+            if (!mergedArchers.some(la => la.id === ca.id)) mergedArchers.push(ca);
+          });
+          
+          (ce.registrations || []).forEach((cr: any) => {
+            if (!mergedRegistrations.some(lr => lr.id === cr.id)) mergedRegistrations.push(cr);
+          });
+          
+          finalData.archers = mergedArchers;
+          finalData.registrations = mergedRegistrations;
+        }
+
         const { error } = await supabase.from('events').upsert({ 
           id: event.id, 
-          user_id: event.settings.organizerId || appState.currentUser?.id || 'guest', 
-          data: event,
-          status: event.status, // EXPLICIT update here too
+          user_id: event.settings.organizerId || appState.currentUser?.id || null, 
+          data: finalData,
           updated_at: new Date().toISOString() 
         });
+        
         if (error) {
           console.error(`Error syncing event ${event.id}:`, error);
           if (manual) pushNotification("Gagal Sinkron Turnamen", `Turnamen "${event.settings.tournamentName}" gagal disinkronkan: ${error.message}`, "WARNING");

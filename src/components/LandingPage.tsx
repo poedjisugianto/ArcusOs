@@ -180,13 +180,6 @@ export default function LandingPage({
                 <ShieldCheck className="w-5 h-5" />
                 SCORER ACCESS
               </button>
-              <button 
-                onClick={onLogin}
-                className="w-full sm:w-auto px-10 py-3.5 bg-slate-900 text-white rounded-lg font-black font-oswald uppercase italic text-lg hover:bg-slate-700 transition-all shadow-md flex items-center justify-center gap-3 group active:scale-95"
-              >
-                <Plus className="w-5 h-5 text-arcus-red" />
-                PANEL PANITIA
-              </button>
             </div>
           </motion.div>
         </div>

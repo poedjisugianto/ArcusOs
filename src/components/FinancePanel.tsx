@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ArcheryEvent, ParticipantRegistration, Archer } from '../types';
+import { ArcheryEvent, ParticipantRegistration, Archer, GlobalSettings } from '../types';
 import { 
   DollarSign, X, Check, Copy, Landmark, Clock, 
   TrendingUp, CreditCard, ArrowUpRight, AlertCircle, 
@@ -11,31 +11,41 @@ import { CATEGORY_LABELS } from '../constants';
 
 interface Props {
   event: ArcheryEvent;
+  globalSettings: GlobalSettings;
   onApproveRegistration: (regId: string) => void;
   onPayPlatformFee: (eventId: string) => void;
   onBack: () => void;
   isSuperAdmin?: boolean;
 }
 
-const FinancePanel: React.FC<Props> = ({ event, onApproveRegistration, onPayPlatformFee, onBack, isSuperAdmin = false }) => {
+const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistration, onPayPlatformFee, onBack, isSuperAdmin = false }) => {
   const [copied, setCopied] = useState(false);
   const [showProofOverlay, setShowProofOverlay] = useState<{ url: string; id: string } | null>(null);
   const [showSavedFlag, setShowSavedFlag] = useState(false);
   const [flagMessage, setFlagMessage] = useState('');
 
-  // Use unique IDs to avoid double counting if someone is in both registrations and archers
-  const uniqueParticipantIds = new Set([
-    ...event.registrations.map(r => r.id),
-    ...event.archers.map(a => a.id)
-  ]);
-  
+  const isKidsCategory = (cat: string) => {
+    return [
+      'U18_PUTRA', 'U18_PUTRI', 
+      'U12_PUTRA', 'U12_PUTRI', 
+      'U9_PUTRA', 'U9_PUTRI'
+    ].includes(cat);
+  };
+
   // Use unique participants to avoid double counting revenue/fees
   const uniqueParticipants = Array.from(
     new Map([...event.registrations, ...event.archers].map(p => [p.id, p])).values()
   );
   
   const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);
-  const totalPlatformFees = event.settings.isFreeEvent ? 0 : uniqueParticipants.reduce((acc, curr) => acc + (curr.platformFee || 0), 0);
+  
+  const totalPlatformFees = event.settings.isFreeEvent ? 0 : uniqueParticipants.reduce((acc, curr) => {
+    // If platformFee is missing or 0, fallback to globalSettings fee
+    const fee = curr.platformFee && curr.platformFee > 0 
+      ? curr.platformFee 
+      : (isKidsCategory(curr.category) ? globalSettings.feeKids : globalSettings.feeAdult);
+    return acc + fee;
+  }, 0);
   const netBalance = totalRevenue - totalPlatformFees;
   const isFeePaid = event.settings.platformFeePaidToOwner || event.settings.isFreeEvent;
 
@@ -180,7 +190,7 @@ const FinancePanel: React.FC<Props> = ({ event, onApproveRegistration, onPayPlat
           </h3>
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-100">
-              Total Pendaftar: {uniqueParticipantIds.size}
+              Total Pendaftar: {uniqueParticipants.length}
             </div>
             <div className="flex items-center gap-2 bg-orange-50 text-orange-600 px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-orange-100">
               Menunggu Konfirmasi: {event.registrations.filter(reg => reg.status !== 'APPROVED').length}

@@ -161,7 +161,19 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       const config = event.settings.categoryConfigs?.[formData.category as CategoryType];
       totalPaid = config?.registrationFee || 0;
     }
-    const platformFee = Math.ceil(totalPaid * (globalSettings.platformFeePercentage / 100));
+    
+    const isKids = [
+      CategoryType.U18_PUTRA,
+      CategoryType.U18_PUTRI,
+      CategoryType.U12_PUTRA,
+      CategoryType.U12_PUTRI,
+      CategoryType.U9_PUTRA,
+      CategoryType.U9_PUTRI,
+    ].includes(formData.category as CategoryType);
+
+    const platformFee = isKids
+      ? globalSettings.feeKids
+      : globalSettings.feeAdult;
 
     const newReg: ParticipantRegistration = {
       id: 'reg_' + Math.random().toString(36).substr(2, 9),

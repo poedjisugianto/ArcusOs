@@ -289,7 +289,7 @@ export function App() {
 
   useEffect(() => {
     fetchCloudData();
-  }, [appState.currentUser?.id]);
+  }, [appState.currentUser?.id, appState.activeEventId]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
 
@@ -1482,6 +1482,7 @@ export function App() {
         {view === 'FINANCE' && activeEvent && (
           <FinancePanel 
             event={activeEvent} 
+            globalSettings={appState.globalSettings}
             isSuperAdmin={appState.currentUser?.isSuperAdmin}
             onApproveRegistration={async (regId) => { 
           const reg = activeEvent.registrations.find(r => r.id === regId); 
@@ -1581,9 +1582,27 @@ export function App() {
 
             pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, pendaftaran cloud sukses!`, "SUCCESS");
             
+            // Sync local state for immediate feedback
+            setAppState(prev => {
+              const event = prev.events.find(e => e.id === (activeEvent as any).id);
+              if (!event) return prev;
+              const updatedEvent = { 
+                ...event, 
+                registrations: [...(event.registrations || []), r],
+                archers: [...(event.archers || []), newArcher],
+                localUpdatedAt: new Date().toISOString()
+              };
+              const newState = {
+                ...prev,
+                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+              return newState;
+            });
+
             // Re-fetch after a short delay to ensure everything is synced
             setTimeout(() => {
-              fetchCloudData();
+              fetchCloudData(true);
             }, 3000);
 
             // Auto-send confirmation email
@@ -1612,7 +1631,14 @@ export function App() {
         {view === 'PUBLIC_LIVE' && activeEvent && (
           <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
         )}
-        {view === 'PUBLIC_ENTRY_LIST' && activeEvent && <EntryList event={activeEvent} onBack={() => setView('LANDING')} />}
+        {view === 'PUBLIC_ENTRY_LIST' && activeEvent && (
+          <EntryList 
+            event={activeEvent} 
+            onBack={() => setView('LANDING')} 
+            onRefresh={() => fetchCloudData(true)}
+            isSyncing={isSyncing}
+          />
+        )}
         {view === 'PUBLIC_EVENT_INFO' && activeEvent && (
           <EventInfo 
             event={activeEvent} 

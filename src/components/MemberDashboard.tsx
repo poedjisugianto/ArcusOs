@@ -107,6 +107,27 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     });
   }, [events, eventSearch, statusFilter, typeFilter, sortBy]);
 
+  const isKidsCategory = (cat: string) => {
+    return [
+      'U18_PUTRA', 'U18_PUTRI', 
+      'U12_PUTRA', 'U12_PUTRI', 
+      'U9_PUTRA', 'U9_PUTRI'
+    ].includes(cat);
+  };
+
+  const calculateEventFees = (event: ArcheryEvent) => {
+    if (event.settings.isFreeEvent || event.settings.isPractice) return 0;
+    const participants = Array.from(
+      new Map([...event.registrations, ...event.archers].map(p => [p.id, p])).values()
+    );
+    return participants.reduce((acc, curr) => {
+      const fee = curr.platformFee && curr.platformFee > 0 
+        ? curr.platformFee 
+        : (isKidsCategory(curr.category) ? globalSettings.feeKids : globalSettings.feeAdult);
+      return acc + fee;
+    }, 0);
+  };
+
   const handleStartCreation = () => {
     setStep('AGREEMENT');
   };
@@ -207,7 +228,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     setBillingPaymentStatus('PENDING');
     
     try {
-      const totalFee = selectedInvoiceEvent?.archers.reduce((acc, a) => acc + (a.platformFee || 0), 0) || 0;
+      const totalFee = selectedInvoiceEvent ? calculateEventFees(selectedInvoiceEvent) : 0;
       const res = await fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -299,7 +320,10 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     }
   }, [billingStep, billingPaymentStatus]);
 
-  const unpaidEvents = events.filter(e => !e.settings.platformFeePaidToOwner && e.archers.length > 0 && !e.settings.isPractice);
+  const unpaidEvents = events.filter(e => {
+    const totalFee = calculateEventFees(e);
+    return !e.settings.platformFeePaidToOwner && totalFee > 0 && !e.settings.isPractice;
+  });
   const receivedNotifs = notifications.filter(n => n.recipientId === userId || !n.recipientId);
   const sentNotifs = notifications.filter(n => n.senderId === userId);
   const unreadCount = receivedNotifs.filter(n => !n.read).length;
@@ -585,12 +609,13 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {unpaidEvents.map(event => {
-                const totalFee = event.archers.reduce((acc, a) => acc + (a.platformFee || 0), 0);
+                const totalFee = calculateEventFees(event);
+                const participantCount = Array.from(new Set([...event.archers.map(a => a.id), ...event.registrations.map(r => r.id)])).length;
                 return (
                   <div key={event.id} className="bg-white p-6 rounded-[2rem] border border-orange-200 shadow-sm flex flex-col justify-between gap-4 group hover:border-orange-500 transition-all">
                      <div>
                        <h4 className="font-black text-slate-900 uppercase font-oswald italic truncate leading-none mb-2">{event.settings.tournamentName}</h4>
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{event.archers.length} Archer Terdaftar</p>
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{participantCount} Pendaftar Terdeteksi</p>
                      </div>
                      <div className="flex items-center justify-between border-t border-slate-50 pt-4">
                         <div className="text-orange-600 font-black font-oswald text-xl leading-none">Rp {totalFee.toLocaleString()}</div>
@@ -1251,7 +1276,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                     <div className="border-t border-slate-200 pt-4 space-y-2">
                        <div className="flex justify-between items-center">
                           <span className="text-[10px] font-black uppercase text-slate-400">Total Platform Fee</span>
-                          <span className="font-black text-slate-900">Rp {selectedInvoiceEvent?.archers.reduce((acc, a) => acc + (a.platformFee || 0), 0).toLocaleString() || 0}</span>
+                          <span className="font-black text-slate-900">Rp {(selectedInvoiceEvent ? calculateEventFees(selectedInvoiceEvent) : 0).toLocaleString()}</span>
                        </div>
                     </div>
                  </div>
@@ -1259,7 +1284,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                  <div className="bg-orange-50 p-6 rounded-[2rem] border border-orange-100 flex items-center justify-between">
                     <div>
                        <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Total Tagihan</p>
-                       <p className="text-3xl font-black font-oswald text-orange-600 italic leading-none mt-1">Rp {selectedInvoiceEvent?.archers.reduce((acc, a) => acc + (a.platformFee || 0), 0).toLocaleString() || 0}</p>
+                       <p className="text-3xl font-black font-oswald text-orange-600 italic leading-none mt-1">Rp {(selectedInvoiceEvent ? calculateEventFees(selectedInvoiceEvent) : 0).toLocaleString()}</p>
                     </div>
                     <Landmark className="w-10 h-10 text-orange-200" />
                  </div>

@@ -35,13 +35,40 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onUpdateEve
   const stats = useMemo(() => {
     const totalEvents = state.events.length;
     const totalUsers = state.users.length;
-    const totalArchers = state.events.reduce((acc, e) => acc + e.archers.length, 0);
-    const potentialFee = state.events.reduce((acc, e) => 
-      acc + e.archers.reduce((a, arc) => a + (arc.platformFee || 0), 0), 0
-    );
+    
+    // Helper to identify kids categories
+    const isKidsCategory = (cat: string) => {
+      return [
+        'U18_PUTRA', 'U18_PUTRI', 
+        'U12_PUTRA', 'U12_PUTRI', 
+        'U9_PUTRA', 'U9_PUTRI'
+      ].includes(cat);
+    };
+
+    // Helper to get total platform fee for an event (archers + unique registrations)
+    const getEventFee = (e: ArcheryEvent) => {
+      if (e.settings.isFreeEvent || e.settings.isPractice) return 0;
+      const participants = Array.from(
+        new Map([...e.registrations, ...e.archers].map(p => [p.id, p])).values()
+      );
+      return participants.reduce((a, p) => {
+        const fee = p.platformFee && p.platformFee > 0 
+          ? p.platformFee 
+          : (isKidsCategory(p.category) ? state.globalSettings.feeKids : state.globalSettings.feeAdult);
+        return a + fee;
+      }, 0);
+    };
+
+    const totalArchers = state.events.reduce((acc, e) => {
+      const uniqueIds = new Set([...e.archers.map(a => a.id), ...e.registrations.map(r => r.id)]);
+      return acc + uniqueIds.size;
+    }, 0);
+
+    const potentialFee = state.events.reduce((acc, e) => acc + getEventFee(e), 0);
+    
     const collectedFee = state.events
       .filter(e => e.settings.platformFeePaidToOwner)
-      .reduce((acc, e) => acc + e.archers.reduce((a, arc) => a + (arc.platformFee || 0), 0), 0);
+      .reduce((acc, e) => acc + getEventFee(e), 0);
     
     return { totalEvents, totalUsers, totalArchers, potentialFee, collectedFee, pendingFee: potentialFee - collectedFee };
   }, [state.events, state.users]);

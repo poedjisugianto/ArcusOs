@@ -7,9 +7,11 @@ import ArcusLogo from './ArcusLogo';
 interface Props {
   event: ArcheryEvent;
   onBack: () => void;
+  onRefresh?: () => void;
+  isSyncing?: boolean;
 }
 
-export default function EntryList({ event, onBack }: Props) {
+export default function EntryList({ event, onBack, onRefresh, isSyncing }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryType | 'ALL'>('ALL');
   const [viewMode, setViewMode] = useState<'ARCHERS' | 'OFFICIALS'>('ARCHERS');
@@ -76,10 +78,11 @@ export default function EntryList({ event, onBack }: Props) {
           </div>
           <div className="flex items-center gap-1 md:gap-3">
             <button 
-              onClick={() => window.location.reload()}
-              className="p-1 px-2 md:p-3 md:px-5 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-2xl border border-emerald-100 text-[7px] md:text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all"
+              onClick={() => onRefresh ? onRefresh() : window.location.reload()}
+              disabled={isSyncing}
+              className={`p-1 px-2 md:p-3 md:px-5 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-2xl border border-emerald-100 text-[7px] md:text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-100 transition-all ${isSyncing ? 'opacity-50' : ''}`}
             >
-              <RefreshCw className="w-2.5 h-2.5 md:w-4 md:h-4 animate-spin-slow" /> REFRESH
+              <RefreshCw className={`w-2.5 h-2.5 md:w-4 md:h-4 ${isSyncing ? 'animate-spin' : ''}`} /> {isSyncing ? 'SYNCING...' : 'REFRESH'}
             </button>
             <div className="flex items-center gap-1 md:gap-2 px-2 md:px-6 py-1.5 md:py-3 bg-slate-50 rounded-lg md:rounded-2xl border border-slate-100 whitespace-nowrap">
               {viewMode === 'ARCHERS' ? <Users className="w-2.5 h-2.5 md:w-4 md:h-4 text-arcus-red" /> : <Users className="w-2.5 h-2.5 md:w-4 md:h-4 text-blue-600" />}

@@ -311,7 +311,10 @@ export default function LandingPage({
                       </div>
                     ) : (
                       <button 
-                        onClick={() => onRegister(event.id)}
+                        onClick={() => {
+                          console.log("Register clicked for event:", event.id);
+                          onRegister(event.id);
+                        }}
                         className="w-full py-4 bg-slate-900 text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl shadow-slate-200 active:scale-95 mb-3"
                       >
                         <Plus className="w-4 h-4" />

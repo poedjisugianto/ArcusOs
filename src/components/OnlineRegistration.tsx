@@ -129,24 +129,36 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       
       if (data.success && data.token) {
         // @ts-ignore
-        window.snap.pay(data.token, {
-          onSuccess: (result: any) => {
-            onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
-            localStorage.removeItem(`reg_draft_${event.id}`);
-            localStorage.removeItem(`reg_step_${event.id}`);
-            setStep(3);
-          },
-          onPending: (result: any) => {
-            onRegister({ ...newReg, status: 'PENDING', paymentType: 'GATEWAY' });
-            setStep(3);
-          },
-          onError: (result: any) => {
-            toast.error("Pembayaran Gagal");
-          },
-          onClose: () => {
-            toast.info("Pembayaran Dibatalkan");
-          }
-        });
+        if (window.snap) {
+          // @ts-ignore
+          window.snap.pay(data.token, {
+            onSuccess: (result: any) => {
+              console.log("Midtrans payment success:", result);
+              onRegister({ ...newReg, status: 'PAID', paymentType: 'GATEWAY' });
+              localStorage.removeItem(`reg_draft_${event.id}`);
+              localStorage.removeItem(`reg_step_${event.id}`);
+              setStep(3);
+            },
+            onPending: (result: any) => {
+              console.log("Midtrans payment pending:", result);
+              onRegister({ ...newReg, status: 'PENDING', paymentType: 'GATEWAY' });
+              setStep(3);
+            },
+            onError: (result: any) => {
+              console.error("Midtrans payment error:", result);
+              toast.error("Pembayaran Gagal");
+            },
+            onClose: () => {
+              toast.info("Pembayaran Dibatalkan");
+            }
+          });
+        } else {
+          console.warn("Midtrans Snap.js not loaded. Falling back to simulation/instruction.");
+          toast.error("Gagal membuka jendela pembayaran. Silakan muat ulang halaman.");
+          // Fallback to simulation if token exists but snap.js is missing
+          setSimulatedQR("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + data.transactionId);
+          setIsSimulatingPayment(true);
+        }
       } else if (data.success && data.qrData) {
         // Show simulation screen instead of immediate success
         setSimulatedQR(data.qrData);

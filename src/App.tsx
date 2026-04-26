@@ -115,22 +115,27 @@ export function App() {
     try {
       console.log("Fetching cloud data...");
       
-      // Test basic connectivity
-      const { count, error: testError } = await supabase.from('events').select('*', { count: 'exact', head: true });
-      if (testError) {
-        console.error("Connectivity test failed:", testError);
-        if (manual) pushNotification("Koneksi Cloud Gagal", "Gagal menghubungi database. Periksa konfigurasi Supabase Anda.", "WARNING");
-      } else {
-        console.log(`Supabase connection healthy. Total events in cloud: ${count}`);
+      if (!supabase) {
+        if (manual) pushNotification("Mode Lokal", "Hubungkan Supabase di pengaturan untuk sinkronisasi cloud.", "INFO");
+        return;
       }
 
-      const { data: configData } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
+      // 1. Fetch System Config (Global Settings)
+      const { data: configData, error: configError } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
       
+      // 2. Fetch Events
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('id, data, user_id, status, updated_at');
         
-      if (eventsError) throw eventsError;
+      if (eventsError) {
+        // Handle "Table not found" specifically
+        if (eventsError.code === '42P01') {
+          pushNotification("Database Belum Siap", "Tabel 'events' belum dibuat di Supabase. Silakan jalankan SQL Script.", "WARNING");
+          throw new Error("Table 'events' missing. Run SQL script to create tables.");
+        }
+        throw eventsError;
+      }
       console.log(`Fetched ${eventsData?.length || 0} events from cloud.`);
 
       const { data: profilesData } = await supabase.from('profiles').select('data');
@@ -370,6 +375,8 @@ export function App() {
     }
   };
 
+  const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   }, [appState]);
@@ -470,13 +477,15 @@ export function App() {
     return () => clearTimeout(debounce);
   }, [appState.events, appState.globalSettings, appState.currentUser, isOnline, hasPendingChanges]);
 
-  const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
-
   // Consistency Check for View and State
   useEffect(() => {
-    const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE'];
+    const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE', 'PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'];
     if (eventRequiredViews.includes(view) && !activeEvent) {
-      setView('MEMBER_DASHBOARD');
+      if (['PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'].includes(view as any)) {
+        setView('LANDING');
+      } else {
+        setView('MEMBER_DASHBOARD');
+      }
     }
     const authViews = ['MEMBER_DASHBOARD', 'PROFILE', 'SUPER_ADMIN', 'OPERATOR_CENTER'];
     if (authViews.includes(view) && !appState.currentUser) {
@@ -892,7 +901,12 @@ export function App() {
             onViewLive={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_LIVE'); }} 
             onViewParticipants={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_ENTRY_LIST'); }} 
             onViewInfo={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_EVENT_INFO'); }} 
-            onRegister={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('REGISTER_PARTICIPANT'); }}
+            onRegister={(id) => { 
+              console.log("App: onRegister called for", id);
+              setAppState(prev => ({ ...prev, activeEventId: id })); 
+              setView('REGISTER_PARTICIPANT'); 
+              pushNotification("Membuka Pendaftaran", "Menyiapkan formulir pendaftaran...", "INFO");
+            }}
             onScorerLogin={() => setView('SCORER_LOGIN')}
             onRefresh={() => fetchCloudData(true)}
             isSyncing={isSyncing}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { ArcheryEvent, GlobalSettings, ParticipantRegistration, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -729,7 +729,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                     ) : (
                       <ShieldCheck className="w-5 h-5" />
                     )}
-                    {isSubmitting ? 'MEMPROSES...' : (formData.paymentType === 'GATEWAY' ? 'BAYAR SEKARANG' : 'SETUJU & KIRIM')}
+                    {isSubmitting ? 'MEMPROSES...' : 'SETUJU & KIRIM'}
                   </button>
               </div>
               </>

@@ -224,12 +224,19 @@ export function App() {
             const shouldFavorCloud = (ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate;
             
             if (shouldFavorCloud || ce.id === prev.activeEventId) {
+              // SECURITY: If we're an admin/organizer and we have local changes, 
+              // we must be careful not to lose them if they are newer than what we just pulled.
+              const isMine = prev.currentUser && (ce.settings.organizerId === prev.currentUser.id || ce.ownerId === prev.currentUser.id);
+              const finalLocalUpdateDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : 0;
+              
+              // Only overwrite local with cloud if cloud is strictly newer OR it's not our own event (where we are the authority)
+              const useCloudStructure = shouldFavorCloud || !isMine || (cloudDate > finalLocalUpdateDate);
+
               eventMap.set(ce.id, { 
                 ...local, 
-                ...ce, 
+                ...(useCloudStructure ? ce : {}),
                 archers: mergedArchers, 
                 registrations: mergedRegistrations,
-                // Keep local updatedAt if it was newer, otherwise use cloud date
                 localUpdatedAt: localDate > cloudDate ? (local as any).localUpdatedAt : new Date().toISOString()
               });
             } else {
@@ -588,8 +595,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Trigger immediate sync when coming back online
+      pushNotification("Kembali Online", "Menghubungkan ke cloud...", "INFO");
+      syncCloudData(true);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      pushNotification("Sedang Offline", "Bekerja dalam mode lokal. Data akan disimpan di perangkat.", "WARNING");
+    };
     const handleUpdate = () => setUpdateAvailable(true);
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
@@ -676,8 +691,12 @@ export function App() {
       
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
       
+      // If online, we don't just wait for the debounce, we can flag it for immediate-ish sync
+      // The debounce in useEffect will catch this via hasPendingChanges
+      
       return newState;
     });
+    setHasPendingChanges(true);
   };
 
   const handleDeleteEvent = async (id: string) => {
@@ -885,6 +904,7 @@ export function App() {
       <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm ${
         !supabase ? 'bg-amber-500 text-white border-amber-600' :
         isSyncing ? 'bg-blue-600 text-white border-blue-700' :
+        hasPendingChanges ? 'bg-indigo-600 text-white border-indigo-700' :
         'bg-slate-900 text-white border-slate-800'
       }`}>
         <div className="flex items-center gap-3">
@@ -895,9 +915,9 @@ export function App() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : 'bg-emerald-500'}`} />
+              <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : (hasPendingChanges ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500')}`} />
               <span className="text-[9px] font-black uppercase tracking-widest">
-                {isSyncing ? 'Sinkronisasi Cloud...' : 'Cloud Terhubung'}
+                {isSyncing ? 'Sinkronisasi Cloud...' : (hasPendingChanges ? 'Data belum sinkron...' : 'Cloud Terhubung')}
               </span>
             </div>
           )}
@@ -1516,7 +1536,32 @@ export function App() {
             pin: pin
           };
 
-          // Use the new backend API to handle registration securely bypassing RLS
+          const registerLocallyOnly = () => {
+            setAppState(prev => {
+              const event = prev.events.find(e => e.id === (activeEvent as any).id);
+              if (!event) return prev;
+              const updatedEvent = { 
+                ...event, 
+                registrations: [...(event.registrations || []), r],
+                archers: [...(event.archers || []), newArcher],
+                localUpdatedAt: new Date().toISOString()
+              };
+              const newState = {
+                ...prev,
+                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+              return newState;
+            });
+            setHasPendingChanges(true);
+            pushNotification("Pendaftaran Lokal", "Data disimpan di perangkat. Akan dikirim ke cloud saat online.", "INFO");
+          };
+
+          if (!isOnline) {
+            registerLocallyOnly();
+            return;
+          }
+
           try {
             const response = await fetch('/api/register-participant', {
               method: 'POST',
@@ -1534,28 +1579,7 @@ export function App() {
               throw new Error(result.error || "Gagal menyimpan pendaftaran ke cloud");
             }
 
-            // Sync local state for immediate feedback
-            // IMPORTANT: We use functional update to ensure we don't overwrite other changes
-            setAppState(prev => {
-              const event = prev.events.find(e => e.id === activeEvent.id);
-              if (!event) return prev;
-              
-              const updatedEvent = { 
-                ...event, 
-                registrations: [...(event.registrations || []), r],
-                archers: [...(event.archers || []), newArcher],
-                localUpdatedAt: new Date().toISOString()
-              };
-              
-              const newState = {
-                ...prev,
-                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
-              };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-              return newState;
-            });
-
-            pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, Anda telah terdaftar!`, "SUCCESS");
+            pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, pendaftaran cloud sukses!`, "SUCCESS");
             
             // Re-fetch after a short delay to ensure everything is synced
             setTimeout(() => {
@@ -1578,19 +1602,11 @@ export function App() {
                 message
               })
             });
-
-            // Force refresh from cloud after a slight delay to allow propagation
-            setTimeout(() => {
-              fetchCloudData();
-            }, 3000);
+            
           } catch (error: any) {
             console.error("Online registration error:", error);
-            // Fallback to local update if API fails, though it might not sync to cloud
-            handleUpdateEvent(activeEvent.id, { 
-              registrations: [...activeEvent.registrations, r],
-              archers: [...activeEvent.archers, newArcher]
-            });
-            toast.error("Gagal sinkronisasi cloud. Data tersimpan di perangkat lokal.");
+            registerLocallyOnly();
+            pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
           }
         }} onBack={() => setView('LANDING')} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
         {view === 'PUBLIC_LIVE' && activeEvent && (

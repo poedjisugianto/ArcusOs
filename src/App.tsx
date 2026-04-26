@@ -180,7 +180,17 @@ export function App() {
           return (isMine || isPublic || isActive) && !deletedEventIds.has(ce.id);
         });
         
-        console.log(`Filtered cloud events count: ${filteredCloudEvents.length}`);
+      console.log(`Filtered cloud events count: ${filteredCloudEvents.length}`);
+      
+      if (manual && appState.activeEventId) {
+        const cloudActive = filteredCloudEvents.find(ce => ce.id === appState.activeEventId);
+        if (cloudActive) {
+          const count = cloudActive.archers?.length || 0;
+          pushNotification("Cloud Terhubung", `Ditemukan ${count} peserta di database. Melakukan penggabungan...`, "SUCCESS");
+        } else {
+          pushNotification("Cloud Kosong", "Turnamen belum ada di cloud atau Anda tidak memiliki akses.", "WARNING");
+        }
+      }
         
         const eventMap = new Map<string, ArcheryEvent>();
         // Initialize with local events
@@ -192,75 +202,47 @@ export function App() {
             console.log(`New event from cloud: ${ce.settings.tournamentName}`);
             eventMap.set(ce.id, ce);
           } else {
-            // Priority merge logic
+            // Priority merge logic: ALWAYS prioritize cloud participants for online registration safety
             const cloudDate = ce.cloudUpdatedAt ? new Date(ce.cloudUpdatedAt).getTime() : 0;
             const localDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : (local.settings.createdAt || 0);
 
-            // If cloud is activated but local is not, cloud always wins
-            if (ce.status !== 'DRAFT' && local.status === 'DRAFT') {
-              console.log(`Priority update: Event ${ce.settings.tournamentName} is now ACTIVE in cloud.`);
-              eventMap.set(ce.id, { ...local, ...ce });
-            } 
-            // If cloud data is newer, accept it but merge archers/registrations for safety
-            else if (cloudDate > localDate) {
-              console.log(`Cloud update for ${ce.settings.tournamentName} is newer than local. Merging participants...`);
-              
-              const mergedStatus = ce.status || local.status;
-              const mergedArchers = [...(ce.archers || [])];
-              const mergedRegistrations = [...(ce.registrations || [])];
-              
-              // Add local-only archers that might be in flight
-              (local.archers || []).forEach(la => {
-                if (!mergedArchers.some(ca => ca.id === la.id)) {
-                  mergedArchers.push(la);
-                }
-              });
+            const mergedArchers = [...(local.archers || [])];
+            const mergedRegistrations = [...(local.registrations || [])];
+            
+            // Add cloud archers that are missing locally
+            (ce.archers || []).forEach((ca: any) => {
+              const existingIdx = mergedArchers.findIndex(la => la.id === ca.id);
+              if (existingIdx === -1) {
+                mergedArchers.push(ca);
+              } else if (cloudDate > localDate || (ca.updatedAt && ca.updatedAt > (mergedArchers[existingIdx].updatedAt || 0))) {
+                mergedArchers[existingIdx] = { ...mergedArchers[existingIdx], ...ca };
+              }
+            });
 
-              // Add local-only registrations
-              (local.registrations || []).forEach(lr => {
-                if (!mergedRegistrations.some(cr => cr.id === lr.id)) {
-                  mergedRegistrations.push(lr);
-                }
-              });
+            // Add cloud registrations that are missing locally
+            (ce.registrations || []).forEach((cr: any) => {
+              if (!mergedRegistrations.some(lr => lr.id === cr.id)) {
+                mergedRegistrations.push(cr);
+              }
+            });
 
+            // If cloud structure is updated (e.g. tournament activated), or cloud data is newer overall
+            if ((ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate) {
+              console.log(`Priority sync for ${ce.settings.tournamentName}: Cloud data is newer or active.`);
               eventMap.set(ce.id, { 
                 ...local, 
                 ...ce, 
-                status: mergedStatus,
+                archers: mergedArchers, 
+                registrations: mergedRegistrations,
+                scores: ce.scores?.length > (local.scores?.length || 0) ? ce.scores : local.scores
+              });
+            } else {
+              // Local setup is newer, but ensure we keep all cloud participants
+              eventMap.set(ce.id, { 
+                ...local, 
                 archers: mergedArchers, 
                 registrations: mergedRegistrations 
               });
-            }
-            else {
-              // Cloud is older or same as local (according to timestamp), 
-              // BUT for multi-user safety, we ALWAYS merge participants from cloud
-              // because online registrations happen directly on the cloud via API.
-              
-              const merged = {
-                ...local,
-                archers: [...(local.archers || [])],
-                registrations: [...(local.registrations || [])]
-              };
-              
-              // 1. Add cloud archers that are not in local
-              (ce.archers || []).forEach(ca => {
-                const existingIdx = merged.archers.findIndex(la => la.id === ca.id);
-                if (existingIdx === -1) {
-                  merged.archers.push(ca);
-                } else if (ca.updatedAt && (!merged.archers[existingIdx].updatedAt || ca.updatedAt > merged.archers[existingIdx].updatedAt)) {
-                  // Update existing if cloud version has newer timestamp (if provided)
-                  merged.archers[existingIdx] = ca;
-                }
-              });
-              
-              // 2. Add cloud registrations that are not in local
-              (ce.registrations || []).forEach(cr => {
-                if (!merged.registrations.some(lr => lr.id === cr.id)) {
-                  merged.registrations.push(cr);
-                }
-              });
-              
-              eventMap.set(ce.id, merged);
             }
           }
         });

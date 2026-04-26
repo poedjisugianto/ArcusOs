@@ -382,6 +382,8 @@ app.post("/api/register-participant", async (req, res) => {
     const updatedRegistrations = [...(eventData.registrations || []), registration];
     const updatedArchers = [...(eventData.archers || []), archer];
 
+    console.log(`[REGISTRATION] Event: ${eventId}, New Total Archers: ${updatedArchers.length}`);
+
     const updatedData = {
       ...eventData,
       registrations: updatedRegistrations,
@@ -391,14 +393,22 @@ app.post("/api/register-participant", async (req, res) => {
     // 3. Save back to Supabase
     const { error: updateError } = await supabase
       .from('events')
-      .update({ data: updatedData, updated_at: new Date().toISOString() })
+      .update({ 
+        data: updatedData, 
+        status: eventData.status || 'ACTIVE',
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', eventId);
 
     if (updateError) {
       throw updateError;
     }
 
-    res.json({ success: true, message: "Participant registered successfully" });
+    res.json({ 
+      success: true, 
+      message: "Participant registered successfully",
+      count: updatedArchers.length
+    });
   } catch (error: any) {
     console.error("Registration Error:", error);
     res.status(500).json({ success: false, error: error.message });

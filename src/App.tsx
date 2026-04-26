@@ -142,67 +142,55 @@ export function App() {
       console.log(`Fetched ${eventsData?.length || 0} events from cloud.`);
 
       const { data: profilesData } = await supabase.from('profiles').select('data');
+      
+      const cloudUsers = profilesData ? profilesData.map(p => p.data) : [];
+      
+      const cloudEventsRaw = eventsData ? eventsData.map(e => {
+        const data = e.data as any;
+        return { 
+          ...data, 
+          ownerId: e.user_id,
+          status: data.status || 'DRAFT',
+          cloudUpdatedAt: e.updated_at,
+          // Ensure arrays exist
+          archers: data.archers || [],
+          registrations: data.registrations || [],
+          scores: data.scores || [],
+          scoreLogs: data.scoreLogs || []
+        };
+      }) : [];
+      
+      // Detailed log to help user debug
+      console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
+      if (cloudEventsRaw.length > 0) {
+        console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings.tournamentName, status: ce.status, owner: ce.ownerId })));
+      }
 
-      setAppState(prev => {
-        const cloudUsers = profilesData ? profilesData.map(p => p.data) : [];
-        const finalUsers = cloudUsers.length > 0 ? cloudUsers : prev.users;
+      // Filter events outside setAppState to keep them available for notifications
+      const filteredCloudEvents = cloudEventsRaw.filter(ce => {
+        const isSuperAdmin = appState.currentUser?.isSuperAdmin;
+        if (isSuperAdmin) return true;
         
-        const cloudEventsRaw = eventsData ? eventsData.map(e => {
-          const data = e.data as any;
-          return { 
-            ...data, 
-            ownerId: e.user_id,
-            status: data.status || 'DRAFT',
-            cloudUpdatedAt: e.updated_at,
-            // Ensure arrays exist
-            archers: data.archers || [],
-            registrations: data.registrations || [],
-            scores: data.scores || [],
-            scoreLogs: data.scoreLogs || []
-          };
-        }) : [];
+        const isMine = appState.currentUser && (ce.settings.organizerId === appState.currentUser.id || ce.ownerId === appState.currentUser.id);
+        const isPublic = ce.status !== 'DRAFT';
+        const isActive = ce.id === appState.activeEventId;
         
-        // Detailed log to help user debug
-        console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
-        if (cloudEventsRaw.length > 0) {
-          console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings.tournamentName, status: ce.status, owner: ce.ownerId })));
-        }
-
-        const filteredCloudEvents = cloudEventsRaw.filter(ce => {
-          if (prev.currentUser?.isSuperAdmin) return true;
-          // Important: Status !== 'DRAFT' makes it visible to everyone
-          const isMine = prev.currentUser && (ce.settings.organizerId === prev.currentUser.id || ce.ownerId === prev.currentUser.id);
-          const isPublic = ce.status !== 'DRAFT';
-          const isActive = ce.id === prev.activeEventId;
-          
-          if (!isMine && isPublic) console.log(`Event ${ce.id} is PUBLIC and visible to guest.`);
-          
-          return (isMine || isPublic || isActive) && !deletedEventIds.has(ce.id);
-        });
-        
+        return (isMine || isPublic || isActive) && !deletedEventIds.has(ce.id);
+      });
+      
       console.log(`Filtered cloud events count: ${filteredCloudEvents.length}`);
       
-      if (manual && appState.activeEventId) {
-        const cloudActive = filteredCloudEvents.find(ce => ce.id === appState.activeEventId);
-        if (cloudActive) {
-          const count = cloudActive.archers?.length || 0;
-          pushNotification("Cloud Terhubung", `Ditemukan ${count} peserta di database. Melakukan penggabungan...`, "SUCCESS");
-        } else {
-          pushNotification("Cloud Kosong", "Turnamen belum ada di cloud atau Anda tidak memiliki akses.", "WARNING");
-        }
-      }
-        
+      setAppState(prev => {
         const eventMap = new Map<string, ArcheryEvent>();
-        // Initialize with local events
+        // Initialize with existing local events
         prev.events.forEach(e => eventMap.set(e.id, e));
         
+        // Merge cloud events into map
         filteredCloudEvents.forEach(ce => {
           const local = eventMap.get(ce.id);
           if (!local) {
-            console.log(`New event from cloud: ${ce.settings.tournamentName}`);
             eventMap.set(ce.id, ce);
           } else {
-            // Priority merge logic: ALWAYS prioritize cloud participants for online registration safety
             const cloudDate = ce.cloudUpdatedAt ? new Date(ce.cloudUpdatedAt).getTime() : 0;
             const localDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : (local.settings.createdAt || 0);
 
@@ -210,17 +198,15 @@ export function App() {
             const localArchers = local.archers || [];
             const mergedArchers = [...localArchers];
             
-            // SECURITY: Always keep all archers from cloud if they are missing locally
-            // This is critical for online registrations
             cloudArchers.forEach((ca: any) => {
               const existingIdx = mergedArchers.findIndex(la => la.id === ca.id);
               if (existingIdx === -1) {
                 mergedArchers.push(ca);
               } else {
-                // If existing, update it if cloud has newer info or specifically for active event
                 const cloudArcherDate = ca.updatedAt || cloudDate;
                 const localArcherDate = mergedArchers[existingIdx].updatedAt || localDate;
-                if (cloudArcherDate > localArcherDate || ce.id === appState.activeEventId) {
+                // Favor cloud if it's the active event or if cloud data is newer
+                if (cloudArcherDate > localArcherDate || ce.id === prev.activeEventId) {
                   mergedArchers[existingIdx] = { ...mergedArchers[existingIdx], ...ca };
                 }
               }
@@ -233,18 +219,17 @@ export function App() {
               }
             });
 
-            // If it's the active event, we prioritize the merged result immediately
-            // to ensure the UI shows all participants
-            if ((ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate || ce.id === appState.activeEventId) {
-              console.log(`Priority sync for ${ce.settings.tournamentName}: Data merged.`);
+            // If it's the active event or cloud is newer/active, update full object
+            if ((ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate || ce.id === prev.activeEventId) {
               eventMap.set(ce.id, { 
                 ...local, 
                 ...ce, 
                 archers: mergedArchers, 
                 registrations: mergedRegistrations,
-                localUpdatedAt: new Date().toISOString() // Mark as merged
+                localUpdatedAt: new Date().toISOString()
               });
             } else {
+              // Local is potentially newer, but still keep all merged participants
               eventMap.set(ce.id, { 
                 ...local, 
                 archers: mergedArchers, 
@@ -258,10 +243,20 @@ export function App() {
           ...prev,
           globalSettings: configData ? { ...prev.globalSettings, ...configData.data } : prev.globalSettings,
           events: Array.from(eventMap.values()),
-          users: finalUsers,
+          users: cloudUsers.length > 0 ? cloudUsers : prev.users,
           isDataLoaded: true
         };
       });
+
+      if (manual && appState.activeEventId) {
+        const cloudActive = filteredCloudEvents.find(ce => ce.id === appState.activeEventId);
+        if (cloudActive) {
+          const count = cloudActive.archers?.length || 0;
+          pushNotification("Cloud Terhubung", `Ditemukan ${count} peserta di database. Sinkronisasi berhasil.`, "SUCCESS");
+        } else {
+          pushNotification("Peringatan Cloud", "Event ini tidak ditemukan di Cloud atau Anda tidak memiliki akses.", "WARNING");
+        }
+      }
       setLastSync(new Date());
       if (manual) {
         pushNotification("Data Diperbarui", "Sinkronisasi awan selesai.", "SUCCESS");
@@ -615,18 +610,15 @@ export function App() {
     };
   }, []);
 
-  // Polling for cloud data when in admin view to ensure online registrations are visible
+  // Polling for registration updates when in admin screens
   useEffect(() => {
     if (!supabase || !isOnline) return;
-    
-    const isAdminView = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER'].includes(view);
-    
-    if (isAdminView) {
+    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER'];
+    if (adminViews.includes(view)) {
       const interval = setInterval(() => {
-        console.log("Auto-polling cloud data for admin...");
+        console.log("Auto-polling registrations...");
         fetchCloudData();
-      }, 30000); // Every 30 seconds
-      
+      }, 30000); // Check every 30 seconds
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);

@@ -352,9 +352,17 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onUpdateEve
              
              <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
                 <ShieldAlert className="w-5 h-5 text-blue-600" />
-                <p className="text-[10px] font-medium text-blue-700 leading-relaxed">
-                   <strong>PENTING:</strong> Pastikan Server Key disimpan dengan aman. Gunakan Sandbox Mode untuk pengujian sebelum beralih ke Production.
-                </p>
+                <div className="flex-1">
+                  <p className="text-[10px] font-medium text-blue-700 leading-relaxed">
+                    <strong>PENTING:</strong> Pastikan Server Key disimpan dengan aman. Gunakan Sandbox Mode untuk pengujian sebelum beralih ke Production.
+                  </p>
+                  <p className="text-[9px] font-black text-blue-800 uppercase mt-2">
+                    Webhook URL: <code className="bg-white/40 px-2 py-0.5 rounded ml-1 underline">{window.location.origin}/api/payment/webhook</code>
+                  </p>
+                  <p className="text-[8px] font-medium text-blue-500 italic">
+                    * Tempelkan URL ini di "Notification URL" Dashboard Midtrans Anda.
+                  </p>
+                </div>
                 <div className="ml-auto flex items-center gap-2">
                    <span className="text-[9px] font-black uppercase text-slate-400">Production?</span>
                    <button 

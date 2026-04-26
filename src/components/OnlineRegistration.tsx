@@ -60,6 +60,42 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     localStorage.setItem(`reg_step_${event.id}`, step.toString());
   }, [step, event.id]);
 
+  useEffect(() => {
+    // Dynamically load Midtrans Snap.js
+    const loadSnap = () => {
+      const clientKey = globalSettings.paymentGatewayClientKey || "SB-Mid-client-0zW-uI9FidU1T7S4";
+      const isProduction = globalSettings.paymentGatewayIsProduction === true || String(globalSettings.paymentGatewayIsProduction) === "true";
+      const snapSrc = isProduction ? "https://app.midtrans.com/snap/snap.js" : "https://app.sandbox.midtrans.com/snap/snap.js";
+
+      // Check if already loaded
+      const existingScript = document.getElementById('midtrans-snap');
+      if (existingScript) {
+        if (existingScript.getAttribute('data-client-key') !== clientKey) {
+          existingScript.remove();
+        } else {
+          return;
+        }
+      }
+
+      const script = document.createElement('script');
+      script.src = snapSrc;
+      script.id = 'midtrans-snap';
+      script.setAttribute('data-client-key', clientKey);
+      script.async = true;
+      document.body.appendChild(script);
+
+      script.onload = () => console.log("Midtrans Snap.js loaded successfully. Mode:", isProduction ? 'Production' : 'Sandbox');
+      script.onerror = () => {
+        console.error("Failed to load Midtrans Snap.js");
+        toast.error("Gagal memuat sistem pembayaran Midtrans");
+      };
+    };
+
+    if (globalSettings.paymentGatewayProvider === 'MIDTRANS') {
+      loadSnap();
+    }
+  }, [globalSettings.paymentGatewayClientKey, globalSettings.paymentGatewayProvider, globalSettings.paymentGatewayIsProduction]);
+
   const allCategories = (Object.keys(CategoryType) as CategoryType[]).filter(cat => cat !== CategoryType.OFFICIAL);
   const categories = event.settings.categoryConfigs && Object.keys(event.settings.categoryConfigs).length > 0
     ? Object.keys(event.settings.categoryConfigs).filter(cat => cat !== CategoryType.OFFICIAL) 
@@ -95,7 +131,10 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
   const [simulatedQR, setSimulatedQR] = useState<string | null>(null);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleGatewayPayment = async (newReg: ParticipantRegistration) => {
+    setIsSubmitting(true);
     try {
       let amount = 0;
       if (formData.regType === 'OFFICIAL') {
@@ -105,13 +144,20 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         amount = config?.registrationFee || 0;
       }
 
+      if (amount <= 0) {
+        toast.error("Biaya pendaftaran tidak valid (Rp 0)");
+        setIsSubmitting(false);
+        return;
+      }
+
+      console.log("Creating payment for amount:", amount);
       const res = await fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           amount,
           method: 'GATEWAY',
-          provider: globalSettings.paymentGatewayProvider,
+          provider: globalSettings.paymentGatewayProvider || 'MIDTRANS',
           customerDetails: {
             first_name: formData.name,
             email: formData.email
@@ -125,7 +171,13 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         })
       });
 
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
+      }
+
       const data = await res.json();
+      console.log("Payment creation response:", data);
       
       if (data.success && data.token) {
         // @ts-ignore
@@ -146,7 +198,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             },
             onError: (result: any) => {
               console.error("Midtrans payment error:", result);
-              toast.error("Pembayaran Gagal");
+              toast.error("Pembayaran Gagal. Silakan coba lagi.");
             },
             onClose: () => {
               toast.info("Pembayaran Dibatalkan");
@@ -154,8 +206,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           });
         } else {
           console.warn("Midtrans Snap.js not loaded. Falling back to simulation/instruction.");
-          toast.error("Gagal membuka jendela pembayaran. Silakan muat ulang halaman.");
-          // Fallback to simulation if token exists but snap.js is missing
+          toast.error("Snap.js tidak tersedia. Menggunakan mode simulasi.");
           setSimulatedQR("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + data.transactionId);
           setIsSimulatingPayment(true);
         }
@@ -164,10 +215,13 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         setSimulatedQR(data.qrData);
         setIsSimulatingPayment(true);
       } else {
-        toast.error(data.message || "Gagal membuat transaksi");
+        toast.error(data.message || "Gagal membuat transaksi. Periksa konfigurasi Gateway.");
       }
-    } catch (err) {
-      toast.error("Gagal menghubungkan ke Gateway");
+    } catch (err: any) {
+      console.error("Payment Gateway Error:", err);
+      toast.error(`Gagal menghubungkan ke Gateway: ${err.message || "Unknown error"}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -665,12 +719,18 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                 >
                   BATAL & KEMBALI
                 </button>
-                <button 
-                  onClick={handleSubmit}
-                  className="flex-[2] py-5 md:py-7 bg-red-600 text-white rounded-2xl md:rounded-3xl font-black uppercase text-[10px] md:text-xs tracking-[0.2em] shadow-xl hover:bg-red-700 transition-all active:scale-[0.98] flex items-center justify-center gap-3 md:gap-4"
-                >
-                  <ShieldCheck className="w-5 h-5" /> {(formData.paymentType as any) === 'GATEWAY' ? 'BAYAR SEKARANG' : 'SETUJU'}
-                </button>
+                  <button 
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className={`flex-[2] py-5 md:py-7 rounded-2xl md:rounded-3xl font-black uppercase text-[10px] md:text-xs tracking-[0.2em] shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3 md:gap-4 ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                  >
+                    {isSubmitting ? (
+                      <Activity className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="w-5 h-5" />
+                    )}
+                    {isSubmitting ? 'MEMPROSES...' : (formData.paymentType === 'GATEWAY' ? 'BAYAR SEKARANG' : 'SETUJU & KIRIM')}
+                  </button>
               </div>
               </>
             ) : (
@@ -734,9 +794,15 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                   </button>
                   <button 
                     onClick={handleSubmit}
-                    className="flex-[2] py-5 md:py-7 bg-arcus-red text-white rounded-2xl md:rounded-3xl font-black uppercase text-[10px] md:text-xs tracking-[0.2em] shadow-xl hover:bg-red-600 transition-all active:scale-[0.98] flex items-center justify-center gap-3 md:gap-4 group"
+                    disabled={isSubmitting}
+                    className={`flex-[2] py-5 md:py-7 rounded-2xl md:rounded-3xl font-black uppercase text-[10px] md:text-xs tracking-[0.2em] shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3 md:gap-4 group ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-arcus-red text-white hover:bg-red-600'}`}
                   >
-                    <Sparkles className="w-5 h-5 group-hover:animate-spin" /> PROSES PEMBAYARAN
+                    {isSubmitting ? (
+                      <Activity className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-5 h-5 group-hover:animate-spin" />
+                    )}
+                    {isSubmitting ? 'MENGHUBUNGKAN...' : 'PROSES PEMBAYARAN'}
                   </button>
                 </div>
               </div>

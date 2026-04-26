@@ -44,15 +44,25 @@ const getGlobalSettings = async () => {
 const getSnapInstance = async () => {
   const settings = await getGlobalSettings();
   
-  const serverKey = settings?.paymentGatewayServerKey || process.env.MIDTRANS_SERVER_KEY || "";
-  const clientKey = settings?.paymentGatewayClientKey || process.env.MIDTRANS_CLIENT_KEY || "";
-  const isProduction = settings?.paymentGatewayIsProduction ?? (process.env.MIDTRANS_IS_PRODUCTION === "true");
+  const serverKey = (settings?.paymentGatewayServerKey || process.env.MIDTRANS_SERVER_KEY || "").trim();
+  const clientKey = (settings?.paymentGatewayClientKey || process.env.MIDTRANS_CLIENT_KEY || "").trim();
+  const isProduction = settings?.paymentGatewayIsProduction === true || settings?.paymentGatewayIsProduction === "true" || process.env.MIDTRANS_IS_PRODUCTION === "true";
 
-  return new midtransClient.Snap({
-    isProduction,
-    serverKey,
-    clientKey
-  });
+  if (!serverKey) {
+    console.warn("Midtrans Server Key is missing. Falling back to simulation mode.");
+    return null;
+  }
+
+  try {
+    return new midtransClient.Snap({
+      isProduction,
+      serverKey,
+      clientKey
+    });
+  } catch (err) {
+    console.error("Failed to initialize Midtrans Snap:", err);
+    return null;
+  }
 };
 
 // API Route for sending Email OTP via Nodemailer
@@ -181,11 +191,14 @@ app.post("/api/payment/create", async (req, res) => {
   
   console.log(`[PAYMENT] Initiating ${amount} via ${method} using provider: ${provider}`);
 
-  const snap = await getSnapInstance() as any;
-  const serverKey = snap.apiConfig.serverKey;
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ success: false, message: "Amount must be greater than 0" });
+  }
+
+  const snap = await getSnapInstance();
 
   // If Midtrans is configured, use it
-  if (serverKey) {
+  if (snap) {
     try {
       const parameter = {
         transaction_details: {
@@ -199,6 +212,7 @@ app.post("/api/payment/create", async (req, res) => {
         item_details: itemDetails
       };
 
+      // @ts-ignore
       const transaction = await snap.createTransaction(parameter);
       
       // Store locally for status tracking if needed
@@ -213,7 +227,15 @@ app.post("/api/payment/create", async (req, res) => {
       });
     } catch (error: any) {
       console.error("Midtrans Error:", error);
-      return res.status(500).json({ success: false, message: "Midtrans Error", error: error.message });
+      // Detailed error for debugging if it's unauthorized
+      if (error.message?.includes("401")) {
+        return res.status(500).json({ 
+          success: false, 
+          message: "Midtrans Auth Error: Server Key tidak valid atau salah mode (Sandbox/Production).",
+          error: error.message 
+        });
+      }
+      return res.status(500).json({ success: false, message: "Gagal membuat transaksi Midtrans", error: error.message });
     }
   }
   

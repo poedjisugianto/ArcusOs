@@ -512,6 +512,12 @@ export function App() {
           
           finalData.archers = mergedArchers;
           finalData.registrations = mergedRegistrations;
+
+          // Update local state as well so the organizer sees new online registrations immediately
+          setAppState(prev => ({
+            ...prev,
+            events: prev.events.map(e => e.id === event.id ? { ...e, archers: mergedArchers, registrations: mergedRegistrations } : e)
+          }));
         }
 
         const { error } = await supabase.from('events').upsert({ 
@@ -619,6 +625,22 @@ export function App() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
+
+  // Polling for cloud data when in admin view to ensure online registrations are visible
+  useEffect(() => {
+    if (!supabase || !isOnline) return;
+    
+    const isAdminView = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER'].includes(view);
+    
+    if (isAdminView) {
+      const interval = setInterval(() => {
+        console.log("Auto-polling cloud data for admin...");
+        fetchCloudData();
+      }, 30000); // Every 30 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [view, isOnline]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -1431,6 +1453,7 @@ export function App() {
             onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.filter(a => a.id !== id) })} 
             onBulkUpdate={(updated) => handleUpdateEvent(activeEvent.id, { archers: updated })} 
             onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
+            onRefreshData={() => fetchCloudData(true)}
             onBack={() => setView('EVENT_ADMIN')} 
           />
         )}

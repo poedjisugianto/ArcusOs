@@ -13,6 +13,7 @@ import {
   UserPlus,
   Printer,
   Image as ImageIcon,
+  RefreshCw
 } from "lucide-react";
 import {
   Archer,
@@ -31,6 +32,7 @@ interface Props {
   onBack: () => void;
   onBulkUpdate: (updated: Archer[]) => void;
   onGoToIdCardEditor: () => void;
+  onRefreshData?: () => void;
   archersPerTarget: number;
   totalTargets: number;
   settings: TournamentSettings;
@@ -46,6 +48,7 @@ const ArcherList: React.FC<Props> = ({
   onBack,
   onBulkUpdate,
   onGoToIdCardEditor,
+  onRefreshData,
   archersPerTarget,
   totalTargets,
   settings,
@@ -232,6 +235,15 @@ const ArcherList: React.FC<Props> = ({
           <h2 className="text-xl font-black font-oswald uppercase italic tracking-tighter text-slate-900">
             Manajemen Peserta
           </h2>
+          {onRefreshData && (
+            <button 
+              onClick={onRefreshData}
+              className="p-2.5 bg-white rounded-lg border border-slate-100 shadow-sm text-emerald-500 hover:bg-emerald-50 transition-all active:scale-90"
+              title="Segarkan Data dari Cloud"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-center md:justify-end gap-2">
           <button

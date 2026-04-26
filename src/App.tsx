@@ -1464,6 +1464,9 @@ export function App() {
                 message
               })
             });
+
+            // Force refresh from cloud to ensure total consistency
+            fetchCloudData();
           } catch (error: any) {
             console.error("Online registration error:", error);
             // Fallback to local update if API fails, though it might not sync to cloud

@@ -19,23 +19,40 @@ export default function EntryList({ event, onBack }: Props) {
   }, []);
 
   const archers = useMemo(() => {
-    return event.archers.filter(a => a.category !== CategoryType.OFFICIAL);
+    return (event.archers || []).filter(a => a.category !== CategoryType.OFFICIAL);
   }, [event.archers]);
 
   const officials = useMemo(() => {
-    return event.archers.filter(a => a.category === CategoryType.OFFICIAL);
+    return (event.archers || []).filter(a => a.category === CategoryType.OFFICIAL);
   }, [event.archers]);
 
   const currentList = viewMode === 'ARCHERS' ? archers : officials;
 
   const filteredData = useMemo(() => {
     return currentList.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                           item.club.toLowerCase().includes(searchTerm.toLowerCase());
+      const name = item.name || '';
+      const club = item.club || '';
+      const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           club.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = viewMode === 'OFFICIALS' || activeCategory === 'ALL' || item.category === activeCategory;
       return matchesSearch && matchesCategory;
     });
   }, [currentList, searchTerm, activeCategory, viewMode]);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'PAID':
+      case 'APPROVED':
+      case 'CONFIRMED':
+        return <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[8px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1"><CheckCircle2 className="w-2 h-2" /> TERVERIFIKASI</span>;
+      case 'PENDING':
+        return <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[8px] font-black uppercase tracking-widest border border-amber-100 flex items-center gap-1"><Info className="w-2 h-2" /> MENUNGGU</span>;
+      case 'REJECTED':
+        return <span className="px-2 py-1 bg-red-50 text-red-600 rounded text-[8px] font-black uppercase tracking-widest border border-red-100 italic">DITOLAK</span>;
+      default:
+        return <span className="px-2 py-1 bg-slate-50 text-slate-400 rounded text-[8px] font-black uppercase tracking-widest border border-slate-100">PROSES</span>;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-arcus-red selection:text-white">
@@ -174,8 +191,8 @@ export default function EntryList({ event, onBack }: Props) {
                       </td>
                     )}
                     <td className="px-4 md:px-10 py-3 md:py-6 text-right">
-                      <div className="flex items-center justify-end text-emerald-500">
-                        <CheckCircle2 className="w-4 h-4" />
+                      <div className="flex items-center justify-end">
+                        {getStatusBadge(item.status)}
                       </div>
                     </td>
                   </tr>

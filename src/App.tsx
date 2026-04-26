@@ -8,6 +8,7 @@ import {
   RefreshCw, Sparkles, DollarSign, FileDown, Cloud, Zap, LayoutDashboard,
   AlertTriangle
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole } from './types';
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { supabase } from './supabase';
@@ -1420,43 +1421,57 @@ export function App() {
             wave: 1,
             pin: pin
           };
-          handleUpdateEvent(activeEvent.id, { 
-            registrations: [...activeEvent.registrations, r],
-            archers: [...activeEvent.archers, newArcher]
-          });
-          pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, Anda telah terdaftar! Sedang menyinkronkan data...`, "SUCCESS");
 
-          // Auto-send confirmation email if approved immediately (Gateway)
-          if (r.status === 'APPROVED' || r.status === 'PAID') {
-            try {
-              await fetch('/api/send-email-otp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  email: r.email,
-                  subject: `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}`,
-                  message: `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nDetail Pendaftaran:\n- Kategori: ${r.category}\n- Klub: ${r.club}\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nLihat Live Score: ${window.location.origin}?event=${activeEvent.id}&view=live\n\nSelamat bertanding!`
-                })
-              });
-              pushNotification("Email Terkirim", `Konfirmasi pendaftaran telah dikirim ke ${r.email}`, "INFO");
-            } catch (err) {
-              console.error("Failed to send auto-confirmation email", err);
+          // Use the new backend API to handle registration securely bypassing RLS
+          try {
+            const response = await fetch('/api/register-participant', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventId: activeEvent.id,
+                registration: r,
+                archer: newArcher
+              })
+            });
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+              throw new Error(result.error || "Gagal menyimpan pendaftaran ke cloud");
             }
-          } else {
-            // For manual payment, send "Registration Received" email
-            try {
-              await fetch('/api/send-email-otp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  email: r.email,
-                  subject: `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`,
-                  message: `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nKami akan mengirimkan email konfirmasi setelah pembayaran Anda diverifikasi oleh panitia.`
-                })
-              });
-            } catch (err) {
-              console.error("Failed to send registration received email", err);
-            }
+
+            // Sync local state for immediate feedback
+            handleUpdateEvent(activeEvent.id, { 
+              registrations: [...activeEvent.registrations, r],
+              archers: [...activeEvent.archers, newArcher]
+            });
+
+            pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, Anda telah terdaftar!`, "SUCCESS");
+
+            // Auto-send confirmation email
+            const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
+            const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}` : `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`;
+            const message = isAutoConfirm 
+              ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nPendaftaran Anda telah BERHASIL diverifikasi.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nSelamat bertanding!`
+              : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.\n\nKami akan mengirimkan email konfirmasi setelah pembayaran Anda diverifikasi oleh panitia.`;
+
+            await fetch('/api/send-email-otp', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: r.email,
+                subject,
+                message
+              })
+            });
+          } catch (error: any) {
+            console.error("Online registration error:", error);
+            // Fallback to local update if API fails, though it might not sync to cloud
+            handleUpdateEvent(activeEvent.id, { 
+              registrations: [...activeEvent.registrations, r],
+              archers: [...activeEvent.archers, newArcher]
+            });
+            toast.error("Gagal sinkronisasi cloud. Data tersimpan di perangkat lokal.");
           }
         }} onBack={() => setView('LANDING')} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
         {view === 'PUBLIC_LIVE' && activeEvent && (

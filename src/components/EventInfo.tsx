@@ -52,7 +52,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
             {isRegistrationOpen && (
               <button 
                 onClick={onRegister}
-                className="bg-slate-900 text-white px-3 md:px-8 py-2 md:py-3 rounded-lg md:rounded-2xl text-[7px] md:text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl shadow-slate-200 whitespace-nowrap"
+                className="bg-arcus-red text-white px-3 md:px-8 py-2 md:py-3 rounded-lg md:rounded-2xl text-[7px] md:text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-red-200 whitespace-nowrap"
               >
                 Daftar
               </button>

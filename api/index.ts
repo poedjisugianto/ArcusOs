@@ -355,4 +355,54 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "ARCUS API is running" });
 });
 
+// API Route for registering a participant (Online Registration)
+// This bypasses RLS using the backend supabase client
+app.post("/api/register-participant", async (req, res) => {
+  const { eventId, registration, archer } = req.body;
+
+  if (!supabase) {
+    return res.status(500).json({ success: false, message: "Supabase not initialized on backend" });
+  }
+
+  try {
+    // 1. Get current event data
+    const { data: event, error: fetchError } = await supabase
+      .from('events')
+      .select('data, user_id')
+      .eq('id', eventId)
+      .single();
+
+    if (fetchError || !event) {
+      throw new Error(fetchError?.message || "Event not found");
+    }
+
+    const eventData = event.data;
+    
+    // 2. Update registrations and archers arrays
+    const updatedRegistrations = [...(eventData.registrations || []), registration];
+    const updatedArchers = [...(eventData.archers || []), archer];
+
+    const updatedData = {
+      ...eventData,
+      registrations: updatedRegistrations,
+      archers: updatedArchers
+    };
+
+    // 3. Save back to Supabase
+    const { error: updateError } = await supabase
+      .from('events')
+      .update({ data: updatedData, updated_at: new Date().toISOString() })
+      .eq('id', eventId);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.json({ success: true, message: "Participant registered successfully" });
+  } catch (error: any) {
+    console.error("Registration Error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default app;

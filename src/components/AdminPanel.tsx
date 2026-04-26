@@ -577,24 +577,27 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                     </div>
                     <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Aturan Skor Kategori</h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <select 
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        addCategory(e.target.value as CategoryType);
-                        e.target.value = '';
+                <div className="flex items-center gap-3">
+                  <div className="relative group">
+                    <select 
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          addCategory(e.target.value as CategoryType);
+                          e.target.value = '';
+                        }
+                      }}
+                      className="bg-arcus-red text-white border-2 border-arcus-red rounded-xl px-6 py-3 text-xs font-black uppercase tracking-widest cursor-pointer hover:bg-red-700 hover:border-red-700 transition-all shadow-lg active:scale-95 appearance-none"
+                    >
+                      <option value="" className="bg-white text-slate-900 font-black">+ TAMBAH KATEGORI</option>
+                      {(Object.keys(CategoryType) as CategoryType[])
+                        .filter(cat => !localSettings.categoryConfigs?.[cat])
+                        .map(cat => (
+                          <option key={cat} value={cat} className="bg-white text-slate-900 font-bold">{CATEGORY_LABELS[cat] || cat}</option>
+                        ))
                       }
-                    }}
-                    className="bg-slate-50 border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest"
-                  >
-                    <option value="">+ Tambah Kategori</option>
-                    {(Object.keys(CategoryType) as CategoryType[])
-                      .filter(cat => !localSettings.categoryConfigs?.[cat])
-                      .map(cat => (
-                        <option key={cat} value={cat}>{CATEGORY_LABELS[cat] || cat}</option>
-                      ))
-                    }
-                  </select>
+                    </select>
+                    <Plus className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white pointer-events-none" />
+                  </div>
                 </div>
             </div>
             

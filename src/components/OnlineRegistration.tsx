@@ -126,6 +126,17 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     setStep(3);
   };
 
+  const resetRegistration = () => {
+    localStorage.removeItem(`reg_draft_${event.id}`);
+    localStorage.removeItem(`reg_step_${event.id}`);
+    setFormData({
+      name: '', email: '', phone: '', club: '', category: '', paymentProof: '',
+      paymentType: 'MANUAL', selectedPaymentMethodId: '', regType: 'ARCHER'
+    });
+    setAgreedToTerms(false);
+    setStep(1);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -203,8 +214,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       }
     } else {
       onRegister(newReg);
-      localStorage.removeItem(`reg_draft_${event.id}`);
-      localStorage.removeItem(`reg_step_${event.id}`);
+      // Don't fully clear yet, so they see their name, but we will have a button to register another
       setStep(3);
     }
   };
@@ -229,14 +239,6 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       </div>
 
       <div className="max-w-xl mx-auto px-4 py-2 md:py-4 relative z-10">
-        {isRegistrationClosed && step !== 3 && (
-          <div className="mb-4 bg-red-50 border-2 border-red-100 p-5 rounded-[2rem] text-center">
-             <AlertCircle className="w-8 h-8 text-arcus-red mx-auto mb-4" />
-             <h3 className="text-xl font-black font-oswald uppercase italic text-slate-900 mb-2">Pendaftaran Ditutup</h3>
-             <button onClick={onBack} className="mt-4 px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Kembali</button>
-          </div>
-        )}
-
         {step === 3 && (
           <div className="text-center py-10 md:py-16 space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-1000">
             <div className="relative inline-block">
@@ -267,7 +269,13 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                 </div>
               )}
               
-              <div className="pt-4 border-t border-slate-100">
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <button 
+                  onClick={resetRegistration} 
+                  className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                >
+                  DAFTAR PESERTA LAIN
+                </button>
                 <button 
                   onClick={onBack} 
                   className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs hover:bg-arcus-red transition-all"
@@ -279,8 +287,14 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           </div>
         )}
 
-        {step !== 3 && !isRegistrationClosed && (
+        {step !== 3 && (
           <div className="space-y-6">
+            {isRegistrationClosed && (
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center gap-3">
+                <Info className="w-4 h-4 text-amber-600" />
+                <p className="text-[9px] font-bold text-amber-900 uppercase">Perhatian: Pendaftaran melewati tenggat waktu, namun masih dibuka atas kebijakan panitia.</p>
+              </div>
+            )}
             <div className="flex items-center justify-center gap-6 mb-6">
               {[1, 2].map(i => (
                 <div key={i} className="flex flex-col items-center gap-1.5">

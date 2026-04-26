@@ -18,8 +18,8 @@ interface Props {
 
 export default function EventInfo({ event, onBack, onRegister, onShare, onViewParticipants }: Props) {
   const isExpired = event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline);
-  const isRegistrationOpen = (event.status === 'DRAFT' || event.status === 'UPCOMING') && !isExpired;
-  const verifiedArchers = event.archers.filter(a => a.status === 'APPROVED' && a.category !== CategoryType.OFFICIAL);
+  const isRegistrationOpen = event.status !== 'DRAFT' && event.status !== 'FINISHED';
+  const verifiedArchers = event.archers.filter(a => (a.status === 'APPROVED' || a.status === 'PAID' || a.status === 'CONFIRMED') && a.category !== CategoryType.OFFICIAL);
   const totalParticipants = event.archers.filter(a => a.category !== CategoryType.OFFICIAL).length;
 
   return (

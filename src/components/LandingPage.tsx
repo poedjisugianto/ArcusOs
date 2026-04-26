@@ -304,23 +304,16 @@ export default function LandingPage({
                       </div>
                     </div>
 
-                    {event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline) ? (
-                      <div className="w-full py-4 bg-slate-100 text-slate-400 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 cursor-not-allowed mb-3">
-                        <X className="w-4 h-4" />
-                        PENDAFTARAN TUTUP
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => {
-                          console.log("Register clicked for event:", event.id);
-                          onRegister(event.id);
-                        }}
-                        className="w-full py-4 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-200 active:scale-95 mb-3"
-                      >
-                        <Plus className="w-4 h-4" />
-                        DAFTAR SEKARANG
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => {
+                        console.log("Register clicked for event:", event.id);
+                        onRegister(event.id);
+                      }}
+                      className="w-full py-4 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-200 active:scale-95 mb-3"
+                    >
+                      <Plus className="w-4 h-4" />
+                      DAFTAR SEKARANG
+                    </button>
 
                     <button 
                       onClick={() => onViewParticipants(event.id)}

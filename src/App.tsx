@@ -183,7 +183,7 @@ export function App() {
           } else {
             // Priority merge logic
             const cloudDate = ce.cloudUpdatedAt ? new Date(ce.cloudUpdatedAt).getTime() : 0;
-            const localDate = local.settings.createdAt || 0; // Fallback to creation date if no sync date
+            const localDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : (local.settings.createdAt || 0);
 
             // If cloud is activated but local is not, cloud always wins
             if (ce.status !== 'DRAFT' && local.status === 'DRAFT') {
@@ -196,19 +196,28 @@ export function App() {
               eventMap.set(ce.id, { ...local, ...ce });
             }
             else {
-              // Deep merge for others keep local changes but ensure registrations/archers are synced
+              // Cloud is older or same as local, but we might still want to merge registrations/archers 
+              // that were added in cloud by others (multi-user support)
               const merged = {
-                ...ce,
                 ...local,
-                archers: [...ce.archers],
-                registrations: [...ce.registrations]
+                archers: [...local.archers],
+                registrations: [...local.registrations]
               };
-              local.archers.forEach(la => {
-                if (!merged.archers.some(ca => ca.id === la.id)) merged.archers.push(la);
+              
+              // Add cloud archers that are not in local
+              ce.archers.forEach(ca => {
+                if (!merged.archers.some(la => la.id === ca.id)) {
+                  merged.archers.push(ca);
+                }
               });
-              local.registrations.forEach(lr => {
-                if (!merged.registrations.some(cr => cr.id === lr.id)) merged.registrations.push(lr);
+              
+              // Add cloud registrations that are not in local
+              ce.registrations.forEach(cr => {
+                if (!merged.registrations.some(lr => lr.id === cr.id)) {
+                  merged.registrations.push(cr);
+                }
               });
+              
               eventMap.set(ce.id, merged);
             }
           }
@@ -576,14 +585,20 @@ export function App() {
       const event = prev.events.find(e => e.id === id);
       if (!event) return prev;
 
-      const updatedEvent = { ...event, ...updated };
+      const updatedEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
       const newState = { 
         ...prev, 
         events: prev.events.map(e => e.id === id ? updatedEvent : e) 
       };
       
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      saveEventToCloud(updatedEvent);
+      
+      // Only auto-sync to cloud if user is owner or admin 
+      // (Online registration has its own backend sync)
+      const isAdmin = prev.currentUser && (event.settings.organizerId === prev.currentUser.id || event.ownerId === prev.currentUser.id || prev.currentUser.isSuperAdmin);
+      if (isAdmin) {
+        saveEventToCloud(updatedEvent);
+      }
       
       return newState;
     });
@@ -1465,8 +1480,10 @@ export function App() {
               })
             });
 
-            // Force refresh from cloud to ensure total consistency
-            fetchCloudData();
+            // Force refresh from cloud after a slight delay to allow propagation
+            setTimeout(() => {
+              fetchCloudData();
+            }, 3000);
           } catch (error: any) {
             console.error("Online registration error:", error);
             // Fallback to local update if API fails, though it might not sync to cloud

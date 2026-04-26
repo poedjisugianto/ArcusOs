@@ -30,6 +30,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   const [formData, setFormData] = useState<{
     name: string;
     email: string;
+    phone: string;
     club: string;
     category: string;
     paymentProof: string;
@@ -44,7 +45,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       } catch (e) { console.error("Reg draft parse failed", e); }
     }
     return {
-      name: '', email: '', club: '', category: '', paymentProof: '',
+      name: '', email: '', phone: '', club: '', category: '', paymentProof: '',
       paymentType: 'MANUAL', selectedPaymentMethodId: '', regType: 'ARCHER'
     };
   });
@@ -156,6 +157,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       registrationNo,
       name: formData.name,
       email: formData.email,
+      phone: formData.phone,
       club: formData.club,
       category: formData.regType === 'OFFICIAL' ? 'OFFICIAL' : formData.category,
       paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
@@ -210,107 +212,178 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   return (
     <div className="min-h-screen bg-slate-50 relative overflow-hidden">
       <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
-        <div className="max-w-[1400px] mx-auto px-4 md:px-8 h-14 md:h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3 md:gap-4">
-            <button onClick={onBack} className="w-8 h-8 md:w-11 md:h-11 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg md:rounded-xl text-slate-400 hover:text-arcus-red transition-all">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-8 h-12 md:h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg md:rounded-xl text-slate-400 hover:text-arcus-red transition-all">
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div className="flex flex-col">
-              <h1 className="text-sm md:text-xl font-black font-oswald uppercase italic text-slate-900 tracking-tighter">REGISTRASI</h1>
-              <p className="text-[6px] md:text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] italic truncate max-w-[120px]">{event.settings.tournamentName}</p>
+              <h1 className="text-xs md:text-lg font-black font-oswald uppercase italic text-slate-900 tracking-tighter leading-none">REGISTRASI</h1>
+              <p className="text-[6px] md:text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] italic truncate max-w-[100px] md:max-w-[200px]">{event.settings.tournamentName}</p>
             </div>
           </div>
           <button onClick={onViewParticipants} className="px-3 py-2 bg-slate-900 text-white rounded-lg text-[7px] md:text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
-            <Users className="w-3 h-3" /> PESERTA
+            <Users className="w-2.5 h-2.5 md:w-3 md:h-3" /> PESERTA
           </button>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-4 md:py-8 relative z-10">
+      <div className="max-w-xl mx-auto px-4 py-2 md:py-4 relative z-10">
         {isRegistrationClosed && step !== 3 && (
-          <div className="mb-6 bg-red-50 border-2 border-red-100 p-6 rounded-[2rem] text-center">
+          <div className="mb-4 bg-red-50 border-2 border-red-100 p-5 rounded-[2rem] text-center">
              <AlertCircle className="w-8 h-8 text-arcus-red mx-auto mb-4" />
              <h3 className="text-xl font-black font-oswald uppercase italic text-slate-900 mb-2">Pendaftaran Ditutup</h3>
-             <button onClick={onBack} className="mt-6 px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Kembali</button>
+             <button onClick={onBack} className="mt-4 px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Kembali</button>
           </div>
         )}
 
         {step === 3 && (
-          <div className="text-center py-20 space-y-6">
-            <Check className="w-16 h-16 text-emerald-500 mx-auto" />
-            <h1 className="text-4xl font-black font-oswald text-slate-900 uppercase italic">BERHASIL!</h1>
-            <p className="text-xl text-slate-500 italic max-w-md mx-auto">Selamat <strong>{formData.name}</strong>, pendaftaran Anda telah tercatat.</p>
-            <button onClick={onBack} className="px-8 py-4 bg-arcus-red text-white rounded-xl font-black uppercase">Kembali ke Beranda</button>
+          <div className="text-center py-10 md:py-16 space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-1000">
+            <div className="relative inline-block">
+              <div className="absolute inset-0 bg-emerald-500 blur-3xl opacity-20" />
+              <div className="relative w-20 h-20 md:w-24 md:h-24 bg-emerald-500 rounded-3xl flex items-center justify-center text-white mx-auto shadow-2xl">
+                <Check className="w-10 h-10 md:w-12 md:h-12 stroke-[3]" />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <h1 className="text-3xl md:text-5xl font-black font-oswald text-slate-900 uppercase italic leading-none">BERHASIL!</h1>
+              <p className="text-sm md:text-xl text-slate-500 font-bold italic tracking-tight max-w-xs md:max-w-md mx-auto">Selamat <strong>{formData.name}</strong>, pendaftaran Anda telah tercatat.</p>
+            </div>
+
+            <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-100 max-w-sm mx-auto space-y-6">
+              {event.settings.waGroupLink && (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">GABUNG GRUP WHATSAPP</p>
+                  <a 
+                    href={event.settings.waGroupLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-3 w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    <Smartphone className="w-4 h-4" /> KLIK GABUNG GRUP WA
+                  </a>
+                  <p className="text-[9px] font-bold text-slate-400 italic">Silakan bergabung untuk mendapatkan info teknis pertandingan.</p>
+                </div>
+              )}
+              
+              <div className="pt-4 border-t border-slate-100">
+                <button 
+                  onClick={onBack} 
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs hover:bg-arcus-red transition-all"
+                >
+                  KEMBALI KE BERANDA
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {step !== 3 && !isRegistrationClosed && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-center gap-6 mb-10">
+          <div className="space-y-6">
+            <div className="flex items-center justify-center gap-6 mb-6">
               {[1, 2].map(i => (
-                <div key={i} className="flex flex-col items-center gap-2">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${step >= i ? 'bg-slate-900 text-white' : 'bg-white text-slate-300 border border-slate-100'}`}>{i}</div>
-                  <span className="text-[8px] font-black uppercase tracking-widest">{i === 1 ? 'BIODATA' : 'PEMBAYARAN'}</span>
+                <div key={i} className="flex flex-col items-center gap-1.5">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm transition-all ${step >= i ? 'bg-slate-900 text-white' : 'bg-white text-slate-300 border border-slate-100'}`}>{i}</div>
+                  <span className={`text-[7px] font-black uppercase tracking-widest ${step >= i ? 'text-slate-900' : 'text-slate-300'}`}>{i === 1 ? 'BIODATA' : 'PEMBAYARAN'}</span>
                 </div>
               ))}
             </div>
 
             {step === 1 && (
-              <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="bg-white p-6 md:p-10 rounded-[2rem] shadow-xl space-y-6">
-                <div className="flex gap-4 bg-slate-50 p-2 rounded-2xl">
-                  <button type="button" onClick={() => setFormData({...formData, regType: 'ARCHER'})} className={`flex-1 py-4 rounded-xl font-black text-xs ${formData.regType === 'ARCHER' ? 'bg-arcus-red text-white' : 'text-slate-400'}`}>ATLET</button>
-                  <button type="button" onClick={() => setFormData({...formData, regType: 'OFFICIAL', category: 'OFFICIAL'})} className={`flex-1 py-4 rounded-xl font-black text-xs ${formData.regType === 'OFFICIAL' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>OFFICIAL</button>
+              <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="bg-white p-4 md:p-6 rounded-[2rem] shadow-xl space-y-4">
+                <div className="flex gap-3 bg-slate-50 p-1 rounded-xl">
+                  <button type="button" onClick={() => setFormData({...formData, regType: 'ARCHER'})} className={`flex-1 py-2.5 rounded-lg font-black text-[10px] transition-all ${formData.regType === 'ARCHER' ? 'bg-arcus-red text-white shadow-md' : 'text-slate-400'}`}>ATLET</button>
+                  <button type="button" onClick={() => setFormData({...formData, regType: 'OFFICIAL', category: 'OFFICIAL'})} className={`flex-1 py-2.5 rounded-lg font-black text-[10px] transition-all ${formData.regType === 'OFFICIAL' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>OFFICIAL</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <input required placeholder="NAMA LENGKAP" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red" />
-                  <input required type="email" placeholder="EMAIL" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red" />
-                  <input required placeholder="KLUB" value={formData.club} onChange={e => setFormData({...formData, club: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nama Lengkap</span>
+                    <input required placeholder="NAMA LENGKAP" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Email</span>
+                    <input required type="email" placeholder="EMAIL" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nomor WA</span>
+                    <input required placeholder="NOMOR TELEPON (WA)" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Klub</span>
+                    <input required placeholder="KLUB" value={formData.club} onChange={e => setFormData({...formData, club: e.target.value.toUpperCase()})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                  </div>
                   {formData.regType === 'ARCHER' && (
-                    <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none appearance-none">
-                      <option value="">PILIH KATEGORI</option>
-                      {categories.map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat as CategoryType] || cat}</option>)}
-                    </select>
+                    <div className="md:col-span-2 space-y-0.5">
+                      <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Kategori Pertandingan</span>
+                      <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none appearance-none text-[11px]">
+                        <option value="">PILIH KATEGORI</option>
+                        {categories.map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat as CategoryType] || cat}</option>)}
+                      </select>
+                    </div>
                   )}
                 </div>
-                <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest hover:bg-arcus-red transition-all">Lanjut ke Pembayaran</button>
+                <button type="submit" className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-lg active:scale-95 text-[10px]">Lanjut ke Pembayaran</button>
               </form>
             )}
 
             {step === 2 && (
-              <div className="bg-white p-6 md:p-10 rounded-[2rem] shadow-xl space-y-8">
+              <div className="bg-white p-4 md:p-6 rounded-[2rem] shadow-xl space-y-5">
                 <div className="flex bg-slate-100 p-1 rounded-xl">
-                  <button onClick={() => setFormData({...formData, paymentType: 'MANUAL'})} className={`flex-1 py-3 rounded-lg font-black text-[10px] ${formData.paymentType === 'MANUAL' ? 'bg-white text-slate-900 shadow' : 'text-slate-400'}`}>TRANSFER MANUAL</button>
-                  <button onClick={() => setFormData({...formData, paymentType: 'GATEWAY'})} className={`flex-1 py-3 rounded-lg font-black text-[10px] ${formData.paymentType === 'GATEWAY' ? 'bg-arcus-red text-white shadow' : 'text-slate-400'}`}>PAYMENT GATEWAY</button>
+                  <button onClick={() => setFormData({...formData, paymentType: 'MANUAL'})} className={`flex-1 py-2.5 rounded-lg font-black text-[9px] transition-all ${formData.paymentType === 'MANUAL' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400'}`}>TRANSFER MANUAL</button>
+                  <button onClick={() => setFormData({...formData, paymentType: 'GATEWAY'})} className={`flex-1 py-2.5 rounded-lg font-black text-[9px] transition-all ${formData.paymentType === 'GATEWAY' ? 'bg-arcus-red text-white shadow-md' : 'text-slate-400'}`}>PAYMENT GATEWAY</button>
                 </div>
 
                 {formData.paymentType === 'MANUAL' ? (
-                  <div className="space-y-6">
-                    <div className="text-center p-6 bg-slate-900 rounded-3xl text-white">
-                      <p className="text-xs font-black text-slate-400 uppercase">{activeMethod.provider}</p>
-                      <p className="text-3xl font-black font-mono text-arcus-red my-2 tracking-widest">{activeMethod.accountNumber}</p>
-                      <p className="text-[10px] font-bold text-white/40 uppercase">A/N {activeMethod.accountName}</p>
+                  <div className="space-y-4">
+                    <div className="text-center p-4 bg-slate-950 rounded-2xl text-white relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-3 opacity-10"><Landmark className="w-10 h-10" /></div>
+                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{activeMethod.provider}</p>
+                      <p className="text-xl md:text-2xl font-black font-mono text-arcus-red my-0.5 tracking-widest italic">{activeMethod.accountNumber}</p>
+                      <p className="text-[8px] font-bold text-white/30 uppercase italic leading-none">A/N {activeMethod.accountName}</p>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase text-center">Upload Bukti Transfer</p>
-                      <input type="file" onChange={handleFileChange} className="w-full p-4 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer" />
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between px-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic">Upload Bukti Transfer</p>
+                        <p className="text-[6px] font-bold text-slate-300 uppercase italic">Maks 2MB</p>
+                      </div>
+                      <div className="relative group">
+                        <input type="file" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                        <div className={`p-4 border-2 border-dashed rounded-xl transition-all flex flex-col items-center gap-1.5 ${formData.paymentProof ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                          {formData.paymentProof ? (
+                            <>
+                              <div className="p-1.5 bg-emerald-500 rounded-full text-white"><Check className="w-3 h-3" /></div>
+                              <p className="text-[9px] font-black text-emerald-600 uppercase">Bukti Terpilih</p>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-5 h-5 text-slate-300" />
+                              <p className="text-[9px] font-black text-slate-400 uppercase">Klik/Drag Bukti Transfer</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-10 bg-slate-900 rounded-3xl text-center space-y-4">
-                    <Zap className="w-10 h-10 text-arcus-red mx-auto animate-pulse" />
-                    <h3 className="text-xl font-black text-white uppercase italic">Pembayaran Instan</h3>
-                    <p className="text-white/40 text-xs italic">Anda akan diarahkan ke portal pembayaran aman.</p>
+                  <div className="p-6 bg-slate-950 rounded-2xl text-center space-y-2.5 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-arcus-red/10 to-transparent" />
+                    <Zap className="w-8 h-8 text-arcus-red mx-auto animate-pulse relative z-10" />
+                    <h3 className="text-lg font-black text-white uppercase italic relative z-10">Pembayaran Instan</h3>
+                    <p className="text-white/40 text-[9px] italic relative z-10 tracking-tight">Portal pembayaran aman Midtrans.</p>
                   </div>
                 )}
 
-                <div className="flex items-start gap-4">
-                  <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-1" />
-                  <span className="text-[10px] text-slate-500 italic">Saya menyetujui Syarat & Ketentuan Arcus Archery.</span>
+                <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <input type="checkbox" id="terms" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="mt-0.5 w-3.5 h-3.5 rounded border-slate-300 text-arcus-red focus:ring-arcus-red transition-all cursor-pointer" />
+                  <label htmlFor="terms" className="text-[8.5px] text-slate-500 italic leading-snug cursor-pointer select-none">
+                    Saya menyatakan data benar dan menyetujui seluruh <strong>Syarat & Ketentuan</strong> Arcus Archery.
+                  </label>
                 </div>
 
-                <div className="flex gap-4">
-                  <button onClick={() => setStep(1)} className="flex-1 py-4 bg-slate-50 text-slate-400 rounded-xl font-black uppercase text-xs">Kembali</button>
-                  <button onClick={handleSubmit} disabled={isSubmitting} className="flex-[2] py-4 bg-arcus-red text-white rounded-xl font-black uppercase text-xs hover:bg-red-600">
+                <div className="flex gap-2">
+                  <button onClick={() => setStep(1)} className="px-5 py-3.5 bg-slate-50 text-slate-400 rounded-xl font-black uppercase text-[10px] hover:bg-slate-100 transition-all">Kembali</button>
+                  <button onClick={handleSubmit} disabled={isSubmitting} className="flex-1 py-3.5 bg-arcus-red text-white rounded-xl font-black uppercase text-[10px] hover:bg-red-600 transition-all shadow-lg active:scale-95 disabled:opacity-50">
                     {isSubmitting ? 'Memproses...' : 'Proses Pendaftaran'}
                   </button>
                 </div>

@@ -193,6 +193,7 @@ const FinancePanel: React.FC<Props> = ({ event, onApproveRegistration, onPayPlat
             <thead>
               <tr className="bg-white text-[9px] font-black uppercase tracking-widest border-b text-slate-400">
                 <th className="px-8 py-4">Pemanah & Klub</th>
+                <th className="px-8 py-4">Kontak</th>
                 <th className="px-8 py-4">Metode</th>
                 <th className="px-8 py-4 text-center">Bukti Bayar</th>
                 <th className="px-8 py-4 text-right">Nominal</th>
@@ -205,6 +206,10 @@ const FinancePanel: React.FC<Props> = ({ event, onApproveRegistration, onPayPlat
                   <td className="px-8 py-6">
                     <p className="font-bold text-slate-900 uppercase font-oswald italic leading-none">{reg.name}</p>
                     <p className="text-[9px] text-slate-400 font-black uppercase mt-1">{reg.club}</p>
+                  </td>
+                  <td className="px-8 py-6">
+                    <p className="text-[10px] font-black text-slate-600">{reg.phone || '-'}</p>
+                    <p className="text-[8px] text-slate-400 truncate max-w-[120px]">{reg.email}</p>
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex flex-col gap-1">

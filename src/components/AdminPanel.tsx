@@ -354,7 +354,7 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                     </div>
 
                     {!isPractice && (
-                      <div className="pt-4 border-t border-slate-100">
+                      <div className="space-y-6 pt-4 border-t border-slate-100">
                         <label className="block group">
                           <div className="flex items-center gap-2 mb-1">
                             <Clock className="w-3.5 h-3.5 text-arcus-red" />
@@ -366,8 +366,22 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                             onChange={e => updateSettings({ registrationDeadline: e.target.value })} 
                             className="block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-arcus-red transition-all text-slate-900" 
                           />
+                        </label>
+
+                        <label className="block group">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Link WhatsApp Group Peserta</span>
+                          </div>
+                          <input 
+                            type="url" 
+                            placeholder="https://chat.whatsapp.com/..."
+                            value={localSettings.waGroupLink || ''} 
+                            onChange={e => updateSettings({ waGroupLink: e.target.value })} 
+                            className="block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-emerald-500 transition-all text-slate-900" 
+                          />
                           <p className="mt-1.5 text-[8px] font-bold text-slate-400 uppercase tracking-wider italic">
-                            * Peserta tidak akan bisa mendaftar setelah waktu yang ditentukan. Kosongkan jika tidak ada batas.
+                            * Link ini akan ditampilkan kepada peserta setelah berhasil mendaftar.
                           </p>
                         </label>
                       </div>

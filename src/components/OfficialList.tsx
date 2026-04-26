@@ -78,7 +78,7 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
               <tr className="bg-slate-50">
                 <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Official / Pelatih</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Klub / Pengcab</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">E-Mail</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Kontak</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Status</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest text-right">Aksi</th>
               </tr>
@@ -95,7 +95,10 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">{o.club}</td>
-                  <td className="px-6 py-4 text-[10px] font-bold text-slate-400">{o.email}</td>
+                  <td className="px-6 py-4">
+                    <p className="text-[10px] font-black text-slate-600">{o.phone || '-'}</p>
+                    <p className="text-[8px] font-bold text-slate-400">{o.email}</p>
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
                       o.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 

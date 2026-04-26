@@ -36,6 +36,7 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
   const [newArcher, setNewArcher] = useState({
     name: '',
     email: '',
+    phone: '',
     club: '',
     category: CategoryType.ADULT_PUTRA,
     targetNo: 1,
@@ -61,7 +62,7 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
       email: newArcher.email || '-',
       club: newArcher.club,
       category: newArcher.category,
-      phone: '-',
+      phone: newArcher.phone || '-',
       status: 'APPROVED',
       paymentType: 'MANUAL',
       platformFee: platformFee,
@@ -78,6 +79,7 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
     setNewArcher({
       name: '',
       email: '',
+      phone: '',
       club: '',
       category: CategoryType.ADULT_PUTRA,
       targetNo: 1,
@@ -269,6 +271,16 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
                     onChange={e => setNewArcher({...newArcher, email: e.target.value})}
                     className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900 placeholder:text-slate-400" 
                     placeholder="email@archer.com"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest px-1">Nomor Telepon (WA)</span>
+                  <input 
+                    type="text" 
+                    value={newArcher.phone}
+                    onChange={e => setNewArcher({...newArcher, phone: e.target.value})}
+                    className="mt-1 block w-full rounded-2xl border-slate-200 px-4 py-2.5 border font-bold outline-none focus:ring-4 ring-red-500/10 transition-all text-slate-900" 
+                    placeholder="0812..."
                   />
                 </label>
                 <label className="block">
@@ -521,6 +533,7 @@ const ArcherList: React.FC<Props> = ({ archers, onAdd, onUpdate, onRemove, onBac
                    <th className="p-4 w-12">No.</th>
                    <th className="p-4">Bantalan</th>
                    <th className="p-4">Nama Pemanah</th>
+                   <th className="p-4">Kontak</th>
                    <th className="p-4">Klub</th>
                    <th className="p-4">Kategori</th>
                    <th className="p-4 text-right">Aksi</th>

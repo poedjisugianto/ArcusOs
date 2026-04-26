@@ -100,6 +100,7 @@ export interface ParticipantRegistration {
   registrationNo?: string;
   name: string;
   email: string;
+  phone?: string;
   club: string;
   category: string;
   status: 'PENDING' | 'PAID' | 'APPROVED' | 'REJECTED' | 'CONFIRMED';
@@ -180,6 +181,7 @@ export interface TournamentSettings {
   selfPracticeDistance?: number;
   selfPracticeTargetType?: TargetType;
   categoryConfigs?: Partial<Record<CategoryType, CategoryConfig>>;
+  waGroupLink?: string;
 }
 
 export interface DisbursementRequest {

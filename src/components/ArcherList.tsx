@@ -232,9 +232,21 @@ const ArcherList: React.FC<Props> = ({
           >
             <ArrowLeft className="w-5 h-5 text-slate-500" />
           </button>
-          <h2 className="text-xl font-black font-oswald uppercase italic tracking-tighter text-slate-900">
-            Manajemen Peserta
-          </h2>
+          <div className="flex flex-col">
+            <h2 className="text-xl font-black font-oswald uppercase italic tracking-tighter text-slate-900">
+              Manajemen Peserta
+            </h2>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Total: {archers.length} Archer
+              </p>
+              {searchTerm && (
+                <p className="text-[10px] font-black text-arcus-red uppercase tracking-widest">
+                  • Filtered: {filtered.length}
+                </p>
+              )}
+            </div>
+          </div>
           {onRefreshData && (
             <button 
               onClick={onRefreshData}
@@ -755,8 +767,8 @@ const ArcherList: React.FC<Props> = ({
             </select>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto min-h-[300px] flex flex-col">
+          <table className="w-full text-left text-xs flex-grow">
             <thead>
               <tr className="bg-white border-b text-slate-400 font-black uppercase">
                 <th className="p-4 w-12">No.</th>
@@ -800,7 +812,7 @@ const ArcherList: React.FC<Props> = ({
                   </td>
                   <td className="p-4 text-slate-500 font-medium">{a.club}</td>
                   <td className="p-4 text-slate-400 uppercase font-black tracking-tighter">
-                    {a.category.replace("ADULT_", "")}
+                    {CATEGORY_LABELS[a.category] || a.category.replace("ADULT_", "")}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -823,6 +835,32 @@ const ArcherList: React.FC<Props> = ({
               ))}
             </tbody>
           </table>
+
+          {filtered.length === 0 && (
+            <div className="py-20 text-center space-y-4">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
+                <Search className="w-6 h-6 text-slate-200" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-black text-slate-900 uppercase italic">
+                  {archers.length > 0 ? "Hasil Filter Kosong" : "Belum Ada Peserta"}
+                </p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">
+                  {archers.length > 0 
+                    ? "Coba ubah kata kunci pencarian atau kategori filter." 
+                    : "Belum ada peserta yang terdaftar atau data cloud belum terunduh."}
+                </p>
+              </div>
+              {onRefreshData && (
+                <button 
+                  onClick={onRefreshData}
+                  className="px-6 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 hover:bg-emerald-100 transition-all shadow-sm"
+                >
+                  Segarkan dari Cloud
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

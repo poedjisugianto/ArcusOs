@@ -26,7 +26,7 @@ interface Props {
   events: ArcheryEvent[];
   onCreateEvent: (name: string, isFree?: boolean, description?: string) => void;
   onCreatePractice: (name: string, isFree?: boolean) => void;
-  onCreateSelfPractice: (name: string, ends: number, arrows: number, targetType: TargetType, distance: number) => void;
+  onCreateSelfPractice: () => void;
   onManageEvent: (id: string) => void;
   onViewLive: (id: string) => void;
   onUpdateEvent: (id: string, updated: Partial<ArcheryEvent>) => void;
@@ -41,7 +41,7 @@ interface Props {
   onLogout?: () => void;
 }
 
-type CreationStep = 'LIST' | 'AGREEMENT' | 'NAME_INPUT' | 'FINAL_CONFIRM' | 'PRACTICE_INPUT' | 'SELF_PRACTICE_INPUT';
+type CreationStep = 'LIST' | 'AGREEMENT' | 'NAME_INPUT' | 'FINAL_CONFIRM' | 'PRACTICE_INPUT';
 type BillingStep = 'INVOICE' | 'PAYMENT_SELECTION' | 'GATEWAY_PROCESS' | 'SUCCESS';
 type InboxTab = 'RECEIVED' | 'COMPOSE' | 'SENT';
 
@@ -54,8 +54,6 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const [isFree, setIsFree] = useState(false);
   const [practiceEnds, setPracticeEnds] = useState(10);
   const [practiceArrows, setPracticeArrows] = useState(6);
-  const [practiceTargetType, setPracticeTargetType] = useState<TargetType>(TargetType.STANDARD);
-  const [practiceDistance, setPracticeDistance] = useState(20);
   const [showInbox, setShowInbox] = useState(false);
   const [inboxTab, setInboxTab] = useState<InboxTab>('RECEIVED');
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -86,7 +84,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
       
       const matchesStatus = statusFilter === 'ALL' || e.status === statusFilter;
       
-      const isPractice = e.settings.isPractice || e.settings.isSelfPractice;
+      const isPractice = e.settings.isPractice;
       const matchesType = typeFilter === 'ALL' || 
         (typeFilter === 'PRACTICE' && isPractice) || 
         (typeFilter === 'TOURNAMENT' && !isPractice);
@@ -137,11 +135,6 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     setName(`Latihan Bersama ${new Date().toLocaleDateString('id-ID')}`);
   };
 
-  const handleStartSelfPractice = () => {
-    setStep('SELF_PRACTICE_INPUT');
-    setName(`Latihan Mandiri ${new Date().toLocaleDateString('id-ID')}`);
-  };
-
   const handleCancel = () => {
     setStep('LIST');
     setAgreed(false);
@@ -169,13 +162,6 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     setName('');
     setPromoCode('');
     setIsFree(false);
-  };
-
-  const handleFinalizeSelfPractice = () => {
-    if (!name.trim()) return;
-    onCreateSelfPractice(name, practiceEnds, practiceArrows, practiceTargetType, practiceDistance);
-    setStep('LIST');
-    setName('');
   };
 
   const handleRefresh = () => {
@@ -430,18 +416,12 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                 <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin text-arcus-red' : ''}`} />
                 <span className="hidden lg:inline text-[9px] font-black uppercase tracking-widest">PULL</span>
               </button>
-             <button 
-              onClick={handleStartSelfPractice}
-              className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-black uppercase text-[9px] tracking-widest flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 border border-emerald-400/20"
-            >
-              <Target className="w-4 h-4" /> MANDIRI
-            </button>
-             <button 
-              onClick={handleStartPractice}
-              className="px-5 py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-black uppercase text-[9px] tracking-widest flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 border border-teal-400/20"
-            >
-              <Zap className="w-4 h-4" /> LATIHAN
-            </button>
+              <button 
+                onClick={handleStartPractice}
+                className="px-5 py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-black uppercase text-[9px] tracking-widest flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 border border-teal-400/20"
+              >
+                <Zap className="w-4 h-4" /> LATIHAN
+              </button>
             <button 
               onClick={handleStartCreation}
               className="px-6 py-3.5 bg-arcus-red text-white rounded-lg font-black uppercase text-[9px] tracking-widest flex items-center justify-center gap-2 hover:bg-slate-900 transition-all shadow-lg active:scale-95"
@@ -458,7 +438,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
       {/* Enhanced Inbox Modal (Two-Way Messaging) */}
       {showInbox && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col h-[85vh]">
              <div className="p-8 bg-slate-900 text-white flex flex-col gap-6">
                 <div className="flex justify-between items-center">
@@ -1084,93 +1064,6 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                 <div className="flex gap-4">
                   <button onClick={() => setStep('NAME_INPUT')} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Cek Lagi</button>
                   <button onClick={handleFinalize} className="flex-[2] py-4 bg-arcus-dark text-white rounded-2xl font-black uppercase text-[10px] shadow-2xl active:scale-95 transition-all">Buat Turnamen Sekarang!</button>
-                </div>
-              </div>
-            )}
-
-            {/* Self Practice Mode Input */}
-            {step === 'SELF_PRACTICE_INPUT' && (
-              <div className="p-10 space-y-8">
-                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mx-auto shadow-inner">
-                  <TrendingUp className="w-8 h-8" />
-                </div>
-                <div className="text-center space-y-2">
-                  <h3 className="text-3xl font-black font-oswald uppercase italic text-emerald-900 leading-none">Latihan Mandiri</h3>
-                  <p className="text-slate-400 font-medium italic">Fokus pada performa & grafik kemajuan</p>
-                </div>
-                <div className="space-y-4">
-                   <input 
-                    autoFocus
-                    type="text" 
-                    placeholder="Nama Sesi Latihan..." 
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    className="w-full p-6 bg-slate-50 border-2 border-emerald-100 rounded-3xl text-xl font-black font-oswald italic uppercase outline-none focus:border-emerald-500 transition-all text-emerald-900"
-                  />
-                  <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex items-start gap-3">
-                     <BarChart2 className="w-4 h-4 text-emerald-600 mt-0.5" />
-                     <p className="text-[10px] text-emerald-700 font-bold leading-relaxed uppercase">Mode mandiri akan menampilkan grafik performa dan statistik detail untuk Anda sendiri.</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">End</label>
-                       <input 
-                        type="number" 
-                        value={practiceEnds}
-                        onChange={e => setPracticeEnds(parseInt(e.target.value) || 1)}
-                        className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm outline-none focus:border-emerald-600 transition-all"
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Arrow</label>
-                       <input 
-                        type="number" 
-                        value={practiceArrows}
-                        onChange={e => setPracticeArrows(parseInt(e.target.value) || 1)}
-                        className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm outline-none focus:border-emerald-600 transition-all"
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Jarak (m)</label>
-                       <input 
-                        type="number" 
-                        value={practiceDistance}
-                        onChange={e => setPracticeDistance(parseInt(e.target.value) || 1)}
-                        className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm outline-none focus:border-emerald-600 transition-all"
-                       />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Model Face Target</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button 
-                        onClick={() => setPracticeTargetType(TargetType.STANDARD)}
-                        className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${practiceTargetType === TargetType.STANDARD ? 'bg-emerald-50 border-emerald-500' : 'bg-white border-slate-100'}`}
-                      >
-                        <Target className={`w-6 h-6 ${practiceTargetType === TargetType.STANDARD ? 'text-emerald-600' : 'text-slate-300'}`} />
-                        <span className={`text-[9px] font-black uppercase ${practiceTargetType === TargetType.STANDARD ? 'text-emerald-900' : 'text-slate-400'}`}>Standard 6-Ring</span>
-                      </button>
-                      <button 
-                        onClick={() => setPracticeTargetType(TargetType.PUTA)}
-                        className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${practiceTargetType === TargetType.PUTA ? 'bg-emerald-50 border-emerald-500' : 'bg-white border-slate-100'}`}
-                      >
-                        <div className={`w-6 h-6 rounded-full border-4 flex items-center justify-center ${practiceTargetType === TargetType.PUTA ? 'border-emerald-600' : 'border-slate-200'}`}>
-                          <div className={`w-2 h-2 rounded-full ${practiceTargetType === TargetType.PUTA ? 'bg-emerald-600' : 'bg-slate-200'}`} />
-                        </div>
-                        <span className={`text-[9px] font-black uppercase ${practiceTargetType === TargetType.PUTA ? 'text-emerald-900' : 'text-slate-400'}`}>Puta 2-Ring</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <button onClick={handleCancel} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Batal</button>
-                  <button 
-                    disabled={!name.trim()}
-                    onClick={handleFinalizeSelfPractice} 
-                    className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all disabled:opacity-50"
-                  >
-                    Mulai Latihan <ArrowRight className="w-4 h-4 inline ml-2" />
-                  </button>
                 </div>
               </div>
             )}

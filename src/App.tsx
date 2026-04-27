@@ -30,7 +30,6 @@ import LegalDoc from './components/LegalDoc';
 import ShareModal from './components/ShareModal';
 import EliminationPanel from './components/EliminationPanel';
 import SuperAdminPanel from './components/SuperAdminPanel';
-import SelfPracticePanel from './components/SelfPracticePanel';
 import OperatorCenter from './components/OperatorCenter';
 import QuickScoringPanel from './components/QuickScoringPanel';
 import ScorerLogin from './components/ScorerLogin';
@@ -39,7 +38,7 @@ import OfficialList from './components/OfficialList';
 import IdCardEditor from './components/IdCardEditor';
 import ResetPasswordPanel from './components/ResetPasswordPanel';
 
-type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'RESET_PASSWORD' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SELF_PRACTICE' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
+type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'RESET_PASSWORD' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
 
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -469,12 +468,11 @@ export function App() {
       if (appState.currentUser) {
         eventsToSync = appState.events.filter(e => 
           (e.settings.organizerId === appState.currentUser?.id || (e as any).ownerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin) &&
-          !e.settings.isPractice && 
-          !e.settings.isSelfPractice
+          !e.settings.isPractice 
         );
       } else if (appState.activeEventId) {
         const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
-        if (activeEvent && !activeEvent.settings.isPractice && !activeEvent.settings.isSelfPractice) {
+        if (activeEvent && !activeEvent.settings.isPractice) {
           eventsToSync = [activeEvent];
         }
       }
@@ -659,7 +657,7 @@ export function App() {
   };
 
   const saveEventToCloud = async (event: ArcheryEvent) => {
-    if (!supabase || event.settings.isPractice || event.settings.isSelfPractice) return;
+    if (!supabase || event.settings.isPractice) return;
     
     try {
       const { error } = await supabase.from('events').upsert({
@@ -733,7 +731,7 @@ export function App() {
     pushNotification("Menghapus...", `Sedang menghapus ${typeLabel} "${eventName}"...`, "INFO");
 
     // 3. Cloud Sync (Supabase)
-    if (supabase && !eventToDelete.settings.isPractice && !eventToDelete.settings.isSelfPractice) {
+    if (supabase && !eventToDelete.settings.isPractice) {
       try {
         const { error, status } = await supabase
           .from('events')
@@ -813,53 +811,6 @@ export function App() {
         pushNotification("Error", err.message, "WARNING");
       }
     }
-  };
-
-  const onCreateSelfPractice = (name: string, ends: number, arrows: number, targetType: TargetType, distance: number) => {
-    const e: ArcheryEvent = { 
-      id: 'evt_'+Math.random().toString(36).substr(2,9), 
-      settings: { 
-        ...DEFAULT_SETTINGS, 
-        tournamentName: name, 
-        organizerId: appState.currentUser?.id || '', 
-        isPractice: true, 
-        isSelfPractice: true,
-        selfPracticeEnds: ends,
-        selfPracticeArrows: arrows,
-        selfPracticeTargetType: targetType,
-        selfPracticeDistance: distance,
-        createdAt: Date.now() 
-      }, 
-      archers: [{
-        id: appState.currentUser!.id,
-        name: appState.currentUser!.name,
-        email: appState.currentUser!.email,
-        club: appState.currentUser!.club || '-',
-        category: CategoryType.ADULT_PUTRA, // Default
-        phone: appState.currentUser!.phone || '-',
-        status: 'APPROVED',
-        targetNo: 1,
-        position: 'A',
-        wave: 1,
-        pin: '0000',
-        eventId: '', // Will be filled
-        paymentType: 'MANUAL',
-        platformFee: 0,
-        totalPaid: 0,
-        createdAt: Date.now()
-      }], 
-      scores: [], 
-      scoreLogs: [], 
-      matches: {} as any, 
-      registrations: [], 
-      disbursementRequests: [], 
-      status: 'ONGOING' 
-    };
-    e.archers[0].eventId = e.id;
-    
-    setAppState(prev => ({ ...prev, events: [e, ...prev.events], activeEventId: e.id }));
-    setView('SELF_PRACTICE');
-    pushNotification("Latihan Mandiri", `Sesi "${name}" dimulai.`, "SUCCESS");
   };
 
   const onSaveScore = (score: ScoreEntry | ScoreEntry[], log?: ScoreLog | ScoreLog[]) => {
@@ -1006,7 +957,7 @@ export function App() {
         </div>
       )}
 
-      <main className="min-h-screen">
+      <main className="min-h-screen pt-12 sm:pt-14">
         {view === 'LANDING' && (
           <LandingPage 
             events={appState.events.filter(e => !e.settings.isPractice && e.status !== 'DRAFT')} 
@@ -1255,22 +1206,20 @@ export function App() {
               setView('EVENT_ADMIN'); 
               pushNotification("Sesi Latihan", `Latihan "${n}" siap digunakan${isFree ? ' (Bebas Biaya Platform)' : ''}.`, "SUCCESS"); 
             }} 
-            onCreateSelfPractice={onCreateSelfPractice} 
+            onCreateSelfPractice={() => {}} 
             onManageEvent={(id) => { 
-              const ev = appState.events.find(e => e.id === id); 
-              setAppState(prev => ({ ...prev, activeEventId: id })); 
-              if (ev?.status === 'DRAFT') {
-                setView('ACTIVATE_TOURNAMENT');
-              } else if (ev?.settings.isSelfPractice) { 
-                setView('SELF_PRACTICE'); 
-              } else { 
-                setView('EVENT_ADMIN'); 
-              } 
-            }} 
-            onActivateEvent={(id) => { 
-              setAppState(prev => ({ ...prev, activeEventId: id })); 
-              setView('ACTIVATE_TOURNAMENT'); 
-            }}
+                const ev = appState.events.find(e => e.id === id); 
+                setAppState(prev => ({ ...prev, activeEventId: id })); 
+                if (ev?.status === 'DRAFT') {
+                  setView('ACTIVATE_TOURNAMENT');
+                } else { 
+                  setView('EVENT_ADMIN'); 
+                } 
+              }} 
+              onActivateEvent={(id) => { 
+                setAppState(prev => ({ ...prev, activeEventId: id })); 
+                setView('ACTIVATE_TOURNAMENT'); 
+              }}
             onViewLive={(id) => { 
               setAppState(prev => ({ ...prev, activeEventId: id })); 
               setView('LIVE'); 
@@ -1285,7 +1234,6 @@ export function App() {
             onGoToSuperAdmin={() => setView('SUPER_ADMIN')} 
           />
         )}
-        {view === 'SELF_PRACTICE' && activeEvent && <SelfPracticePanel event={activeEvent} onSaveScore={onSaveScore} onBack={() => setView('MEMBER_DASHBOARD')} />}
         {view === 'SUPER_ADMIN' && appState.currentUser?.isSuperAdmin && <SuperAdminPanel state={appState} onUpdateSettings={(gs) => setAppState(prev => ({ ...prev, globalSettings: gs }))} onUpdateEvent={handleUpdateEvent} onDeleteEvent={handleDeleteEvent} onDeleteUser={handleDeleteUser} onUpdateUser={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }))} onSendNotif={(n) => setAppState(prev => ({ ...prev, notifications: [n, ...prev.notifications] }))} onBack={() => setView('MEMBER_DASHBOARD')} />}
         {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} />}
         {view === 'EVENT_ADMIN' && activeEvent && (

@@ -95,14 +95,22 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
       return acc + scoreVal;
     }, 0);
     
-    // Calculate counts for tie-break
-    const isSmallTarget = config.targetType === TargetType.PUTA || config.targetType === TargetType.TRADITIONAL_PUTA;
-    const count6 = isSmallTarget 
-      ? arrows.filter(v => v === 2).length 
-      : arrows.filter(v => v === 'X' || v === 6).length;
-    const count5 = isSmallTarget 
-      ? arrows.filter(v => v === 1).length 
-      : arrows.filter(v => v === 5).length;
+    // Calculate counts for tie-break based on target type
+    const targetType = config.targetType;
+    let count6 = 0;
+    let count5 = 0;
+
+    if (targetType === TargetType.PUTA || targetType === TargetType.TRADITIONAL_PUTA) {
+      count6 = arrows.filter(v => v === 2).length;
+      count5 = arrows.filter(v => v === 1).length;
+    } else if (targetType === TargetType.TRADITIONAL_6_RING) {
+      count6 = arrows.filter(v => v === 6).length;
+      count5 = arrows.filter(v => v === 5).length;
+    } else {
+      // Standard 10-ring face (X, 10, 9, 8...)
+      count6 = arrows.filter(v => v === 'X' || v === 10).length;
+      count5 = arrows.filter(v => v === 9).length;
+    }
     
     onSaveScore({
       archerId: selectedArcherId,
@@ -118,6 +126,10 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     // Clear draft after successful save
     const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
     localStorage.removeItem(draftKey);
+
+    // CRITICAL: Reset tempArrows immediately so the "draft saver" effect 
+    // doesn't catch the old arrows for the NEW archerId/currentEnd
+    setTempArrows(new Array(config.arrows).fill(-1));
 
     setShowToast(`Skor ${selectedArcher?.name} Disimpan!`);
     setTimeout(() => setShowToast(null), 1500);
@@ -149,11 +161,13 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     }
   };
 
-  let keypadValues: (number | 'X')[] = ['X', 6, 5, 4, 3, 2, 1, 0];
+  let keypadValues: (number | 'X')[] = ['X', 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
   if (config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA) {
     keypadValues = [2, 1, 0];
   } else if (config?.targetType === TargetType.TRADITIONAL_6_RING) {
     keypadValues = [6, 5, 4, 3, 2, 1, 0];
+  } else if (config?.targetType === TargetType.FACE_3X20) {
+    keypadValues = ['X', 10, 9, 8, 7, 6, 0];
   }
 
   return (
@@ -273,27 +287,44 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
               </div>
 
               {/* High Contrast Sunlight Keypad */}
-              <div className="w-full max-w-lg mx-auto grid grid-cols-3 gap-3 pb-8">
-                {keypadValues.map(val => (
+              <div className="w-full max-w-lg mx-auto flex flex-col gap-4 pb-8">
+                <div className="grid grid-cols-3 gap-3">
+                  {keypadValues.map(val => (
+                    <button 
+                      key={val} 
+                      onClick={() => handleInput(val)}
+                      className="h-14 sm:h-18 bg-slate-900 text-white rounded-xl text-3xl font-black shadow-md active:bg-black active:scale-95 transition-all flex items-center justify-center border-b-4 border-slate-700"
+                    >
+                      {val}
+                    </button>
+                  ))}
                   <button 
-                    key={val} 
-                    onClick={() => handleInput(val)}
-                    className="h-14 sm:h-18 bg-slate-900 text-white rounded-lg text-2xl font-black shadow-md active:bg-black active:scale-95 transition-all flex items-center justify-center border-b-2 border-slate-700"
+                    onClick={() => {
+                      const idx = tempArrows.map(x => x !== -1).lastIndexOf(true);
+                      if (idx !== -1) {
+                        const n = [...tempArrows]; n[idx] = -1; setTempArrows(n);
+                      }
+                    }}
+                    className="h-14 sm:h-18 bg-white text-red-500 rounded-xl flex items-center justify-center active:scale-95 transition-all border-2 border-slate-100 shadow-sm"
                   >
-                    {val}
+                    <Delete className="w-8 h-8" />
                   </button>
-                ))}
-                <button 
-                  onClick={() => {
-                    const idx = tempArrows.map(x => x !== -1).lastIndexOf(true);
-                    if (idx !== -1) {
-                      const n = [...tempArrows]; n[idx] = -1; setTempArrows(n);
-                    }
-                  }}
-                  className="h-14 sm:h-18 bg-white text-red-500 rounded-lg flex items-center justify-center active:scale-95 transition-all border border-slate-100 shadow-sm"
-                >
-                  <Delete className="w-7 h-7" />
-                </button>
+                </div>
+
+                <div className="flex gap-3">
+                    <button 
+                      onClick={() => {
+                        const allFilled = tempArrows.every(v => v !== -1);
+                        if (allFilled || tempArrows.some(v => v !== -1)) {
+                          handleSave(tempArrows);
+                        }
+                      }}
+                      className="flex-1 h-16 bg-emerald-500 text-white rounded-xl font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 border-b-4 border-emerald-700"
+                    >
+                      <CheckCircle2 className="w-6 h-6" />
+                      Simpan Skor
+                    </button>
+                </div>
               </div>
             </>
           )}

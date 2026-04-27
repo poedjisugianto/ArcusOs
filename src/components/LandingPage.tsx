@@ -55,7 +55,7 @@ export default function LandingPage({
            style={{ backgroundImage: `radial-gradient(#000 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
 
       {/* Navigation */}
-      <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-100">
+      <nav className="fixed top-9 sm:top-[2.75rem] w-full bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-100">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12">
           <div className="flex justify-between h-20 items-center">
             <div className="flex items-center gap-4 group cursor-pointer">

@@ -155,7 +155,6 @@ export interface TournamentSettings {
   tournamentName: string;
   organizerId: string;
   isPractice?: boolean;
-  isSelfPractice?: boolean;
   archersPerTarget: number;
   totalTargets: number;
   totalArrows: number;
@@ -177,10 +176,6 @@ export interface TournamentSettings {
   thbUrl?: string;
   enableGateway?: boolean;
   officialFee?: number;
-  selfPracticeEnds?: number;
-  selfPracticeArrows?: number;
-  selfPracticeDistance?: number;
-  selfPracticeTargetType?: TargetType;
   categoryConfigs?: Partial<Record<CategoryType, CategoryConfig>>;
   waGroupLink?: string;
 }

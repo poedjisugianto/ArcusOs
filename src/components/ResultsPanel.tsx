@@ -38,12 +38,26 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
         const manualFives = scores.reduce((acc, curr) => acc + (curr.count5 || 0), 0);
         
         const isSmallTarget = config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA;
+        const isSixRing = config?.targetType === TargetType.TRADITIONAL_6_RING;
         
-        const allArrows = scores.flatMap(s => s.arrows).filter(v => v !== -1);
-        const arrowSixes = allArrows.filter(v => isSmallTarget ? v === 2 : (v === 'X' || v === 6)).length;
-        const arrowFives = allArrows.filter(v => isSmallTarget ? v === 1 : v === 5).length;
+        const allArrows = scores.flatMap(s => s.arrows).filter(v => v !== undefined && v !== -1);
         
-        const hasManual = scores.some(s => s.count6 !== undefined);
+        let arrowSixes = 0;
+        let arrowFives = 0;
+
+        if (isSmallTarget) {
+          arrowSixes = allArrows.filter(v => v === 2).length;
+          arrowFives = allArrows.filter(v => v === 1).length;
+        } else if (isSixRing) {
+          arrowSixes = allArrows.filter(v => v === 6).length;
+          arrowFives = allArrows.filter(v => v === 5).length;
+        } else {
+          // Standard 10-ring
+          arrowSixes = allArrows.filter(v => v === 'X' || v === 10).length;
+          arrowFives = allArrows.filter(v => v === 9).length;
+        }
+        
+        const hasManual = scores.some(s => s.count6 !== undefined && s.count6 !== 0);
         const sixes = hasManual ? manualSixes : arrowSixes;
         const fives = hasManual ? manualFives : arrowFives;
         
@@ -76,12 +90,22 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
     });
   }, [state, activeCategory]);
 
+  const tieBreakLabels = useMemo(() => {
+    const targetType = config?.targetType;
+    if (targetType === TargetType.PUTA || targetType === TargetType.TRADITIONAL_PUTA) {
+      return { highest: '2s', second: '1s' };
+    } else if (targetType === TargetType.TRADITIONAL_6_RING) {
+      return { highest: '6s', second: '5s' };
+    }
+    return { highest: 'X+10', second: '9' };
+  }, [config]);
+
   const handlePrint = () => {
     window.print();
   };
 
   const handleDownloadCSV = () => {
-    const headers = ['Rank', 'Nama', 'Klub', 'Kategori', '6s/Xs', '5s', 'Total'];
+    const headers = ['Rank', 'Nama', 'Klub', 'Kategori', `${tieBreakLabels.highest}`, `${tieBreakLabels.second}`, 'Total'];
     const rows = rankings.map(r => [
       r.displayRank + r.tieLabel,
       r.name,
@@ -257,8 +281,8 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
                   <th className="px-4 md:px-8 py-3 md:py-4 w-12 md:w-20 text-center">Rank</th>
                   <th className="px-4 md:px-8 py-3 md:py-4">Nama Atlet</th>
                   <th className="px-8 py-4 hidden md:table-cell">Klub / Kota</th>
-                  <th className="px-4 md:px-6 py-3 md:py-4 text-center">6s/Xs</th>
-                  <th className="px-4 md:px-6 py-3 md:py-4 text-center">5s</th>
+                  <th className="px-4 md:px-6 py-3 md:py-4 text-center">{tieBreakLabels.highest}</th>
+                  <th className="px-4 md:px-6 py-3 md:py-4 text-center">{tieBreakLabels.second}</th>
                   <th className="px-4 md:px-8 py-3 md:py-4 text-right">Total</th>
                 </tr>
               </thead>

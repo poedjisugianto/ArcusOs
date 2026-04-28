@@ -2,10 +2,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, Target, CheckCircle2, ChevronRight, ChevronLeft, 
-  Save, User, Zap, Hash, Trophy, Keyboard, Search, X
+  Save, User, Zap, Hash, Trophy, Keyboard, Search, X, Trash2,
+  ScanLine
 } from 'lucide-react';
 import { ArcheryEvent, ScoreEntry, Archer, CategoryType, TargetType, ScoreLog } from '../types';
 import { CATEGORY_LABELS } from '../constants';
+import QRScanner from './QRScanner';
 
 interface Props {
   event: ArcheryEvent;
@@ -20,11 +22,14 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
   const [currentEnd, setCurrentEnd] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [showToast, setShowToast] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const focusedArcher = useRef<string | null>(null);
 
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (showScanner) return;
       const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
 
       // Ctrl + S to save
@@ -80,21 +85,61 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     return filtered;
   }, [archersInScope, searchTerm]);
 
+  // Track which rows have been modified locally or are in "reset lock"
+  const [dirtyRows, setDirtyRows] = useState<Record<string, number>>( {}); // mapping archerId to timestamp of last local change
+
+  // RESET local state when the scoring context (mode, end, target, category) changes
+  useEffect(() => {
+    setLocalScores({});
+    setDirtyRows({});
+    // Also clear input refs to be safe
+    inputRefs.current = {};
+  }, [currentEnd, mode, selectedTarget, selectedCategory]);
+
   // Load existing scores into local state when scope or end changes
   useEffect(() => {
-    const initial: Record<string, { total: number; count6: number; count5: number }> = {};
-    archersInScope.forEach(a => {
-      const existing = event.scores.find(s => s.archerId === a.id && s.endIndex === currentEnd);
-      initial[a.id] = {
-        total: existing?.total || 0,
-        count6: existing?.count6 || 0,
-        count5: existing?.count5 || 0
-      };
+    setLocalScores(prev => {
+      const updated = { ...prev };
+      let changed = false;
+      const now = Date.now();
+
+      archersInScope.forEach(a => {
+        const existing = event.scores
+          .filter(s => {
+            if (s.isDeleted) return false;
+            const norm = (s.sessionId === '1' || s.sessionId === '2' || !s.sessionId) ? 'QUAL' : s.sessionId;
+            return s.archerId === a.id && s.endIndex === currentEnd && norm === 'QUAL';
+          })
+          .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))[0];
+        
+        const cloudData = {
+          total: existing?.total || 0,
+          count6: existing?.count6 || 0,
+          count5: existing?.count5 || 0
+        };
+
+        // LOCKING MECHANISM: Don't let cloud data overwrite if we have a fresh local change (last 3 seconds)
+        const lastDirtyTime = dirtyRows[a.id] || 0;
+        const isRecentlyModified = (now - lastDirtyTime) < 3000;
+
+        if (!updated[a.id] || (!isRecentlyModified && focusedArcher.current !== a.id && 
+            (updated[a.id].total !== cloudData.total || 
+             updated[a.id].count6 !== cloudData.count6 || 
+             updated[a.id].count5 !== cloudData.count5))) {
+          updated[a.id] = cloudData;
+          changed = true;
+        }
+      });
+
+      return changed ? updated : prev;
     });
-    setLocalScores(initial);
-  }, [archersInScope, currentEnd, event.scores]);
+  }, [archersInScope, currentEnd, event.scores, dirtyRows]);
 
   const handleUpdateLocal = (archerId: string, field: 'total' | 'count6' | 'count5', val: number) => {
+    setDirtyRows(prev => ({
+      ...prev,
+      [archerId]: Date.now()
+    }));
     setLocalScores(prev => ({
       ...prev,
       [archerId]: {
@@ -105,11 +150,11 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
   };
 
   const handleKeyDownInInput = (e: React.KeyboardEvent, archerId: string, field: string, index: number) => {
+    const fields = ['total', 'count6', 'count5'];
+    const currentFieldIndex = fields.indexOf(field);
+
     if (e.key === 'Enter') {
       e.preventDefault();
-      const fields = ['total', 'count6', 'count5'];
-      const currentFieldIndex = fields.indexOf(field);
-      
       if (currentFieldIndex < fields.length - 1) {
         const nextField = fields[currentFieldIndex + 1];
         inputRefs.current[`${archerId}-${nextField}`]?.focus();
@@ -119,33 +164,95 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
           inputRefs.current[`${nextArcher.id}-total`]?.focus();
         }
       }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextArcher = archersToDisplay[index + 1];
+      if (nextArcher) {
+        inputRefs.current[`${nextArcher.id}-${field}`]?.focus();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevArcher = archersToDisplay[index - 1];
+      if (prevArcher) {
+        inputRefs.current[`${prevArcher.id}-${field}`]?.focus();
+      }
+    } else if (e.key === 'ArrowRight' && (e.currentTarget as HTMLInputElement).selectionEnd === (e.currentTarget as HTMLInputElement).value.length) {
+      if (currentFieldIndex < fields.length - 1) {
+        e.preventDefault();
+        const nextField = fields[currentFieldIndex + 1];
+        inputRefs.current[`${archerId}-${nextField}`]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft' && (e.currentTarget as HTMLInputElement).selectionStart === 0) {
+      if (currentFieldIndex > 0) {
+        e.preventDefault();
+        const prevField = fields[currentFieldIndex - 1];
+        inputRefs.current[`${archerId}-${prevField}`]?.focus();
+      }
     }
+  };
+
+  const handleResetArcher = (archerId: string) => {
+    const archer = event.archers.find(a => a.id === archerId);
+    if (!confirm(`Reset skor untuk ${archer?.name} di Rambahan ${currentEnd + 1}?`)) return;
+    
+    const config = (event.settings.categoryConfigs || {})[archer?.category as CategoryType];
+    const dummyArrows: (number | 'X')[] = new Array(config?.arrows || 6).fill(-1);
+    
+    const now = Date.now();
+    
+    // Mark as recently modified to prevent cloud sync from overwriting with old data
+    setDirtyRows(prev => ({
+      ...prev,
+      [archerId]: now
+    }));
+
+    onSaveScore({
+      archerId: archerId,
+      sessionId: 'QUAL',
+      endIndex: currentEnd,
+      arrows: dummyArrows,
+      total: 0,
+      count6: 0,
+      count5: 0,
+      lastUpdated: now,
+      isDeleted: true
+    });
+    
+    setLocalScores(prev => ({
+      ...prev,
+      [archerId]: { total: 0, count6: 0, count5: 0 }
+    }));
+    
+    setShowToast("Skor Berhasil Direset!");
+    setTimeout(() => setShowToast(null), 1500);
   };
 
   const handleSaveAll = () => {
     const scoresToSave: ScoreEntry[] = [];
+    const now = Date.now();
     
     archersToDisplay.forEach(a => {
       const data = localScores[a.id];
-      if (data) {
+      if (data && dirtyRows[a.id]) {
         const config = (event.settings.categoryConfigs || {})[a.category as CategoryType];
         const dummyArrows: (number | 'X')[] = new Array(config?.arrows || 6).fill(0);
         
         scoresToSave.push({
           archerId: a.id,
-          sessionId: (a.wave || 1).toString(),
+          sessionId: 'QUAL',
           endIndex: currentEnd,
           arrows: dummyArrows,
           total: data.total,
           count6: data.count6,
           count5: data.count5,
-          lastUpdated: Date.now()
+          lastUpdated: now
         });
       }
     });
 
     if (scoresToSave.length > 0) {
       onSaveScore(scoresToSave);
+      // We don't clear dirtyRows immediately, the useEffect with timestamp will handle it
     }
 
     setShowToast(`Skor Rambahan ${currentEnd + 1} Berhasil Disimpan!`);
@@ -169,8 +276,33 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     }, 1500);
   };
 
+  const handleScan = (data: string) => {
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.type === 'SCORING_SHEET' && parsed.eventId === event.id) {
+        setMode('TARGET');
+        setSelectedTarget(parsed.targetNo);
+        // Find the archer to focus
+        setSearchTerm(''); // Clear search to make sure archer is visible
+        setShowScanner(false);
+        setShowToast(`Bantalan ${parsed.targetNo}${parsed.position} Terpilih!`);
+        setTimeout(() => {
+          setShowToast(null);
+          // Autofocus the first field for this archer
+          inputRefs.current[`${parsed.archerId}-total`]?.focus();
+        }, 1500);
+      } else {
+        alert("QR Code tidak valid untuk event ini.");
+      }
+    } catch (e) {
+      alert("Gagal membaca QR Code.");
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {showScanner && <QRScanner onScan={handleScan} onClose={() => setShowScanner(false)} />}
+      
       {/* Keyboard Shortcut Info */}
       <div className="px-6 py-4 bg-slate-900 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 overflow-hidden">
         <div className="flex items-center gap-3">
@@ -210,6 +342,13 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
         </div>
         
         <div className="flex flex-wrap items-center gap-4">
+           <button 
+             onClick={() => setShowScanner(true)}
+             className="px-6 py-3 bg-arcus-red text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center gap-3 italic"
+           >
+             <ScanLine className="w-5 h-5" /> Scan QR
+           </button>
+
            {/* Mode Switcher */}
            <div className="flex bg-slate-100 p-1 rounded-xl">
               <button 
@@ -327,9 +466,15 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                         value={data.total || ''}
                         onChange={(e) => handleUpdateLocal(a.id, 'total', parseInt(e.target.value) || 0)}
                         onKeyDown={(e) => handleKeyDownInInput(e, a.id, 'total', archerIdx)}
-                        onFocus={(e) => e.target.select()}
+                        onFocus={(e) => {
+                          e.target.select();
+                          focusedArcher.current = a.id;
+                        }}
+                        onBlur={() => {
+                          focusedArcher.current = null;
+                        }}
                         placeholder="0"
-                        className="w-full p-4 bg-slate-50 rounded-xl text-center font-black text-2xl text-slate-900 focus:bg-slate-100 outline-none transition-all"
+                        className="w-full p-6 sm:p-8 border-2 border-slate-200 rounded-lg text-center font-black text-4xl sm:text-5xl text-slate-900 focus:bg-white focus:border-arcus-red focus:ring-8 ring-arcus-red/5 outline-none transition-all shadow-sm"
                      />
                   </div>
                   <div className="space-y-2">
@@ -343,9 +488,15 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                           value={data.count6 || ''}
                           onChange={(e) => handleUpdateLocal(a.id, 'count6', parseInt(e.target.value) || 0)}
                           onKeyDown={(e) => handleKeyDownInInput(e, a.id, 'count6', archerIdx)}
-                          onFocus={(e) => e.target.select()}
+                          onFocus={(e) => {
+                            e.target.select();
+                            focusedArcher.current = a.id;
+                          }}
+                          onBlur={() => {
+                            focusedArcher.current = null;
+                          }}
                           placeholder="0"
-                          className="w-full p-4 bg-slate-50 rounded-xl text-center font-black text-2xl text-slate-900 focus:bg-slate-100 outline-none transition-all"
+                           className="w-full p-6 border-2 border-slate-200 rounded-lg text-center font-black text-4xl text-slate-900 focus:bg-white focus:border-arcus-red focus:ring-8 ring-arcus-red/5 outline-none transition-all shadow-sm"
                         />
                      </div>
                   </div>
@@ -360,11 +511,26 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                           value={data.count5 || ''}
                           onChange={(e) => handleUpdateLocal(a.id, 'count5', parseInt(e.target.value) || 0)}
                           onKeyDown={(e) => handleKeyDownInInput(e, a.id, 'count5', archerIdx)}
-                          onFocus={(e) => e.target.select()}
+                          onFocus={(e) => {
+                            e.target.select();
+                            focusedArcher.current = a.id;
+                          }}
+                          onBlur={() => {
+                            focusedArcher.current = null;
+                          }}
                           placeholder="0"
-                          className="w-full p-4 bg-slate-50 rounded-xl text-center font-black text-2xl text-slate-900 focus:bg-slate-100 outline-none transition-all"
+                          className="w-full p-6 border-2 border-slate-200 rounded-lg text-center font-black text-4xl text-slate-900 focus:bg-white focus:border-arcus-red focus:ring-8 ring-arcus-red/5 outline-none transition-all shadow-sm"
                         />
                      </div>
+                  </div>
+                  <div className="flex flex-col justify-end">
+                    <button 
+                      onClick={() => handleResetArcher(a.id)}
+                      className="p-4 bg-red-50 border border-red-100 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-xl transition-all active:scale-90"
+                      title="Reset skor pemanah ini"
+                    >
+                      <Trash2 className="w-5 h-5 font-black" />
+                    </button>
                   </div>
                </div>
             </div>

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, Target, QrCode, X, User, Delete, CheckCircle2, 
-  ChevronRight, ChevronLeft, BellRing, ScanLine
+  ChevronRight, ChevronLeft, Trash2, ScanLine
 } from 'lucide-react';
 import { ArcheryEvent, ScoreEntry, Archer, TargetType, ScoreLog, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -19,6 +19,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
   const [selectedArcherId, setSelectedArcherId] = useState<string | null>(null);
   const [currentEnd, setCurrentEnd] = useState(0);
   const [tempArrows, setTempArrows] = useState<(number | 'X')[]>([]);
+  const [isDirty, setIsDirty] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
 
@@ -40,7 +41,11 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
   const config = selectedArcher ? (state.settings.categoryConfigs || {})[selectedArcher.category as CategoryType] : null;
 
   useEffect(() => {
-    if (selectedArcher && config) {
+    setIsDirty(false);
+  }, [selectedArcherId, currentEnd]);
+
+  useEffect(() => {
+    if (selectedArcher && config && !isDirty) {
       // 1. Check if there's a draft for THIS specific archer/end
       const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
       const savedDraft = localStorage.getItem(draftKey);
@@ -49,28 +54,118 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
         setTempArrows(JSON.parse(savedDraft));
       } else {
         // 2. If no draft, check if there's already a SAVED score
-        const existing = state.scores.find(s => 
-          s.archerId === selectedArcherId && s.endIndex === currentEnd
-        );
+        const existing = state.scores
+          .filter(s => {
+            if (s.isDeleted) return false;
+            const norm = (s.sessionId === '1' || s.sessionId === '2' || !s.sessionId) ? 'QUAL' : s.sessionId;
+            return s.archerId === selectedArcherId && s.endIndex === currentEnd && norm === 'QUAL';
+          })
+          .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))[0];
         setTempArrows(existing?.arrows ? [...existing.arrows] : new Array(config.arrows).fill(-1));
       }
     }
-  }, [selectedArcherId, currentEnd, state.scores, config, state.id]);
+  }, [selectedArcherId, currentEnd, state.scores, config, state.id, isDirty]);
 
   // Persist tempArrows to draft as they are entered
   useEffect(() => {
-    if (selectedArcherId && tempArrows.length > 0 && tempArrows.some(v => v !== -1)) {
+    if (selectedArcherId && tempArrows.length > 0) {
       const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
-      localStorage.setItem(draftKey, JSON.stringify(tempArrows));
+      if (tempArrows.some(v => v !== -1)) {
+        localStorage.setItem(draftKey, JSON.stringify(tempArrows));
+      } else {
+        // If everything is cleared, remove the draft so it doesn't re-appear
+        localStorage.removeItem(draftKey);
+      }
     }
   }, [tempArrows, selectedArcherId, currentEnd, state.id]);
 
-  const handleInput = (val: number | 'X') => {
+  const keypadValues: (number | 'X' | 'M')[] = useMemo(() => {
+    if (config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA) {
+      return [2, 1, 'M'];
+    } else if (config?.targetType === TargetType.TRADITIONAL_6_RING) {
+      return [6, 5, 4, 3, 2, 1, 0];
+    } else if (config?.targetType === TargetType.FACE_3X20) {
+      return ['X', 10, 9, 8, 7, 6, 0];
+    }
+    return ['X', 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+  }, [config]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if user is typing in an input or scanner is open
+      if (showScanner) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const key = e.key.toLowerCase();
+      
+      // Numbers 1-9
+      if (/^[1-9]$/.test(key)) {
+        const val = parseInt(key);
+        if (keypadValues.includes(val)) {
+          handleInput(val);
+        }
+      } 
+      // 0 mapped to 10 or 0 depending on context
+      else if (key === '0') {
+        if (keypadValues.includes(10)) handleInput(10);
+        else if (keypadValues.includes(0)) handleInput(0);
+      }
+      // X for X
+      else if (key === 'x' || key === '*') {
+        if (keypadValues.includes('X')) handleInput('X');
+      }
+      // M for Miss
+      else if (key === 'm' || key === '/') {
+        if (keypadValues.includes('M')) handleInput('M');
+        else if (keypadValues.includes(0)) handleInput(0);
+      }
+      // Backspace to delete
+      else if (key === 'backspace' || key === 'delete') {
+        const idx = tempArrows.map(x => x !== -1).lastIndexOf(true);
+        if (idx !== -1) {
+          setIsDirty(true);
+          const n = [...tempArrows]; n[idx] = -1; setTempArrows(n);
+        }
+      }
+      // Enter to save
+      else if (key === 'enter') {
+        const allFilled = tempArrows.every(v => v !== -1);
+        if (allFilled || tempArrows.some(v => v !== -1)) {
+          handleSave(tempArrows);
+        }
+      }
+      // Navigation
+      else if (key === 'arrowleft') {
+        setCurrentEnd(prev => Math.max(0, prev - 1));
+      }
+      else if (key === 'arrowright') {
+        setCurrentEnd(prev => Math.min((config?.ends || 7) - 1, prev + 1));
+      }
+      else if (key === 'arrowup') {
+        const archerIdx = archersAtTarget.findIndex(a => a.id === selectedArcherId);
+        if (archerIdx > 0) {
+          setSelectedArcherId(archersAtTarget[archerIdx - 1].id);
+        }
+      }
+      else if (key === 'arrowdown') {
+        const archerIdx = archersAtTarget.findIndex(a => a.id === selectedArcherId);
+        if (archerIdx < archersAtTarget.length - 1) {
+          setSelectedArcherId(archersAtTarget[archerIdx + 1].id);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedArcherId, currentEnd, tempArrows, keypadValues, config, archersAtTarget]);
+
+  const handleInput = (val: number | 'X' | 'M') => {
     if (!config) return;
+    setIsDirty(true);
     const nextIdx = tempArrows.indexOf(-1);
     if (nextIdx !== -1) {
       const newArrows = [...tempArrows];
-      newArrows[nextIdx] = val;
+      newArrows[nextIdx] = val === 'M' ? 0 : val;
       setTempArrows(newArrows);
       
       if (nextIdx === config.arrows - 1) {
@@ -81,6 +176,9 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
 
   const handleSave = (arrows: (number | 'X')[]) => {
     if (!selectedArcherId || !config) return;
+    
+    // Check if it's a reset (all -1)
+    const isReset = arrows.every(v => v === -1);
     
     let maxVal = 6;
     if (config.targetType === TargetType.PUTA || config.targetType === TargetType.TRADITIONAL_PUTA) {
@@ -114,18 +212,30 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     
     onSaveScore({
       archerId: selectedArcherId,
-      sessionId: (selectedArcher?.wave || 1).toString(),
+      sessionId: 'QUAL',
       endIndex: currentEnd,
       arrows,
       total,
       count6,
       count5,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      isDeleted: isReset
     });
 
     // Clear draft after successful save
     const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
     localStorage.removeItem(draftKey);
+
+    // Reset status dirty agar sinkronisasi bisa berjalan lagi setelah simpan
+    // Beri jeda 3 detik agar sinkronisasi cloud selesai dulu sebelum loading data dari state.scores
+    setTimeout(() => setIsDirty(false), 3000);
+
+    if (isReset) {
+      setShowToast(`Data Rambahan ${currentEnd + 1} Direset!`);
+      setTimeout(() => setShowToast(null), 1500);
+      setTempArrows(new Array(config.arrows).fill(-1));
+      return;
+    }
 
     // CRITICAL: Reset tempArrows immediately so the "draft saver" effect 
     // doesn't catch the old arrows for the NEW archerId/currentEnd
@@ -142,6 +252,14 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
       setSelectedArcherId(archersAtTarget[0].id);
       setCurrentEnd(currentEnd + 1);
     }
+  };
+
+  const handleResetEnd = () => {
+    if (!config || !selectedArcherId) return;
+    setIsDirty(true);
+    const emptyArrows = new Array(config.arrows).fill(-1);
+    setTempArrows(emptyArrows);
+    handleSave(emptyArrows);
   };
 
   const handleScan = (data: string) => {
@@ -161,14 +279,29 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     }
   };
 
-  let keypadValues: (number | 'X')[] = ['X', 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
-  if (config?.targetType === TargetType.PUTA || config?.targetType === TargetType.TRADITIONAL_PUTA) {
-    keypadValues = [2, 1, 0];
-  } else if (config?.targetType === TargetType.TRADITIONAL_6_RING) {
-    keypadValues = [6, 5, 4, 3, 2, 1, 0];
-  } else if (config?.targetType === TargetType.FACE_3X20) {
-    keypadValues = ['X', 10, 9, 8, 7, 6, 0];
-  }
+  const getButtonStyles = (val: number | 'X' | 'M') => {
+    const targetType = config?.targetType;
+    
+    if (targetType === TargetType.PUTA || targetType === TargetType.TRADITIONAL_PUTA) {
+      if (val === 2) return 'bg-[#800000] text-white border-[#600000]';
+      if (val === 1) return 'bg-yellow-400 text-slate-900 border-yellow-600';
+      return 'bg-slate-900 text-white border-slate-700'; // M
+    }
+    
+    if (targetType === TargetType.TRADITIONAL_6_RING) {
+      if (val === 6 || val === 5 || val === 4) return 'bg-yellow-400 text-slate-900 border-yellow-600';
+      if (val === 3) return 'bg-red-600 text-white border-red-800';
+      if (val === 2) return 'bg-white text-slate-900 border-slate-200';
+      if (val === 1) return 'bg-blue-600 text-white border-blue-800';
+      return 'bg-slate-900 text-white border-slate-700';
+    }
+
+    if (val === 'X' || val === 10 || val === 9) return 'bg-yellow-400 text-slate-900 border-yellow-600';
+    if (val === 8 || val === 7) return 'bg-red-600 text-white border-red-800';
+    if (val === 6 || val === 5) return 'bg-blue-600 text-white border-blue-800';
+    if (val === 4 || val === 3) return 'bg-slate-900 text-white border-slate-700';
+    return 'bg-white text-slate-900 border-slate-200';
+  };
 
   return (
     <div className="fixed inset-0 bg-white z-[100] flex flex-col font-inter overflow-hidden select-none">
@@ -232,9 +365,9 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-black uppercase tracking-widest">{a.targetNo}{a.position}</p>
                 <div className="flex items-center gap-2">
-                   <div className="flex gap-1">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                         <div key={i} className={`w-1.5 h-1.5 rounded-full ${state.scores.find(s => s.archerId === a.id && s.endIndex === i) ? 'bg-slate-900' : 'bg-slate-200'}`} />
+                   <div className="flex gap-0.5 overflow-hidden max-w-[60px]">
+                      {Array.from({ length: (state.settings.categoryConfigs || {})[a.category as CategoryType]?.ends || 6 }).map((_, i) => (
+                         <div key={i} className={`w-1 h-1 rounded-full shrink-0 ${state.scores.find(s => s.archerId === a.id && s.endIndex === i && !s.isDeleted) ? 'bg-slate-900' : 'bg-slate-200'}`} />
                       ))}
                    </div>
                 </div>
@@ -248,7 +381,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
         </div>
 
         {/* Scoring Area - Single Screen Layout */}
-        <div className="flex-1 flex flex-col p-4 sm:p-8 gap-6 justify-between overflow-hidden bg-white">
+        <div className="flex-1 flex flex-col p-4 sm:p-8 gap-6 justify-between overflow-y-auto bg-white">
           {!selectedArcher ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-200 gap-6">
               <User className="w-24 h-24" />
@@ -260,7 +393,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
               <div className="space-y-6 text-center">
                   <div className="flex items-center justify-center gap-1.5 overflow-x-auto no-scrollbar pb-2">
                     {Array.from({ length: config?.ends || 7 }).map((_, i) => {
-                      const scoreForEnd = state.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i);
+                      const scoreForEnd = state.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i && !s.isDeleted);
                       return (
                         <button 
                           key={i} 
@@ -274,26 +407,54 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
                     })}
                   </div>
                  
-                 <div className="flex justify-center gap-3">
+                  <div className="flex justify-center flex-wrap gap-2 sm:gap-4">
                     {tempArrows.map((a, i) => (
                       <div 
                         key={i} 
-                        className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-4 flex items-center justify-center text-3xl font-black transition-all ${a === -1 ? 'bg-slate-50 border-slate-100 text-slate-200' : 'bg-slate-900 border-slate-900 text-white shadow-xl rotate-2'}`}
+                        className={`w-14 h-14 sm:w-20 sm:h-20 rounded-lg border-2 flex items-center justify-center text-2xl sm:text-4xl font-black transition-all ${a === -1 ? 'border-slate-100 text-slate-100' : 'border-slate-900 text-slate-900 shadow-sm'}`}
                       >
-                        {a === -1 ? '' : a}
+                        {a === -1 ? '' : (a === 0 && config?.targetType === TargetType.PUTA ? 'M' : a)}
                       </div>
                     ))}
                  </div>
               </div>
 
               {/* High Contrast Sunlight Keypad */}
-              <div className="w-full max-w-lg mx-auto flex flex-col gap-4 pb-8">
-                <div className="grid grid-cols-3 gap-3">
+              <div className="w-full max-w-lg mx-auto flex flex-col gap-2 sm:gap-4 pb-4 sm:pb-8">
+                {/* Keyboard Helper */}
+                <div className="hidden lg:flex items-center justify-center gap-4 mb-2">
+                   <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[9px] font-mono">1-9</kbd>
+                      <span className="text-[8px] font-bold uppercase tracking-widest">Score</span>
+                   </div>
+                   <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[9px] font-mono">0</kbd>
+                      <span className="text-[8px] font-bold uppercase tracking-widest">10</span>
+                   </div>
+                   <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[9px] font-mono">X</kbd>
+                      <span className="text-[8px] font-bold uppercase tracking-widest">X</span>
+                   </div>
+                   <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[9px] font-mono">M</kbd>
+                      <span className="text-[8px] font-bold uppercase tracking-widest">Miss</span>
+                   </div>
+                   <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[9px] font-mono">BS</kbd>
+                      <span className="text-[8px] font-bold uppercase tracking-widest">Undo</span>
+                   </div>
+                   <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[9px] font-mono">↵</kbd>
+                      <span className="text-[8px] font-bold uppercase tracking-widest">Save</span>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 sm:gap-4">
                   {keypadValues.map(val => (
                     <button 
                       key={val} 
                       onClick={() => handleInput(val)}
-                      className="h-14 sm:h-18 bg-slate-900 text-white rounded-xl text-3xl font-black shadow-md active:bg-black active:scale-95 transition-all flex items-center justify-center border-b-4 border-slate-700"
+                      className={`h-14 sm:h-20 rounded-2xl text-2xl sm:text-4xl font-black shadow-sm active:scale-95 transition-all flex items-center justify-center border-b-4 ${getButtonStyles(val)}`}
                     >
                       {val}
                     </button>
@@ -302,16 +463,17 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
                     onClick={() => {
                       const idx = tempArrows.map(x => x !== -1).lastIndexOf(true);
                       if (idx !== -1) {
+                        setIsDirty(true);
                         const n = [...tempArrows]; n[idx] = -1; setTempArrows(n);
                       }
                     }}
-                    className="h-14 sm:h-18 bg-white text-red-500 rounded-xl flex items-center justify-center active:scale-95 transition-all border-2 border-slate-100 shadow-sm"
+                    className="h-14 sm:h-20 bg-white text-red-500 rounded-2xl flex items-center justify-center active:scale-95 transition-all border-2 border-slate-100 shadow-sm"
                   >
-                    <Delete className="w-8 h-8" />
+                    <Delete className="w-8 h-8 sm:w-10 sm:h-10" />
                   </button>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-2 sm:gap-4">
                     <button 
                       onClick={() => {
                         const allFilled = tempArrows.every(v => v !== -1);
@@ -319,10 +481,17 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
                           handleSave(tempArrows);
                         }
                       }}
-                      className="flex-1 h-16 bg-emerald-500 text-white rounded-xl font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 border-b-4 border-emerald-700"
+                      className="flex-1 h-14 sm:h-20 bg-emerald-500 text-white rounded-2xl font-black uppercase text-base sm:text-lg tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3 border-b-4 border-emerald-700"
                     >
-                      <CheckCircle2 className="w-6 h-6" />
+                      <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8" />
                       Simpan Skor
+                    </button>
+                    <button 
+                      onClick={handleResetEnd}
+                      className="px-6 h-14 sm:h-20 bg-red-50 text-red-500 border-2 border-red-200 rounded-2xl font-black uppercase text-[10px] sm:text-xs tracking-tighter sm:tracking-widest shadow-sm active:scale-95 transition-all flex flex-col items-center justify-center gap-1"
+                    >
+                      <Trash2 className="w-5 h-5 sm:w-6 sm:h-6" />
+                      RESET
                     </button>
                 </div>
               </div>

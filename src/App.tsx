@@ -58,6 +58,7 @@ export function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
+  const [liveBoardTVMode, setLiveBoardTVMode] = useState(false);
   const isSyncingFromCloud = React.useRef(false);
 
   const [appState, setAppState] = useState<AppState>(() => {
@@ -162,7 +163,7 @@ export function App() {
       // Detailed log to help user debug
       console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
       if (cloudEventsRaw.length > 0) {
-        console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings.tournamentName, status: ce.status, owner: ce.ownerId })));
+        console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings?.tournamentName || 'Untitled', status: ce.status, owner: ce.ownerId })));
       }
 
       // Filter events outside setAppState to keep them available for notifications
@@ -170,7 +171,7 @@ export function App() {
         const isSuperAdmin = appState.currentUser?.isSuperAdmin;
         if (isSuperAdmin) return true;
         
-        const isMine = appState.currentUser && (ce.settings.organizerId === appState.currentUser.id || ce.ownerId === appState.currentUser.id);
+        const isMine = appState.currentUser && (ce.settings?.organizerId === appState.currentUser.id || ce.ownerId === appState.currentUser.id);
         const isPublic = ce.status !== 'DRAFT';
         const isActive = ce.id === appState.activeEventId;
         
@@ -191,7 +192,7 @@ export function App() {
             eventMap.set(ce.id, ce);
           } else {
             const cloudDate = ce.cloudUpdatedAt ? new Date(ce.cloudUpdatedAt).getTime() : 0;
-            const localDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : (local.settings.createdAt || 0);
+            const localDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : (local.settings?.createdAt || 0);
 
             const cloudArchers = ce.archers || [];
             const localArchers = local.archers || [];
@@ -202,11 +203,11 @@ export function App() {
               if (existingIdx === -1) {
                 mergedArchers.push(ca);
               } else {
-                const cloudArcherDate = ca.updatedAt || cloudDate;
-                const localArcherDate = mergedArchers[existingIdx].updatedAt || localDate;
+                const cloudArcherDate = ca.updatedAt ? new Date(ca.updatedAt).getTime() : cloudDate;
+                const localArcherDate = mergedArchers[existingIdx].updatedAt ? new Date(mergedArchers[existingIdx].updatedAt).getTime() : localDate;
                 // Favor cloud if it's the active event or if cloud data is newer
                 if (cloudArcherDate > localArcherDate || ce.id === prev.activeEventId) {
-                  mergedArchers[existingIdx] = { ...mergedArchers[existingIdx], ...ca };
+                  mergedArchers[existingIdx] = { ...mergedArchers[existingIdx], ...ca, updatedAt: new Date(Math.max(cloudArcherDate, localArcherDate)).toISOString() };
                 }
               }
             });
@@ -215,6 +216,43 @@ export function App() {
             (ce.registrations || []).forEach((cr: any) => {
               if (!mergedRegistrations.some(lr => lr.id === cr.id)) {
                 mergedRegistrations.push(cr);
+              }
+            });
+
+            const lastResetAt = ce.settings?.lastResetAt || local.settings?.lastResetAt || 0;
+            const mergedScores = (local.scores || []).filter(s => (s.lastUpdated || 0) > lastResetAt);
+            (ce.scores || []).forEach((cs: any) => {
+              if ((cs.lastUpdated || 0) <= lastResetAt) return; // Skip old scores
+              
+              // Normalize sessionId if it looks like a wave string
+              const normalizedSessionId = (cs.sessionId === '1' || cs.sessionId === '2' || !cs.sessionId) ? 'QUAL' : cs.sessionId;
+              
+              const existingIdx = mergedScores.findIndex(ls => 
+                ls.archerId === cs.archerId && 
+                (ls.sessionId === normalizedSessionId || (ls.sessionId === 'QUAL' && (normalizedSessionId === '1' || normalizedSessionId === '2'))) &&
+                ls.endIndex === cs.endIndex
+              );
+
+              const csWithNormalized = { ...cs, sessionId: normalizedSessionId };
+
+              if (existingIdx === -1) {
+                mergedScores.push(csWithNormalized);
+              } else {
+                const cloudScoreDate = cs.lastUpdated || 0;
+                const localScoreDate = mergedScores[existingIdx].lastUpdated || 0;
+                
+                // Favor cloud if it's strictly newer via timestamp
+                // Fallback to cloudDate/localDate only if timestamps are missing
+                if (cloudScoreDate > localScoreDate || (cloudScoreDate === 0 && localScoreDate === 0 && cloudDate > localDate)) {
+                  mergedScores[existingIdx] = csWithNormalized;
+                }
+              }
+            });
+
+            const mergedLogs = [...(local.scoreLogs || [])];
+            (ce.scoreLogs || []).forEach((cl: any) => {
+              if (!mergedLogs.some(ll => ll.id === cl.id)) {
+                mergedLogs.push(cl);
               }
             });
 
@@ -236,14 +274,18 @@ export function App() {
                 ...(useCloudStructure ? ce : {}),
                 archers: mergedArchers, 
                 registrations: mergedRegistrations,
+                scores: mergedScores,
+                scoreLogs: mergedLogs,
                 localUpdatedAt: localDate > cloudDate ? (local as any).localUpdatedAt : new Date().toISOString()
               });
             } else {
-              // Local is newer, just keep the merged archers/registrations
+              // Local is newer, just keep the merged archers/registrations/scores
               eventMap.set(ce.id, { 
                 ...local, 
                 archers: mergedArchers, 
-                registrations: mergedRegistrations 
+                registrations: mergedRegistrations,
+                scores: mergedScores,
+                scoreLogs: mergedLogs
               });
             }
           }
@@ -491,9 +533,13 @@ export function App() {
           
         let finalData = { ...event };
         if (cloudRes && cloudRes.data) {
-          const ce = cloudRes.data;
+          const ce = cloudRes.data as ArcheryEvent;
+          const lastResetAt = Math.max(event.settings?.lastResetAt || 0, ce.settings?.lastResetAt || 0);
+
           const mergedArchers = [...(finalData.archers || [])];
           const mergedRegistrations = [...(finalData.registrations || [])];
+          const mergedScores = (finalData.scores || []).filter(s => (s.lastUpdated || 0) > lastResetAt);
+          const mergedLogs = [...(finalData.scoreLogs || [])];
           
           (ce.archers || []).forEach((ca: any) => {
             if (!mergedArchers.some(la => la.id === ca.id)) mergedArchers.push(ca);
@@ -502,14 +548,58 @@ export function App() {
           (ce.registrations || []).forEach((cr: any) => {
             if (!mergedRegistrations.some(lr => lr.id === cr.id)) mergedRegistrations.push(cr);
           });
+
+          (ce.scores || []).forEach((cs: any) => {
+            if ((cs.lastUpdated || 0) <= lastResetAt) return; // Skip old cloud scores
+            
+            const normalizedSessionId = (cs.sessionId === '1' || cs.sessionId === '2' || !cs.sessionId) ? 'QUAL' : cs.sessionId;
+            const csWithNormalized = { ...cs, sessionId: normalizedSessionId };
+
+            const exists = mergedScores.find(ls => 
+              ls.archerId === cs.archerId && 
+              (ls.sessionId === normalizedSessionId || (ls.sessionId === 'QUAL' && (normalizedSessionId === '1' || normalizedSessionId === '2'))) &&
+              ls.endIndex === cs.endIndex
+            );
+            
+            if (!exists) {
+              mergedScores.push(csWithNormalized);
+            } else {
+              // If local is explicitly deleted or newer, stick with local
+              if (exists.isDeleted) return; 
+
+              const cloudScoreDate = cs.lastUpdated || 0;
+              const localScoreDate = exists.lastUpdated || 0;
+              // Favor cloud score if it's strictly newer
+              if (cloudScoreDate > localScoreDate) {
+                const idx = mergedScores.findIndex(ls => 
+                  ls.archerId === cs.archerId && 
+                  (ls.sessionId === normalizedSessionId || (ls.sessionId === 'QUAL' && (normalizedSessionId === '1' || normalizedSessionId === '2'))) &&
+                  ls.endIndex === cs.endIndex
+                );
+                mergedScores[idx] = csWithNormalized;
+              }
+            }
+          });
+
+          (ce.scoreLogs || []).forEach((cl: any) => {
+            if (!mergedLogs.some(ll => ll.id === cl.id)) mergedLogs.push(cl);
+          });
           
           finalData.archers = mergedArchers;
           finalData.registrations = mergedRegistrations;
+          finalData.scores = mergedScores;
+          finalData.scoreLogs = mergedLogs;
 
-          // Update local state as well so the organizer sees new online registrations immediately
+          // Update local state as well so the organizer sees new online registrations and scores immediately
           setAppState(prev => ({
             ...prev,
-            events: prev.events.map(e => e.id === event.id ? { ...e, archers: mergedArchers, registrations: mergedRegistrations } : e)
+            events: prev.events.map(e => e.id === event.id ? { 
+              ...e, 
+              archers: mergedArchers, 
+              registrations: mergedRegistrations,
+              scores: mergedScores,
+              scoreLogs: mergedLogs
+            } : e)
           }));
         }
 
@@ -630,12 +720,14 @@ export function App() {
   // Polling for registration updates when in admin screens
   useEffect(() => {
     if (!supabase || !isOnline) return;
-    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER'];
+    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
     if (adminViews.includes(view)) {
       const interval = setInterval(() => {
-        console.log("Auto-polling registrations...");
+        // Polling faster for live views, slower for admin views
+        const isLive = view === 'LIVE' || view === 'PUBLIC_LIVE';
+        console.log(`Auto-polling cloud updates (${isLive ? 'RAID' : 'STANDARD'})...`);
         fetchCloudData();
-      }, 15000); // Check every 15 seconds
+      }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : 15000); 
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);
@@ -815,7 +907,8 @@ export function App() {
 
   const onSaveScore = (score: ScoreEntry | ScoreEntry[], log?: ScoreLog | ScoreLog[]) => {
     if (!activeEvent) return;
-    const scoresArray = Array.isArray(score) ? score : [score];
+    const now = Date.now();
+    const scoresArray = (Array.isArray(score) ? score : [score]).map(s => ({ ...s, lastUpdated: now }));
     const logsArray = Array.isArray(log) ? log : (log ? [log] : []);
     
     setAppState(prev => {
@@ -824,12 +917,21 @@ export function App() {
       
       let newScores = [...event.scores];
       scoresArray.forEach(s => {
-        newScores = newScores.filter(existing => !(
-          existing.archerId === s.archerId && 
-          existing.sessionId === s.sessionId && 
-          existing.endIndex === s.endIndex
-        ));
-        newScores.push(s);
+        const normalizedS = (s.sessionId === '1' || s.sessionId === '2' || !s.sessionId) ? 'QUAL' : s.sessionId;
+        const entryToSave = { ...s, sessionId: normalizedS };
+
+        // Remove existing match
+        newScores = newScores.filter(existing => {
+          const normalizedExisting = (existing.sessionId === '1' || existing.sessionId === '2' || !existing.sessionId) ? 'QUAL' : existing.sessionId;
+          return !(
+            existing.archerId === s.archerId && 
+            normalizedExisting === normalizedS && 
+            existing.endIndex === s.endIndex
+          );
+        });
+        
+        // Always push to newScores, so isDeleted: true acts as a "tombstone" in cloud
+        newScores.push(entryToSave);
       });
       
       const newState = {
@@ -837,7 +939,8 @@ export function App() {
         events: prev.events.map(e => e.id === event.id ? {
           ...e,
           scores: newScores,
-          scoreLogs: [...logsArray, ...e.scoreLogs]
+          scoreLogs: [...logsArray, ...e.scoreLogs],
+          localUpdatedAt: new Date().toISOString()
         } : e)
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
@@ -845,6 +948,48 @@ export function App() {
       // For scores, we want to sync faster so the scoreboard updates in real-time
       setTimeout(() => syncCloudData(false), 500);
       
+      return newState;
+    });
+  };
+
+  const onResetScores = () => {
+    if (!activeEvent) return;
+    
+    if (!confirm("PERINGATAN: Ini akan MENGHAPUS SEMUA SKOR secara permanen dari Cloud dan Lokal. Lanjutkan?")) return;
+
+    setAppState(prev => {
+      const event = prev.events.find(e => e.id === activeEvent.id);
+      if (!event) return prev;
+      
+      const now = Date.now();
+      
+      const newState = {
+        ...prev,
+        events: prev.events.map(e => e.id === event.id ? {
+          ...e,
+          scores: [], // Clear array permanently
+          scoreLogs: [
+            {
+              id: 'reset_' + now,
+              archerId: 'SYSTEM',
+              oldTotal: 0,
+              newTotal: 0,
+              timestamp: now,
+              reason: "PERMANENT HARD RESET",
+              operatorName: "ADMIN"
+            },
+            ...e.scoreLogs
+          ],
+          settings: {
+            ...e.settings,
+            lastResetAt: now // Scores before this timestamp will be ignored during sync
+          },
+          localUpdatedAt: new Date().toISOString()
+        } : e)
+      };
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      setTimeout(() => syncCloudData(true), 500);
       return newState;
     });
   };
@@ -957,7 +1102,7 @@ export function App() {
         </div>
       )}
 
-      <main className="min-h-screen pt-12 sm:pt-14">
+      <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (
           <LandingPage 
             events={appState.events.filter(e => !e.settings.isPractice && e.status !== 'DRAFT')} 
@@ -1384,6 +1529,10 @@ export function App() {
             onClear={() => {}} 
             onDelete={() => handleDeleteEvent(activeEvent.id)} 
             onBack={() => setView('EVENT_ADMIN')} 
+            onOpenTV={() => {
+              setLiveBoardTVMode(true);
+              setView('LIVE');
+            }}
           />
         )}
         {view === 'ARCHERS' && activeEvent && (
@@ -1426,7 +1575,7 @@ export function App() {
         {view === 'QUICK_SCORING' && activeEvent && <QuickScoringPanel event={activeEvent} onSaveScore={onSaveScore} onBack={() => setView('EVENT_ADMIN')} />}
         {view === 'OPERATOR_CENTER' && activeEvent && <OperatorCenter event={activeEvent} onSaveScore={onSaveScore} onBack={() => setView('EVENT_ADMIN')} />}
         {view === 'ELIMINATION' && activeEvent && <EliminationPanel event={activeEvent} onUpdateMatches={(m) => handleUpdateEvent(activeEvent.id, { matches: m })} onBack={() => setView('EVENT_ADMIN')} />}
-        {view === 'RESULTS' && activeEvent && <ResultsPanel state={activeEvent} onResetScores={() => handleUpdateEvent(activeEvent.id, { scores: [], scoreLogs: [] })} onBack={() => setView('EVENT_ADMIN')} />}
+        {view === 'RESULTS' && activeEvent && <ResultsPanel state={activeEvent} onResetScores={onResetScores} onBack={() => setView('EVENT_ADMIN')} />}
         {view === 'FINANCE' && activeEvent && (
           <FinancePanel 
             event={activeEvent} 
@@ -1474,7 +1623,16 @@ export function App() {
           } 
         }} onPayPlatformFee={(id) => handleUpdateEvent(id, { settings: { ...activeEvent.settings, platformFeePaidToOwner: true } })} onBack={() => setView('EVENT_ADMIN')} />
         )}
-        {view === 'LIVE' && activeEvent && <LiveScoreboard state={activeEvent} onBack={() => setView('EVENT_ADMIN')} />}
+        {view === 'LIVE' && activeEvent && (
+          <LiveScoreboard 
+            state={activeEvent} 
+            startInTVMode={liveBoardTVMode}
+            onBack={() => {
+              setLiveBoardTVMode(false);
+              setView('EVENT_ADMIN');
+            }} 
+          />
+        )}
         {view === 'REGISTER_PARTICIPANT' && activeEvent && <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (r) => {
           const pin = Math.floor(1000 + Math.random() * 9000).toString();
           const newArcher: Archer = {

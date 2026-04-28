@@ -2,11 +2,13 @@ import React from 'react';
 import { 
   Calendar, MapPin, Users, Trophy, Target, 
   ChevronRight, ArrowLeft, Share2, Download, 
-  ShieldCheck, Info, Clock, Award, CheckCircle2
+  ShieldCheck, Info, Clock, Award, CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import { ArcheryEvent, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
+import { generateGoogleCalendarLink, generateICalFile } from '../lib/calendarUtils';
 
 interface Props {
   event: ArcheryEvent;
@@ -220,6 +222,32 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                     )}
                   </div>
                 )}
+                <div className="grid grid-cols-2 gap-3 pb-4">
+                  <a 
+                    href={generateGoogleCalendarLink({
+                      title: event.settings.tournamentName,
+                      description: event.settings.description || '',
+                      location: event.settings.location || '',
+                      startDate: event.settings.eventDate || ''
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                  >
+                    Google Cal
+                  </a>
+                  <button 
+                    onClick={() => generateICalFile({
+                      title: event.settings.tournamentName,
+                      description: event.settings.description || '',
+                      location: event.settings.location || '',
+                      startDate: event.settings.eventDate || ''
+                    })}
+                    className="flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                  >
+                    Apple / iCal
+                  </button>
+                </div>
                 <button className="w-full py-5 bg-white text-slate-900 border-2 border-slate-100 rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:border-slate-900 transition-all flex items-center justify-center gap-3">
                   <Download className="w-5 h-5" />
                   Download THB

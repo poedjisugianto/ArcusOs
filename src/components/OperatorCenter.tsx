@@ -3,10 +3,11 @@ import {
   Search, Database, ArrowLeft, ShieldAlert, Edit3, 
   User, FileText, CheckCircle2, History, AlertCircle, 
   ChevronRight, Hash, Trash2, Download, Printer, FileDown,
-  Delete, X as CloseIcon, Save, Plus, Minus
+  Delete, X as CloseIcon, Save, Plus, Minus, ScanLine
 } from 'lucide-react';
 import { ArcheryEvent, ScoreEntry, ScoreLog, Archer, CategoryType, TargetType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
+import QRScanner from './QRScanner';
 
 interface Props {
   event: ArcheryEvent;
@@ -21,6 +22,7 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'ALL'>('ALL');
   const [selectedArcherId, setSelectedArcherId] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'ARROW' | 'RAMBAHAN'>('ARROW');
+  const [showScanner, setShowScanner] = useState(false);
   
   // Persist operator name and reason
   useEffect(() => {
@@ -103,8 +105,25 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     setRambahan5s(0);
   };
 
+  const handleScan = (data: string) => {
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.type === 'SCORING_SHEET' && parsed.eventId === event.id) {
+        setSelectedCategory('ALL');
+        setSearchTerm('');
+        setSelectedArcherId(parsed.archerId);
+        setShowScanner(false);
+      } else {
+        alert("QR Code tidak valid untuk event ini.");
+      }
+    } catch (e) {
+      alert("Gagal membaca QR Code.");
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-[1500px] mx-auto pb-20">
+      {showScanner && <QRScanner onScan={handleScan} onClose={() => setShowScanner(false)} />}
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-8">
         <div className="flex items-center gap-6">
           <button onClick={onBack} className="p-3.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl transition-all">
@@ -116,6 +135,12 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
           </div>
         </div>
         <div className="flex gap-4">
+           <button 
+             onClick={() => setShowScanner(true)}
+             className="bg-arcus-red text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 shadow-lg active:scale-95 transition-all"
+           >
+             <ScanLine className="w-5 h-5" /> Scan Sheet
+           </button>
            <input 
             type="text" 
             placeholder="Nama Operator..." 
@@ -209,7 +234,7 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                            <label className="text-[10px] font-black uppercase text-slate-400">Pilih Rambahan</label>
                            <select value={targetEnd} onChange={e => setTargetEnd(Number(e.target.value))} className="w-full p-5 bg-slate-50 border rounded-2xl font-black text-xs font-oswald italic outline-none focus:border-blue-500">
                               {Array.from({ length: config?.ends || 7 }).map((_, i) => {
-                                const existing = event.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i && s.sessionId === activeSession);
+                                const existing = event.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i && s.sessionId === activeSession && !s.isDeleted);
                                 return (
                                   <option key={i} value={i}>
                                     Rambahan #{i + 1} {existing ? `(Skor: ${existing.total})` : '(Belum Ada)'}

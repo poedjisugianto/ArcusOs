@@ -6,7 +6,7 @@ import {
   Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
   Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
   Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
-  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords
+  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords, Monitor
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
 import { CATEGORY_LABELS, TARGET_LABELS } from '../constants';
@@ -20,10 +20,11 @@ interface Props {
   onClear: () => void;
   onDelete?: () => void;
   onBack: () => void;
+  onOpenTV?: () => void;
   isSuperAdmin?: boolean;
 }
 
-const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, isSuperAdmin = false }) => {
+const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, onOpenTV, isSuperAdmin = false }) => {
   const [localSettings, setLocalSettings] = useState<TournamentSettings>(() => {
     const savedDraft = localStorage.getItem(`admin_draft_${eventId}`);
     if (savedDraft) {
@@ -262,6 +263,14 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
           </div>
           
           <div className="flex items-center gap-2">
+            {onOpenTV && (
+              <button 
+                onClick={onOpenTV}
+                className="hidden lg:flex px-6 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest items-center gap-3 text-white hover:bg-black transition-all active:scale-95 shadow-lg shadow-slate-200"
+              >
+                <Monitor className="w-4 h-4 shadow-sm" /> BIG SCREEN MODE
+              </button>
+            )}
             <button 
               onClick={onClear}
               className="hidden sm:flex px-4 py-2.5 text-[8px] font-black uppercase tracking-widest text-slate-600 hover:text-red-600 transition-all font-sans"
@@ -791,44 +800,48 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                     </div>
                     <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Metode Pembayaran Transfer</h3>
                 </div>
-                {isSuperAdmin && (
-                  <button type="button" onClick={addPaymentMethod} className="bg-arcus-dark text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
-                    <Plus className="w-3.5 h-3.5" /> Tambah Rekening
-                  </button>
-                )}
+                <button type="button" onClick={addPaymentMethod} className="bg-arcus-dark text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                  <Plus className="w-3.5 h-3.5" /> Tambah Rekening
+                </button>
               </div>
 
-              {!isSuperAdmin ? (
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm space-y-6 text-center max-w-2xl mx-auto">
-                   <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto shadow-sm">
-                      <ShieldCheck className="w-10 h-10" />
-                   </div>
-                   <div className="space-y-2">
-                      <h4 className="text-xl font-black font-oswald uppercase italic text-slate-900 tracking-tight">Manajemen Rekening Terpusat</h4>
-                      <p className="text-sm text-slate-500 font-medium leading-relaxed italic">
-                        Pengaturan nomor rekening dan gateway pembayaran dikelola sepenuhnya oleh Super Admin (Pusat). Seluruh uang pendaftaran akan masuk ke rekening pusat untuk proses verifikasi otomatis dan keamanan transaksi.
-                      </p>
-                   </div>
-                   <div className="pt-4">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-400 rounded-full border border-slate-100">
-                         <Info className="w-3 h-3" /> Silakan hubungi pusat jika ada kendala
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                {(localSettings.paymentMethods || []).map((pm) => (
+                  <div key={pm.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 relative group transition-all shadow-sm">
+                    <button type="button" onClick={() => removePaymentMethod(pm.id)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 rounded-xl transition-all"><X className="w-5 h-5" /></button>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Bank / Provider</span>
+                        <input type="text" placeholder="Contoh: BCA, Mandiri, Dana" value={pm.provider} onChange={e => updatePaymentMethod(pm.id, 'provider', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" />
                       </div>
-                   </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                  {(localSettings.paymentMethods || []).map((pm) => (
-                    <div key={pm.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 relative group transition-all shadow-sm">
-                      <button type="button" onClick={() => removePaymentMethod(pm.id)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 rounded-xl transition-all"><X className="w-5 h-5" /></button>
-                      <div className="grid grid-cols-1 gap-4">
-                        <input type="text" placeholder="Provider" value={pm.provider} onChange={e => updatePaymentMethod(pm.id, 'provider', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" />
-                        <input type="text" placeholder="No. Rekening" value={pm.accountNumber} onChange={e => updatePaymentMethod(pm.id, 'accountNumber', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-black" />
-                        <input type="text" placeholder="Nama Pemilik" value={pm.accountName} onChange={e => updatePaymentMethod(pm.id, 'accountName', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" />
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Nomor Rekening</span>
+                        <input type="text" placeholder="Masukkan nomor rekening..." value={pm.accountNumber} onChange={e => updatePaymentMethod(pm.id, 'accountNumber', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-black tracking-widest" />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Pemilik Akun</span>
+                        <input type="text" placeholder="Nama lengkap pemilik rekening..." value={pm.accountName} onChange={e => updatePaymentMethod(pm.id, 'accountName', e.target.value)} className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" />
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ))}
+                {(localSettings.paymentMethods || []).length === 0 && (
+                  <div className="col-span-full py-16 text-center space-y-6 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                    <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto">
+                      <Landmark className="w-10 h-10 text-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                       <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Belum Ada Rekening Transfer</p>
+                       <p className="text-[10px] text-slate-400 font-medium italic max-w-sm mx-auto">
+                         Jika tidak ada rekening yang ditambahkan, sistem akan menggunakan setelan default pusat (jika tersedia).
+                       </p>
+                    </div>
+                    <button type="button" onClick={addPaymentMethod} className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest mx-auto">
+                      Atur Rekening Sekarang
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

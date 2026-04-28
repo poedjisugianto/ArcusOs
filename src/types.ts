@@ -78,6 +78,7 @@ export interface ScoreEntry {
   count5?: number;
   arrows?: (number | "X")[];
   lastUpdated?: number;
+  isDeleted?: boolean;
 }
 
 export interface ScoreLog {
@@ -178,6 +179,7 @@ export interface TournamentSettings {
   officialFee?: number;
   categoryConfigs?: Partial<Record<CategoryType, CategoryConfig>>;
   waGroupLink?: string;
+  lastResetAt?: number;
 }
 
 export interface DisbursementRequest {

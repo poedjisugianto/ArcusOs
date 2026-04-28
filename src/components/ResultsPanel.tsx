@@ -31,7 +31,7 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
     const data = state.archers
       .filter(a => a.category === activeCategory)
       .map(archer => {
-        const scores = state.scores.filter(s => s.archerId === archer.id && s.sessionId === activeSession);
+        const scores = state.scores.filter(s => s.archerId === archer.id && s.sessionId === activeSession && !s.isDeleted);
         const total = scores.reduce((acc, curr) => acc + curr.total, 0);
         
         const manualSixes = scores.reduce((acc, curr) => acc + (curr.count6 || 0), 0);
@@ -105,15 +105,81 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
   };
 
   const handleDownloadCSV = () => {
-    const headers = ['Rank', 'Nama', 'Klub', 'Kategori', `${tieBreakLabels.highest}`, `${tieBreakLabels.second}`, 'Total'];
-    const rows = rankings.map(r => [
-      r.displayRank + r.tieLabel,
-      r.name,
-      r.club,
-      CATEGORY_LABELS[r.category],
+    const allRankings: any[] = [];
+    
+    // Calculate for all categories
+    (Object.keys(CategoryType) as CategoryType[])
+      .filter(c => c !== CategoryType.OFFICIAL)
+      .forEach(cat => {
+        const catConfig = (state.settings.categoryConfigs || {})[cat];
+        const data = state.archers
+          .filter(a => a.category === cat)
+          .map(archer => {
+            const scores = state.scores.filter(s => s.archerId === archer.id && s.sessionId === activeSession && !s.isDeleted);
+            const total = scores.reduce((acc, curr) => acc + curr.total, 0);
+            
+            const manualSixes = scores.reduce((acc, curr) => acc + (curr.count6 || 0), 0);
+            const manualFives = scores.reduce((acc, curr) => acc + (curr.count5 || 0), 0);
+            
+            const isSmallTarget = catConfig?.targetType === TargetType.PUTA || catConfig?.targetType === TargetType.TRADITIONAL_PUTA;
+            const isSixRing = catConfig?.targetType === TargetType.TRADITIONAL_6_RING;
+            const allArrows = scores.flatMap(s => s.arrows).filter(v => v !== undefined && v !== -1);
+            
+            let arrowSixes = 0;
+            let arrowFives = 0;
+            if (isSmallTarget) {
+              arrowSixes = allArrows.filter(v => v === 2).length;
+              arrowFives = allArrows.filter(v => v === 1).length;
+            } else if (isSixRing) {
+              arrowSixes = allArrows.filter(v => v === 6).length;
+              arrowFives = allArrows.filter(v => v === 5).length;
+            } else {
+              arrowSixes = allArrows.filter(v => v === 'X' || v === 10).length;
+              arrowFives = allArrows.filter(v => v === 9).length;
+            }
+            
+            const hasManual = scores.some(s => s.count6 !== undefined && s.count6 !== 0);
+            const sixes = hasManual ? manualSixes : arrowSixes;
+            const fives = hasManual ? manualFives : arrowFives;
+            
+            return { ...archer, total, sixes, fives };
+          })
+          .filter(a => activeSession === 'QUAL' || a.total > 0)
+          .sort((a, b) => {
+            if (b.total !== a.total) return b.total - a.total;
+            if (b.sixes !== a.sixes) return b.sixes - a.sixes;
+            return b.fives - a.fives;
+          });
+
+        const ranked = data.map((item, idx, arr) => {
+          const isTie = arr.some((other, oIdx) => 
+            oIdx !== idx && other.total === item.total && other.sixes === item.sixes && other.fives === item.fives
+          );
+          
+          let tieLabel = "";
+          let displayRank = idx + 1;
+          if (isTie) {
+            const tieGroup = arr.filter(o => o.total === item.total && o.sixes === item.sixes && o.fives === item.fives);
+            const firstInTie = arr.findIndex(o => o.total === item.total && o.sixes === item.sixes && o.fives === item.fives);
+            const posInTie = tieGroup.findIndex(o => o.id === item.id);
+            tieLabel = String.fromCharCode(65 + posInTie);
+            displayRank = firstInTie + 1;
+          }
+          return { ...item, tieLabel, displayRank, categoryLabel: CATEGORY_LABELS[cat] };
+        });
+
+        allRankings.push(...ranked);
+      });
+
+    const headers = ['Rank', 'Nama', 'Klub', 'Kategori', 'Total Skor', '6s/Xs/2s', '5s/9s/1s'];
+    const rows = allRankings.map(r => [
+      `"${r.displayRank}${r.tieLabel}"`,
+      `"${r.name}"`,
+      `"${r.club}"`,
+      `"${r.categoryLabel}"`,
+      r.total,
       r.sixes,
-      r.fives,
-      r.total
+      r.fives
     ]);
 
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -121,12 +187,12 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `Hasil_${state.settings.tournamentName}_${activeCategory}.csv`);
+    link.setAttribute("download", `Hasil_Tournament_${state.settings.tournamentName}_${activeSession}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("CSV Berhasil diunduh");
+    toast.success("CSV Berhasil diunduh (Seluruh Kategori)");
   };
 
   return (
@@ -158,10 +224,11 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
             </button>
             <button 
               onClick={handleDownloadCSV}
-              className="bg-slate-900 text-white px-2.5 md:px-8 py-1.5 md:py-3 rounded-lg md:rounded-2xl text-[7px] md:text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl flex items-center gap-1 md:gap-2 whitespace-nowrap"
+              className="bg-slate-900 text-white px-4 md:px-8 py-1.5 md:py-3 rounded-lg md:rounded-2xl text-[8px] md:text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl flex items-center gap-1 md:gap-2 whitespace-nowrap group"
             >
-              <Download className="w-3 h-3 md:w-4 md:h-4" />
-              <span>CSV</span>
+              <Download className="w-3.5 h-3.5 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline">DOWNLOAD HASIL</span>
+              <span className="sm:hidden">HASIL</span>
             </button>
           </div>
         </div>

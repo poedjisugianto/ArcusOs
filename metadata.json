@@ -1,6 +1,6 @@
 {
   "name": "ARCUS",
   "description": "ARCHERY TOURNAMENT SYSTEM",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": []
 }

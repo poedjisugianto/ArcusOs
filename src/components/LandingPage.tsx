@@ -9,10 +9,13 @@ import {
   ShieldCheck,
   Activity,
   Monitor,
-  Share2
+  Share2,
+  CalendarDays,
+  LayoutGrid
 } from 'lucide-react';
 import { ArcheryEvent, User } from '../types';
 import ArcusLogo from './ArcusLogo';
+import TournamentCalendar from './TournamentCalendar';
 
 interface Props {
   events: ArcheryEvent[];
@@ -46,6 +49,7 @@ export default function LandingPage({
   isSyncing
 }: Props) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
   const activeEvents = events.filter(e => e.status !== 'DRAFT');
 
   return (
@@ -55,7 +59,7 @@ export default function LandingPage({
            style={{ backgroundImage: `radial-gradient(#000 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
 
       {/* Navigation */}
-      <nav className="fixed top-9 sm:top-[2.75rem] w-full bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-100">
+      <nav className="fixed top-8 sm:top-[2rem] w-full bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-100">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12">
           <div className="flex justify-between h-20 items-center">
             <div className="flex items-center gap-4 group cursor-pointer">
@@ -222,112 +226,141 @@ export default function LandingPage({
                 )}
               </div>
             </div>
-            <p className="max-w-xs text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">
-              Turnamen yang sedang berlangsung dan membutuhkan pantauan skor real-time.
-            </p>
+            
+            <div className="flex flex-col md:items-end gap-4">
+              <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                  <button 
+                    onClick={() => setViewMode('GRID')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${viewMode === 'GRID' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 hover:bg-white'}`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    Grid View
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('CALENDAR')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${viewMode === 'CALENDAR' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 hover:bg-white'}`}
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    Calendar View
+                  </button>
+              </div>
+              <p className="max-w-xs text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose md:text-right">
+                Turnamen yang sedang berlangsung dan membutuhkan pantauan skor real-time.
+              </p>
+            </div>
           </div>
 
           {activeEvents.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activeEvents.map((event, idx) => (
-                <motion.div 
-                  key={event.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: idx * 0.1, duration: 0.8, ease: [0.21, 0.45, 0.32, 0.9] }}
-                  className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-700 relative overflow-hidden"
-                >
-                  <div className="p-8">
-                    <div className="flex justify-between items-start mb-6">
-                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all duration-500 shadow-inner">
-                        <Trophy className="w-7 h-7" />
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                          event.status === 'ACTIVE' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 
-                          event.status === 'UPCOMING' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' :
-                          event.status === 'ONGOING' ? 'bg-arcus-red text-white shadow-lg shadow-red-200 animate-pulse' :
-                          'bg-slate-900 text-white'
-                        }`}>
-                          {event.status === 'ACTIVE' ? 'OPEN' : 
-                           event.status === 'UPCOMING' ? 'COMING SOON' :
-                           event.status === 'ONGOING' ? 'LIVE NOW' :
-                           event.status}
-                        </span>
-                        <div className="mt-2 flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                          ID: {event.id.slice(-6).toUpperCase()}
+            viewMode === 'GRID' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {activeEvents.map((event, idx) => (
+                  <motion.div 
+                    key={event.id}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: idx * 0.1, duration: 0.8, ease: [0.21, 0.45, 0.32, 0.9] }}
+                    className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-700 relative overflow-hidden"
+                  >
+                    <div className="p-8">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all duration-500 shadow-inner">
+                          <Trophy className="w-7 h-7" />
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                            event.status === 'ACTIVE' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 
+                            event.status === 'UPCOMING' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' :
+                            event.status === 'ONGOING' ? 'bg-arcus-red text-white shadow-lg shadow-red-200 animate-pulse' :
+                            'bg-slate-900 text-white'
+                          }`}>
+                            {event.status === 'ACTIVE' ? 'OPEN' : 
+                             event.status === 'UPCOMING' ? 'COMING SOON' :
+                             event.status === 'ONGOING' ? 'LIVE NOW' :
+                             event.status}
+                          </span>
+                          <div className="mt-2 flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                            ID: {event.id.slice(-6).toUpperCase()}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <h3 className="text-2xl font-black font-oswald uppercase italic tracking-tighter text-slate-900 mb-2 leading-none group-hover:text-arcus-red transition-colors duration-300 min-h-[3rem] line-clamp-2">
-                      {event.settings.tournamentName}
-                    </h3>
-                    
-                    <p className="text-slate-500 text-xs font-medium mb-8 line-clamp-2 italic leading-relaxed opacity-70">
-                      {event.settings.description || 'Turnamen panahan prestasi yang dikelola oleh ekosistem ARCUS DIGITAL.'}
-                    </p>
+                      <h3 className="text-2xl font-black font-oswald uppercase italic tracking-tighter text-slate-900 mb-2 leading-none group-hover:text-arcus-red transition-colors duration-300 min-h-[3rem] line-clamp-2">
+                        {event.settings.tournamentName}
+                      </h3>
+                      
+                      <p className="text-slate-500 text-xs font-medium mb-8 line-clamp-2 italic leading-relaxed opacity-70">
+                        {event.settings.description || 'Turnamen panahan prestasi yang dikelola oleh ekosistem ARCUS DIGITAL.'}
+                      </p>
 
-                    <div className="space-y-4 mb-10 pb-6 border-b border-slate-50">
-                      <div className="flex items-center gap-4 text-slate-600">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
-                          <MapPin className="w-4 h-4" />
+                      <div className="space-y-4 mb-10 pb-6 border-b border-slate-50">
+                        <div className="flex items-center gap-4 text-slate-600">
+                          <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                            <MapPin className="w-4 h-4" />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest truncate">{event.settings.location || 'Lokasi Menunggu Update'}</span>
                         </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest truncate">{event.settings.location || 'Lokasi Menunggu Update'}</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-slate-600">
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
-                          <Clock className="w-4 h-4" />
+                        <div className="flex items-center gap-4 text-slate-600">
+                          <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest">{event.settings.eventDate || 'Tanggal Pending'}</span>
                         </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest">{event.settings.eventDate || 'Tanggal Pending'}</span>
+                      </div>
+
+                      <button 
+                        onClick={() => {
+                          console.log("Register clicked for event:", event.id);
+                          onRegister(event.id);
+                        }}
+                        className="w-full py-4 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-200 active:scale-95 mb-3"
+                      >
+                        <Plus className="w-4 h-4" />
+                        DAFTAR SEKARANG
+                      </button>
+
+                      <button 
+                        onClick={() => onViewParticipants(event.id)}
+                        className="w-full py-3 bg-white text-slate-900 border-2 border-slate-100 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all shadow-sm active:scale-95"
+                      >
+                        <Users className="w-4 h-4" />
+                        DAFTAR PESERTA
+                      </button>
+
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        <button 
+                          onClick={() => onViewInfo(event.id)}
+                          className="py-2.5 bg-slate-50 text-slate-500 border border-slate-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
+                        >
+                          INFO
+                        </button>
+                        <button 
+                          onClick={() => onViewLive(event.id)}
+                          className="py-2.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-sm active:scale-95"
+                        >
+                          LIVE SCORE
+                        </button>
+                        <button 
+                          onClick={() => onShare(event.id)}
+                          className="col-span-2 py-2 bg-slate-50 text-slate-400 border border-dashed border-slate-200 rounded-lg text-[8px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all flex items-center justify-center gap-2"
+                        >
+                          <Share2 className="w-3 h-3" />
+                          BAGIKAN TURNAMEN
+                        </button>
                       </div>
                     </div>
-
-                    <button 
-                      onClick={() => {
-                        console.log("Register clicked for event:", event.id);
-                        onRegister(event.id);
-                      }}
-                      className="w-full py-4 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-200 active:scale-95 mb-3"
-                    >
-                      <Plus className="w-4 h-4" />
-                      DAFTAR SEKARANG
-                    </button>
-
-                    <button 
-                      onClick={() => onViewParticipants(event.id)}
-                      className="w-full py-3 bg-white text-slate-900 border-2 border-slate-100 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all shadow-sm active:scale-95"
-                    >
-                      <Users className="w-4 h-4" />
-                      DAFTAR PESERTA
-                    </button>
-
-                    <div className="grid grid-cols-2 gap-2 mt-3">
-                      <button 
-                        onClick={() => onViewInfo(event.id)}
-                        className="py-2.5 bg-slate-50 text-slate-500 border border-slate-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
-                      >
-                        INFO
-                      </button>
-                      <button 
-                        onClick={() => onViewLive(event.id)}
-                        className="py-2.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-sm active:scale-95"
-                      >
-                        LIVE SCORE
-                      </button>
-                      <button 
-                        onClick={() => onShare(event.id)}
-                        className="col-span-2 py-2 bg-slate-50 text-slate-400 border border-dashed border-slate-200 rounded-lg text-[8px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all flex items-center justify-center gap-2"
-                      >
-                        <Share2 className="w-3 h-3" />
-                        BAGIKAN TURNAMEN
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5 }}
+              >
+                <TournamentCalendar events={activeEvents} onViewInfo={onViewInfo} />
+              </motion.div>
+            )
           ) : (
             <div className="bg-white rounded-[2.5rem] p-16 md:p-24 text-center border-2 border-dashed border-slate-200 shadow-sm relative overflow-hidden group">
                <div className="relative z-10">

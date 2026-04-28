@@ -7,7 +7,9 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail,
-  updateProfile
+  updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -53,6 +55,11 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
           const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
           const profileData = profileSnap.exists() ? profileSnap.data().data : null;
 
+          const isSuper = profileData?.role === 'SUPERADMIN' || 
+                         profileData?.role === 'superadmin' || 
+                         user.email === 'admin@arcus.id' || 
+                         user.email === 'poedji.sugianto@gmail.com';
+
           const loggedInUser: User = {
             id: user.uid,
             email: user.email || '',
@@ -60,8 +67,8 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
             phone: profileData?.phone || '',
             isOrganizer: true,
             isVerified: user.emailVerified,
-            isSuperAdmin: profileData?.role === 'superadmin' || user.email === 'admin@arcus.id' || user.email === 'poedji.sugianto@gmail.com',
-            role: (profileData?.role as UserRole) || UserRole.ORGANIZER
+            isSuperAdmin: isSuper,
+            role: isSuper ? UserRole.SUPERADMIN : ((profileData?.role as UserRole) || UserRole.ORGANIZER)
           };
           onLogin(loggedInUser);
         }
@@ -106,6 +113,8 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
         msg = 'Email atau Password salah. Silakan coba lagi.';
       } else if (err.code === 'auth/email-already-in-use') {
         msg = 'Email sudah terdaftar. Silakan login atau gunakan email lain.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        msg = 'Metode login ini belum diaktifkan di Firebase Console. Silakan aktifkan Email/Password dan Google di tab Authentication.';
       }
       setError(msg);
     } finally {
@@ -126,6 +135,52 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
       setSuccess('Instruksi reset password telah dikirim ke email Anda. Silakan cek kotak masuk atau folder spam.');
     } catch (err: any) {
       setError(err.message || 'Gagal mengirim email reset password.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    if (!auth || !db) return;
+    setIsLoading(true);
+    setError('');
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
+      const profileData = profileSnap.exists() ? profileSnap.data().data : null;
+
+      const isSuper = profileData?.role === 'SUPERADMIN' || 
+                     profileData?.role === 'superadmin' || 
+                     user.email === 'admin@arcus.id' || 
+                     user.email === 'poedji.sugianto@gmail.com';
+
+      const loggedInUser: User = {
+        id: user.uid,
+        email: user.email || '',
+        name: profileData?.name || user.displayName || 'User',
+        phone: profileData?.phone || '',
+        isOrganizer: true,
+        isVerified: user.emailVerified,
+        isSuperAdmin: isSuper,
+        role: isSuper ? UserRole.SUPERADMIN : ((profileData?.role as UserRole) || UserRole.ORGANIZER)
+      };
+
+      // If profile doesn't exist, create one
+      if (!profileSnap.exists()) {
+        await setDoc(doc(db, 'profiles', user.uid), {
+          id: user.uid,
+          data: loggedInUser,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+
+      onLogin(loggedInUser);
+    } catch (err: any) {
+      console.error("Google Auth error:", err);
+      setError(err.message || 'Gagal login dengan Google.');
     } finally {
       setIsLoading(false);
     }
@@ -270,6 +325,27 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
                 </>
               )}
             </button>
+
+            {mode === 'LOGIN' && (
+              <div className="space-y-4">
+                <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-100"></div>
+                  </div>
+                  <span className="relative bg-white px-4 text-[9px] font-black text-slate-300 uppercase tracking-widest">Atau</span>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={isLoading}
+                  className="w-full py-4 bg-white border-2 border-slate-100 text-slate-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                  Continue with Google
+                </button>
+              </div>
+            )}
           </form>
 
           <div className="pt-6 border-t border-slate-50 text-center space-y-4">

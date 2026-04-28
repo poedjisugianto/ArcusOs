@@ -451,6 +451,11 @@ export function App() {
       const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
       const profileData = profileSnap.exists() ? profileSnap.data().data : null;
 
+      const isSuper = profileData?.role === 'SUPERADMIN' || 
+                     profileData?.role === 'superadmin' || 
+                     user.email === 'admin@arcus.id' || 
+                     user.email === 'poedji.sugianto@gmail.com';
+
       const loggedInUser: User = {
         id: user.uid,
         email: user.email || '',
@@ -458,8 +463,8 @@ export function App() {
         phone: profileData?.phone || '',
         isOrganizer: true,
         isVerified: true,
-        isSuperAdmin: profileData?.role === 'superadmin' || user.email === 'admin@arcus.id' || user.email === 'poedji.sugianto@gmail.com',
-        role: (profileData?.role as UserRole) || UserRole.ORGANIZER
+        isSuperAdmin: isSuper,
+        role: isSuper ? UserRole.SUPERADMIN : ((profileData?.role as UserRole) || UserRole.ORGANIZER)
       };
 
       setAppState(prev => ({ ...prev, currentUser: loggedInUser }));

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { supabase } from '../supabase';
+import { auth } from '../firebase';
+import { updatePassword, onAuthStateChanged } from 'firebase/auth';
 import ArcusLogo from './ArcusLogo';
 
 interface Props {
@@ -17,19 +18,18 @@ export default function ResetPasswordPanel({ onSuccess, onBack }: Props) {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Check if we have a session (the reset link usually auto-logs the user in temporarily)
-    const checkSession = async () => {
-      const { data } = await supabase!.auth.getSession();
-      if (!data.session) {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
         setError('Sesi reset password tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru.');
       }
-    };
-    if (supabase) checkSession();
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) return;
+    if (!auth || !auth.currentUser) return;
 
     if (password !== confirmPassword) {
       setError('Konfirmasi password tidak cocok.');
@@ -45,11 +45,7 @@ export default function ResetPasswordPanel({ onSuccess, onBack }: Props) {
     setError('');
 
     try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password
-      });
-
-      if (updateError) throw updateError;
+      await updatePassword(auth.currentUser, password);
       
       setSuccess(true);
       setTimeout(() => {

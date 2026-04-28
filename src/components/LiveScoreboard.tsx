@@ -151,7 +151,7 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
 
   const eliminationSize = useMemo(() => {
     // Priority 1: Config from admin panel (the official setting)
-    if (config?.eliminationSize) return config.eliminationSize;
+    if (config?.h2hStartSize) return config.h2hStartSize;
     
     // Priority 2: Derived from matches (fallback if config missing)
     if (matches.length === 0) return 0;

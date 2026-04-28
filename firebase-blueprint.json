@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "User Profile",
+      "description": "Stores user profile and role information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "ORGANIZER", "JUDGE", "SCORER", "PARTICIPANT", "SUPERADMIN", "MASTER_ADMIN"] },
+        "club": { "type": "string" },
+        "phone": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "name"]
+    },
+    "Event": {
+      "title": "Archery Event",
+      "description": "Stores all data related to an archery tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "ACTIVE", "COMPLETED", "ONGOING", "UPCOMING"] },
+        "settings": { "type": "object" },
+        "archers": { "type": "array" },
+        "registrations": { "type": "array" },
+        "scores": { "type": "array" },
+        "scoreLogs": { "type": "array" },
+        "matches": { "type": "object" },
+        "ownerId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "settings", "ownerId"]
+    },
+    "SystemConfig": {
+      "title": "System Config",
+      "description": "Global settings for the application",
+      "type": "object",
+      "properties": {
+        "feeAdult": { "type": "number" },
+        "feeKids": { "type": "number" },
+        "maintenanceMode": { "type": "boolean" },
+        "platformFeePercentage": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": "Profile",
+      "description": "Collection of user profiles"
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Collection of archery events"
+    },
+    "/systemConfigs/{configId}": {
+      "schema": "SystemConfig",
+      "description": "Global system configurations"
+    }
+  }
+}

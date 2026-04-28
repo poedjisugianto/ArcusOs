@@ -11,7 +11,10 @@ import {
 import { toast } from 'sonner';
 import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole } from './types';
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
-import { supabase } from './supabase';
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, setDoc, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import AdminPanel from './components/AdminPanel';
 import ScoringPanel from './components/ScoringPanel';
@@ -109,58 +112,61 @@ export function App() {
   };
 
   const fetchCloudData = async (manual = false) => {
-    if (!supabase) {
-      console.warn("Supabase not configured, skipping cloud fetch.");
+    if (!db) {
+      console.warn("Firestore not configured, skipping cloud fetch.");
       return;
     }
     if (manual) setIsSyncing(true);
     try {
-      console.log("Fetching cloud data...");
+      console.log("Fetching cloud data from Firestore...");
       isSyncingFromCloud.current = true;
       
-      if (!supabase) {
-        if (manual) pushNotification("Mode Lokal", "Hubungkan Supabase di pengaturan untuk sinkronisasi cloud.", "INFO");
-        return;
-      }
-
       // 1. Fetch System Config (Global Settings)
-      const { data: configData, error: configError } = await supabase.from('system_configs').select('data').eq('id', 'global').single();
+      let configData = null;
+      try {
+        const configSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
+        if (configSnap.exists()) {
+          configData = configSnap.data();
+        }
+      } catch (err) {
+        console.warn("Could not fetch system config", err);
+      }
       
       // 2. Fetch Events
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select('id, data, user_id, updated_at');
-        
-      if (eventsError) {
-        // Handle "Table not found" specifically
-        if (eventsError.code === '42P01') {
-          pushNotification("Database Belum Siap", "Tabel 'events' belum dibuat di Supabase. Silakan jalankan SQL Script.", "WARNING");
-          throw new Error("Table 'events' missing. Run SQL script to create tables.");
-        }
-        throw eventsError;
+      let eventsData: any[] = [];
+      try {
+        const eventsSnap = await getDocs(collection(db, 'events'));
+        eventsData = eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, 'events');
       }
-      console.log(`Fetched ${eventsData?.length || 0} events from cloud.`);
+        
+      console.log(`Fetched ${eventsData.length} events from Firestore.`);
 
-      const { data: profilesData } = await supabase.from('profiles').select('data');
+      // 3. Fetch Profiles
+      let cloudUsers: any[] = [];
+      try {
+        const profilesSnap = await getDocs(collection(db, 'profiles'));
+        cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
+      } catch (err) {
+        console.warn("Could not fetch profiles", err);
+      }
       
-      const cloudUsers = profilesData ? profilesData.map(p => p.data) : [];
-      
-      const cloudEventsRaw = eventsData ? eventsData.map(e => {
+      const cloudEventsRaw = eventsData.map(e => {
         const data = e.data as any;
         return { 
           ...data, 
-          ownerId: e.user_id,
+          ownerId: e.userId,
           status: data.status || 'DRAFT',
-          cloudUpdatedAt: e.updated_at,
+          cloudUpdatedAt: e.updatedAt,
           // Ensure arrays exist
           archers: data.archers || [],
           registrations: data.registrations || [],
           scores: data.scores || [],
           scoreLogs: data.scoreLogs || []
         };
-      }) : [];
+      });
       
-      // Detailed log to help user debug
       console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
       if (cloudEventsRaw.length > 0) {
         console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings?.tournamentName || 'Untitled', status: ce.status, owner: ce.ownerId })));
@@ -329,7 +335,7 @@ export function App() {
   };
 
   useEffect(() => {
-    fetchCloudData();
+    fetchCloudData().catch(err => console.error("Initial fetch error:", err));
   }, [appState.currentUser?.id, appState.activeEventId]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
@@ -350,22 +356,28 @@ export function App() {
 
       if (!eventId && !registerId) return;
 
+      if (!db) {
+        console.log("Deep link validation skipped: Database not ready.");
+        return;
+      }
+
       setIsCheckingLink(true);
 
-      // 1. Try to fetch it directly from Supabase immediately (crucial for shared links)
-      if (supabase) {
-        try {
-          const idToFetch = eventId || registerId;
-          console.log("Deep link validation starting for:", idToFetch);
-          const { data, error } = await supabase
-            .from('events')
-            .select('data, user_id')
-            .eq('id', idToFetch)
-            .single();
+      // Safety timeout to prevent infinite loading if something goes wrong
+      const safetyTimeout = setTimeout(() => {
+        setIsCheckingLink(false);
+      }, 5000);
 
-          if (data && !error) {
-            console.log("Deep link data found in cloud.");
-            const targetEvent = data.data as ArcheryEvent;
+      try {
+        const idToFetch = eventId || registerId;
+        if (idToFetch) {
+          console.log("Deep link validation starting for:", idToFetch);
+          const eventSnap = await getDoc(doc(db, 'events', idToFetch));
+
+          if (eventSnap.exists()) {
+            console.log("Deep link data found in Firestore.");
+            const eventRecord = eventSnap.data();
+            const targetEvent = eventRecord.data as ArcheryEvent;
             
             // Inject into state and activate
             setAppState(prev => {
@@ -384,23 +396,21 @@ export function App() {
             else setView('PUBLIC_EVENT_INFO');
             
           } else {
-            console.warn("Shared event not found in cloud:", idToFetch, error);
-            // Don't show notification immediately as it might be a local-only event for the owner 
-            // BUT for others (deep link) it's likely a cloud missing issue.
-            // If they are on a shared link, we should probably tell them if not found.
+            console.warn("Shared event not found in cloud:", idToFetch);
             pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
           }
-        } catch (err) {
-          console.error("Deep link fetch error:", err);
         }
+      } catch (err) {
+        console.error("Deep link fetch error:", err);
+      } finally {
+        setIsCheckingLink(false);
+        clearTimeout(safetyTimeout);
       }
-      
-      setIsCheckingLink(false);
     };
 
     handleDeepLink();
-    fetchCloudData();
-  }, [supabase]); // Run once when supabase is ready
+    fetchCloudData().catch(err => console.error("Cloud ready fetch error:", err));
+  }, [db]); // Run once when db is ready
 
   // Multi-tab synchronization
   useEffect(() => {
@@ -418,51 +428,42 @@ export function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Supabase Auth Listener
+  // Firebase Auth Listener
   useEffect(() => {
-    if (!supabase) return;
-
-    // Check for active session on load
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        handleBackgroundLogin(session.user);
-      }
-    });
+    if (!auth) return;
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        handleBackgroundLogin(session.user);
-      } else if (event === 'SIGNED_OUT') {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        handleBackgroundLogin(user);
+      } else {
         setAppState(prev => ({ ...prev, currentUser: null, activeEventId: null }));
         setView('LANDING');
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const handleBackgroundLogin = async (user: any) => {
+    if (!db) return;
     try {
-      const { data: profile } = await supabase!
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
+      const profileData = profileSnap.exists() ? profileSnap.data().data : null;
 
       const loggedInUser: User = {
-        id: user.id,
+        id: user.uid,
         email: user.email || '',
-        name: profile?.full_name || user.user_metadata?.full_name || 'User',
-        phone: profile?.phone || '',
+        name: profileData?.name || user.displayName || 'User',
+        phone: profileData?.phone || '',
         isOrganizer: true,
         isVerified: true,
-        isSuperAdmin: profile?.role === 'superadmin' || user.email === 'admin@arcus.id' || user.email === 'poedji.sugianto@gmail.com',
-        role: (profile?.role as UserRole) || UserRole.ORGANIZER
+        isSuperAdmin: profileData?.role === 'superadmin' || user.email === 'admin@arcus.id' || user.email === 'poedji.sugianto@gmail.com',
+        role: (profileData?.role as UserRole) || UserRole.ORGANIZER
       };
 
       setAppState(prev => ({ ...prev, currentUser: loggedInUser }));
-      fetchCloudData();
+      fetchCloudData().catch(err => console.error("Post-login fetch error:", err));
     } catch (err) {
       console.error("Profile sync error:", err);
     }
@@ -485,7 +486,7 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser]);
 
   const syncCloudData = async (manual = false) => {
-    if (!supabase) {
+    if (!db) {
       if (manual) pushNotification("Mode Lokal", "Data disimpan di memori browser saja.", "INFO");
       return;
     }
@@ -499,13 +500,20 @@ export function App() {
       // 1. Sync User Profile (Only if logged in)
       if (appState.currentUser) {
         if (appState.currentUser.isSuperAdmin) {
-          await supabase.from('system_configs').upsert({ id: 'global', data: appState.globalSettings, updated_at: new Date().toISOString() });
+          await setDoc(doc(db, 'systemConfigs', 'global'), { 
+            id: 'global', 
+            data: appState.globalSettings, 
+            updatedAt: new Date().toISOString() 
+          }, { merge: true });
         }
-        await supabase.from('profiles').upsert({ id: appState.currentUser.id, data: appState.currentUser, updated_at: new Date().toISOString() });
+        await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
+          id: appState.currentUser.id, 
+          data: appState.currentUser, 
+          updatedAt: new Date().toISOString() 
+        }, { merge: true });
       }
       
       // 2. Sync Events
-      // Ambil semua event yang dimiliki user atau sedang aktif
       let eventsToSync: ArcheryEvent[] = [];
       if (appState.currentUser) {
         eventsToSync = appState.events.filter(e => 
@@ -520,20 +528,16 @@ export function App() {
       }
       
       for (const event of eventsToSync) {
-        // Log explicitly for debugging
-        console.log(`Syncing event ${event.id} to cloud...`);
+        console.log(`Syncing event ${event.id} to Firestore...`);
         
-        // Safety Merge: Fetch latest from cloud to avoid overwriting online registrations 
-        // that happened while the organizer was editing.
-        const { data: cloudRes } = await supabase
-          .from('events')
-          .select('data')
-          .eq('id', event.id)
-          .single();
+        // Safety Merge
+        const eventRef = doc(db, 'events', event.id);
+        const cloudRes = await getDoc(eventRef);
           
         let finalData = { ...event };
-        if (cloudRes && cloudRes.data) {
-          const ce = cloudRes.data as ArcheryEvent;
+        if (cloudRes.exists()) {
+          const ceRecord = cloudRes.data();
+          const ce = ceRecord.data as ArcheryEvent;
           const lastResetAt = Math.max(event.settings?.lastResetAt || 0, ce.settings?.lastResetAt || 0);
 
           const mergedArchers = [...(finalData.archers || [])];
@@ -603,17 +607,12 @@ export function App() {
           }));
         }
 
-        const { error } = await supabase.from('events').upsert({ 
+        await setDoc(eventRef, { 
           id: event.id, 
-          user_id: event.settings.organizerId || appState.currentUser?.id || null, 
+          userId: event.settings.organizerId || appState.currentUser?.id || null, 
           data: finalData,
-          updated_at: new Date().toISOString() 
-        });
-        
-        if (error) {
-          console.error(`Error syncing event ${event.id}:`, error);
-          if (manual) pushNotification("Gagal Sinkron Turnamen", `Turnamen "${event.settings.tournamentName}" gagal disinkronkan: ${error.message}`, "WARNING");
-        }
+          updatedAt: new Date().toISOString() 
+        }, { merge: true });
       }
       
       setLastSync(new Date());
@@ -629,23 +628,21 @@ export function App() {
 
   // Real-time Subscriptions
   useEffect(() => {
-    if (!supabase) return;
+    if (!db) return;
 
-    const channel = supabase.channel('event-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
-        // When any event changes in the cloud, trigger a fetch to update local state
-        // This ensures the landing page and other users see updates immediately
-        fetchCloudData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_configs' }, () => {
-        fetchCloudData();
-      })
-      .subscribe();
+    const unsubEvents = onSnapshot(collection(db, 'events'), () => {
+      fetchCloudData().catch(err => console.error("Real-time events sync error:", err));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'events'));
+
+    const unsubConfig = onSnapshot(collection(db, 'systemConfigs'), () => {
+      fetchCloudData().catch(err => console.error("Real-time config sync error:", err));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'systemConfigs'));
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubEvents();
+      unsubConfig();
     };
-  }, []);
+  }, [db]);
 
   useEffect(() => {
     const debounce = setTimeout(syncCloudData, 3000); // 3s for batching
@@ -719,14 +716,14 @@ export function App() {
 
   // Polling for registration updates when in admin screens
   useEffect(() => {
-    if (!supabase || !isOnline) return;
+    if (!db || !isOnline) return;
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
     if (adminViews.includes(view)) {
       const interval = setInterval(() => {
         // Polling faster for live views, slower for admin views
         const isLive = view === 'LIVE' || view === 'PUBLIC_LIVE';
         console.log(`Auto-polling cloud updates (${isLive ? 'RAID' : 'STANDARD'})...`);
-        fetchCloudData();
+        fetchCloudData().catch(err => console.error("Polling fetch error:", err));
       }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : 15000); 
       return () => clearInterval(interval);
     }
@@ -743,28 +740,26 @@ export function App() {
   };
 
   const handleLogout = async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (auth) await signOut(auth);
     setAppState(prev => ({ ...prev, currentUser: null, activeEventId: null }));
     setView('LANDING');
   };
 
   const saveEventToCloud = async (event: ArcheryEvent) => {
-    if (!supabase || event.settings.isPractice) return;
+    if (!db || event.settings.isPractice) return;
     
     try {
-      const { error } = await supabase.from('events').upsert({
+      await setDoc(doc(db, 'events', event.id), {
         id: event.id,
-        user_id: event.settings.organizerId || appState.currentUser?.id || 'guest',
+        userId: event.settings.organizerId || appState.currentUser?.id || 'guest',
         data: event,
         status: event.status,
-        updated_at: new Date().toISOString()
-      });
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
       
-      if (error) throw error;
-      console.log(`Cloud sync success for event: ${event.id} (Status: ${event.status})`);
+      console.log(`Firestore sync success for event: ${event.id} (Status: ${event.status})`);
     } catch (err: any) {
-      console.error(`Cloud sync failed for event ${event.id}:`, err);
-      // We don't necessarily want to notify on every auto-sync failure to avoid spam
+      console.error(`Firestore sync failed for event ${event.id}:`, err);
     }
   };
 
@@ -822,23 +817,14 @@ export function App() {
 
     pushNotification("Menghapus...", `Sedang menghapus ${typeLabel} "${eventName}"...`, "INFO");
 
-    // 3. Cloud Sync (Supabase)
-    if (supabase && !eventToDelete.settings.isPractice) {
+    // 3. Cloud Sync (Firestore)
+    if (db && !eventToDelete.settings.isPractice) {
       try {
-        const { error, status } = await supabase
-          .from('events')
-          .delete()
-          .eq('id', id);
-
-        if (error) {
-          console.error("Supabase delete error:", error);
-          pushNotification("Gagal Hapus Cloud", `Error: ${error.message} (Status: ${status}). Data lokal tetap dihapus.`, "WARNING");
-        } else {
-          console.log("Supabase delete success for ID:", id);
-          pushNotification("Berhasil Dihapus", `${typeLabel} "${eventName}" telah dihapus secara permanen.`, "SUCCESS");
-        }
+        await deleteDoc(doc(db, 'events', id));
+        console.log("Firestore delete success for ID:", id);
+        pushNotification("Berhasil Dihapus", `${typeLabel} "${eventName}" telah dihapus secara permanen.`, "SUCCESS");
       } catch (err: any) {
-        console.error("Supabase delete exception:", err);
+        console.error("Firestore delete exception:", err);
         pushNotification("Koneksi Bermasalah", `Gagal menghubungi server: ${err.message || 'Unknown error'}`, "WARNING");
       }
     } else {
@@ -891,14 +877,10 @@ export function App() {
 
     pushNotification("Menghapus User", `Menghapus akun ${user.name}...`, "INFO");
 
-    if (supabase) {
+    if (db) {
       try {
-        const { error } = await supabase.from('users').delete().eq('id', userId);
-        if (error) {
-          pushNotification("Gagal Hapus Cloud", error.message, "WARNING");
-        } else {
-          pushNotification("User Dihapus", `Akun ${user.name} telah dihapus permanen.`, "SUCCESS");
-        }
+        await deleteDoc(doc(db, 'profiles', userId));
+        pushNotification("User Dihapus", `Akun ${user.name} telah dihapus permanen.`, "SUCCESS");
       } catch (err: any) {
         pushNotification("Error", err.message, "WARNING");
       }
@@ -998,16 +980,16 @@ export function App() {
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white">
       {/* Global Cloud Sync Status Bar */}
       <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm ${
-        !supabase ? 'bg-amber-500 text-white border-amber-600' :
+        !db ? 'bg-emerald-500 text-white border-emerald-600' :
         isSyncing ? 'bg-blue-600 text-white border-blue-700' :
         hasPendingChanges ? 'bg-indigo-600 text-white border-indigo-700' :
         'bg-slate-900 text-white border-slate-800'
       }`}>
         <div className="flex items-center gap-3">
-          {!supabase ? (
+          {!db ? (
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-3 h-3 text-white animate-pulse" />
-              <span className="text-[9px] font-black uppercase tracking-widest">MODE LOKAL (Supabase OFF)</span>
+              <span className="text-[9px] font-black uppercase tracking-widest">MODE LOKAL (Cloud Offline)</span>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -1018,7 +1000,7 @@ export function App() {
             </div>
           )}
           {lastSync && (
-            <span className="hidden sm:inline text-[8px] font-bold opacity-50 uppercase tracking-tighter">
+            <span className="hidden lg:inline text-[8px] font-bold opacity-50 uppercase tracking-tighter">
               Update: {lastSync.toLocaleTimeString('id-ID')}
             </span>
           )}
@@ -1026,7 +1008,7 @@ export function App() {
         
         <div className="flex items-center gap-4">
           {(window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) && (
-            <div className="hidden md:flex items-center gap-1 bg-red-601 px-2 py-0.5 rounded text-[8px] font-black animate-pulse">
+            <div className="hidden md:flex items-center gap-1 bg-red-600 px-2 py-0.5 rounded text-[8px] font-black animate-pulse">
               <Monitor className="w-3 h-3" /> LOCAL ENVIRONMENT
             </div>
           )}
@@ -1174,28 +1156,22 @@ export function App() {
             }} 
             onRegister={async (u) => {
               setAppState(prev => ({ ...prev, users: [...prev.users, u] }));
-              if (supabase) {
-                await supabase.from('profiles').upsert({
+              if (db) {
+                await setDoc(doc(db, 'profiles', u.id), {
                   id: u.id,
                   data: u,
-                  full_name: u.name,
-                  phone: u.phone,
-                  role: u.role,
-                  updated_at: new Date().toISOString()
-                });
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
               }
             }} 
             onUpdateUser={async (u) => {
               setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }));
-              if (supabase) {
-                await supabase.from('profiles').upsert({
+              if (db) {
+                await setDoc(doc(db, 'profiles', u.id), {
                   id: u.id,
                   data: u,
-                  full_name: u.name,
-                  phone: u.phone,
-                  role: u.role,
-                  updated_at: new Date().toISOString()
-                });
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
               }
             }} 
             onBack={() => setView('LANDING')} 

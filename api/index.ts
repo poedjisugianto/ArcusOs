@@ -3,37 +3,47 @@ import cors from "cors";
 import axios from "axios";
 import nodemailer from "nodemailer";
 import midtransClient from "midtrans-client";
-import { createClient } from "@supabase/supabase-js";
+import { initializeApp, getApps } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Initialize Supabase for backend
-const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
-// Prefer Service Role Key for backend to bypass RLS for administrative tasks
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+// Load Firebase Config safely
+const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
+let firebaseConfig: any = {};
+try {
+  firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+} catch (err) {
+  console.error("Failed to load firebase-applet-config.json:", err);
+}
 
-const supabase = supabaseUrl && supabaseKey 
-  ? createClient(supabaseUrl, supabaseKey)
-  : null;
+// Initialize Firebase Admin lazily
+if (!getApps().length && firebaseConfig.projectId) {
+  initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+}
+// Note: databaseId needs to be specified for non-default databases
+const db = firebaseConfig.projectId ? getFirestore(firebaseConfig.firestoreDatabaseId as any) : null;
 
-// Helper to get global settings from Supabase
+// Helper to get global settings from Firestore
 const getGlobalSettings = async () => {
-  if (!supabase) {
-    console.warn("Supabase not initialized (missing environment variables)");
-    return null;
-  }
+  if (!db) return null;
   try {
-    const { data, error } = await supabase
-      .from('system_configs')
-      .select('data')
-      .eq('id', 'global')
-      .single();
-    
-    if (error) throw error;
-    return data.data;
+    const docSnap = await db.collection('systemConfigs').doc('global').get();
+    if (!docSnap.exists) {
+      console.warn("Global settings not found in Firestore");
+      return null;
+    }
+    return docSnap.data()?.data;
   } catch (err) {
     console.error("Failed to fetch global settings:", err);
     return null;
@@ -356,27 +366,24 @@ app.get("/api/health", (req, res) => {
 });
 
 // API Route for registering a participant (Online Registration)
-// This bypasses RLS using the backend supabase client
 app.post("/api/register-participant", async (req, res) => {
   const { eventId, registration, archer } = req.body;
 
-  if (!supabase) {
-    return res.status(500).json({ success: false, message: "Supabase not initialized on backend" });
+  if (!db) {
+    return res.status(500).json({ success: false, message: "Firestore not initialized on backend" });
   }
 
   try {
-    // 1. Get current event data
-    const { data: event, error: fetchError } = await supabase
-      .from('events')
-      .select('data, user_id')
-      .eq('id', eventId)
-      .single();
+    // 1. Get current event data from Firestore
+    const eventRef = db.collection('events').doc(eventId);
+    const eventSnap = await eventRef.get();
 
-    if (fetchError || !event) {
-      throw new Error(fetchError?.message || "Event not found");
+    if (!eventSnap.exists) {
+      throw new Error("Event not found");
     }
 
-    const eventData = event.data;
+    const eventRecord = eventSnap.data()!;
+    const eventData = eventRecord.data;
     
     // 2. Update registrations and archers arrays
     const updatedRegistrations = [...(eventData.registrations || []), registration];
@@ -390,19 +397,12 @@ app.post("/api/register-participant", async (req, res) => {
       archers: updatedArchers
     };
 
-    // 3. Save back to Supabase
-    const { error: updateError } = await supabase
-      .from('events')
-      .update({ 
-        data: updatedData, 
-        status: eventData.status || 'ACTIVE',
-        updated_at: new Date().toISOString() 
-      })
-      .eq('id', eventId);
-
-    if (updateError) {
-      throw updateError;
-    }
+    // 3. Save back to Firestore
+    await eventRef.update({ 
+      data: updatedData, 
+      status: eventData.status || 'ACTIVE',
+      updatedAt: new Date().toISOString() 
+    });
 
     res.json({ 
       success: true, 

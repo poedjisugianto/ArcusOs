@@ -2,7 +2,14 @@ import React, { useState } from 'react';
 import { User as UserIcon, LogIn, Mail, Lock, ArrowLeft, ShieldCheck, Zap, Sparkles, UserPlus, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import ArcusLogo from './ArcusLogo';
-import { supabase } from '../supabase';
+import { auth, db } from '../firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail,
+  updateProfile
+} from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface Props {
   users: User[];
@@ -27,7 +34,7 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) {
+    if (!auth || !db) {
       setError('Koneksi database tidak tersedia.');
       return;
     }
@@ -38,39 +45,23 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
 
     try {
       if (mode === 'LOGIN') {
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
 
-        if (authError) {
-          // Improve error message for common cases
-          if (authError.message.includes('Email not confirmed')) {
-            throw new Error('Email Anda belum dikonfirmasi. Silakan cek kotak masuk email Anda (termasuk folder spam).');
-          }
-          if (authError.message.includes('Invalid login credentials')) {
-            throw new Error('Email atau Password salah. Silakan coba lagi atau daftar akun baru jika belum punya.');
-          }
-          throw authError;
-        }
-
-        if (data.user) {
-          // Fetch additional profile data
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .single();
+        if (user) {
+          // Fetch additional profile data from Firestore
+          const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
+          const profileData = profileSnap.exists() ? profileSnap.data().data : null;
 
           const loggedInUser: User = {
-            id: data.user.id,
-            email: data.user.email || '',
-            name: profile?.full_name || data.user.user_metadata.full_name || 'User',
-            phone: profile?.phone || '',
+            id: user.uid,
+            email: user.email || '',
+            name: profileData?.name || user.displayName || 'User',
+            phone: profileData?.phone || '',
             isOrganizer: true,
-            isVerified: !!data.user.email_confirmed_at,
-            isSuperAdmin: profile?.role === 'superadmin' || data.user.email === 'admin@arcus.id' || data.user.email === 'poedji.sugianto@gmail.com',
-            role: (profile?.role as UserRole) || UserRole.ORGANIZER
+            isVerified: user.emailVerified,
+            isSuperAdmin: profileData?.role === 'superadmin' || user.email === 'admin@arcus.id' || user.email === 'poedji.sugianto@gmail.com',
+            role: (profileData?.role as UserRole) || UserRole.ORGANIZER
           };
           onLogin(loggedInUser);
         }
@@ -81,53 +72,42 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
           return;
         }
 
-        const { data, error: authError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: name,
-              phone: phone
-            },
-            emailRedirectTo: window.location.origin
-          }
-        });
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
 
-        if (authError) throw authError;
-
-        if (data.user) {
+        if (user) {
+          await updateProfile(user, { displayName: name });
+          
           const newUser: User = {
-            id: data.user.id,
+            id: user.uid,
             email,
             name,
             phone,
             isOrganizer: true,
-            isVerified: false, // Initially false until confirmed
+            isVerified: false,
             role: UserRole.ORGANIZER
           };
           
-          // Explicitly create profile in case triggers are not set up
-          await supabase.from('profiles').upsert({
-            id: data.user.id,
+          // Create profile in Firestore
+          await setDoc(doc(db, 'profiles', user.uid), {
+            id: user.uid,
             data: newUser,
-            full_name: name,
-            phone: phone,
-            role: 'organizer',
-            updated_at: new Date().toISOString()
-          });
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
           
-          if (!data.session) {
-            setError('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi akun sebelum login.');
-            setMode('LOGIN');
-          } else {
-            onRegister(newUser);
-            onLogin(newUser);
-          }
+          onRegister(newUser);
+          onLogin(newUser);
         }
       }
     } catch (err: any) {
       console.error("Auth error:", err);
-      setError(err.message || 'Terjadi kesalahan autentikasi.');
+      let msg = err.message || 'Terjadi kesalahan autentikasi.';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        msg = 'Email atau Password salah. Silakan coba lagi.';
+      } else if (err.code === 'auth/email-already-in-use') {
+        msg = 'Email sudah terdaftar. Silakan login atau gunakan email lain.';
+      }
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -142,10 +122,7 @@ export default function LoginPanel({ users, onLogin, onRegister, onUpdateUser, o
     setSuccess('');
     setIsLoading(true);
     try {
-      const { error: resetError } = await supabase!.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
-      });
-      if (resetError) throw resetError;
+      await sendPasswordResetEmail(auth, email);
       setSuccess('Instruksi reset password telah dikirim ke email Anda. Silakan cek kotak masuk atau folder spam.');
     } catch (err: any) {
       setError(err.message || 'Gagal mengirim email reset password.');

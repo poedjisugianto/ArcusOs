@@ -615,36 +615,48 @@ const ArcherList: React.FC<Props> = ({
 
                 <table className="w-full border-collapse border border-black">
                   <thead>
-                    <tr className="bg-slate-200">
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-20">
+                    <tr className="bg-slate-100">
+                      <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-8">
+                        No
+                      </th>
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-20">
                         Bantalan
                       </th>
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                         Nama Pemanah
                       </th>
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                         Klub / Kota
                       </th>
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-24">
+                      <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-16">
                         Sesi
+                      </th>
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-24">
+                        Tanda Tangan
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {catArchers.map((a: Archer) => (
+                    {catArchers.map((a: Archer, aIdx: number) => (
                       <tr key={a.id}>
-                        <td className="border border-black py-2 px-2 text-center font-bold text-lg">
+                        <td className="border border-black py-2 px-1 text-center text-[10px]">
+                          {aIdx + 1}
+                        </td>
+                        <td className="border border-black py-1 px-1 text-center font-bold text-base">
                           {a.targetNo}
                           {a.position}
                         </td>
-                        <td className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                        <td className="border border-black py-1 px-2 text-[11px] font-bold uppercase">
                           {a.name}
                         </td>
-                        <td className="border border-black py-2 px-2 text-sm uppercase">
+                        <td className="border border-black py-1 px-2 text-[10px] uppercase">
                           {a.club}
                         </td>
-                        <td className="border border-black py-2 px-2 text-center text-sm font-bold">
-                          Sesi {a.wave}
+                        <td className="border border-black py-1 px-1 text-center text-[10px] font-bold">
+                          {a.wave}
+                        </td>
+                        <td className="border border-black py-1 px-2 text-center text-[9px] text-slate-300 italic min-h-[30px]">
+                          ....................
                         </td>
                       </tr>
                     ))}
@@ -690,36 +702,48 @@ const ArcherList: React.FC<Props> = ({
 
             <table className="w-full border-collapse border border-black">
               <thead>
-                <tr className="bg-slate-200">
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-20">
+                <tr className="bg-slate-100">
+                  <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-8">
+                    No
+                  </th>
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-20">
                     Bantalan
                   </th>
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                     Nama Pemanah
                   </th>
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                     Klub / Kota
                   </th>
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-24">
+                  <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-16">
                     Sesi
+                  </th>
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-24">
+                    Tanda Tangan
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((a: Archer) => (
+                {filtered.map((a: Archer, aIdx: number) => (
                   <tr key={a.id}>
-                    <td className="border border-black py-2 px-2 text-center font-bold text-lg">
+                    <td className="border border-black py-2 px-1 text-center text-[10px]">
+                      {aIdx + 1}
+                    </td>
+                    <td className="border border-black py-1 px-1 text-center font-bold text-base">
                       {a.targetNo}
                       {a.position}
                     </td>
-                    <td className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                    <td className="border border-black py-1 px-2 text-[11px] font-bold uppercase">
                       {a.name}
                     </td>
-                    <td className="border border-black py-2 px-2 text-sm uppercase">
+                    <td className="border border-black py-1 px-2 text-[10px] uppercase">
                       {a.club}
                     </td>
-                    <td className="border border-black py-2 px-2 text-center text-sm font-bold">
-                      Sesi {a.wave}
+                    <td className="border border-black py-1 px-1 text-center text-[10px] font-bold">
+                      {a.wave}
+                    </td>
+                    <td className="border border-black py-1 px-2 text-center text-[9px] text-slate-300 italic min-h-[30px]">
+                      ....................
                     </td>
                   </tr>
                 ))}

@@ -847,9 +847,10 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white">
+    <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
+      <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
       {/* Global Cloud Sync Status Bar */}
-      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm ${
+      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm print:hidden ${
         !db ? 'bg-emerald-500 text-white border-emerald-600' :
         isSyncing ? 'bg-blue-600 text-white border-blue-700' :
         hasPendingChanges ? 'bg-indigo-600 text-white border-indigo-700' :
@@ -1628,7 +1629,7 @@ export function App() {
         )}
       </main>
 
-      <footer className="py-12 bg-white border-t border-slate-100">
+      <footer className="py-12 bg-white border-t border-slate-100 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-12">
             <div className="flex flex-col md:flex-row items-center gap-8">

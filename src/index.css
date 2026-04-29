@@ -93,4 +93,18 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  @media print {
+    .page-break-before-always {
+      page-break-before: always;
+      break-before: page;
+    }
+    .page-break-after-always {
+      page-break-after: always;
+      break-after: page;
+    }
+    body {
+      background-color: white !important;
+    }
+  }
 }

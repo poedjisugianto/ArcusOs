@@ -256,7 +256,7 @@ const ArcherList: React.FC<Props> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-[#FBFBFD] p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-[#FBFBFD] p-4 flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
@@ -554,7 +554,7 @@ const ArcherList: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 print:hidden">
         <button
           onClick={() => setActiveCategory("ALL" as any)}
           className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${
@@ -579,7 +579,7 @@ const ArcherList: React.FC<Props> = ({
       </div>
 
       {/* Printable Area (Hidden in UI, visible in Print) */}
-      <div className="hidden print:block absolute top-0 left-0 w-full bg-white p-4">
+      <div className="hidden print:block absolute top-0 left-0 w-full bg-white p-4 min-h-screen">
         {printAllCategories ? (
           (Object.keys(CategoryType) as CategoryType[]).map((cat, idx) => {
             const catArchers = archers
@@ -771,7 +771,7 @@ const ArcherList: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="bg-white border-y border-slate-100 overflow-hidden">
+      <div className="bg-white border-y border-slate-100 overflow-hidden print:hidden">
         <div className="p-4 bg-[#FBFBFD] flex flex-col md:flex-row md:items-center gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

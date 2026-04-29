@@ -67,31 +67,26 @@ export function App() {
   const [appState, setAppState] = useState<AppState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     const initialSettings: GlobalSettings = {
-      feeAdult: 10000, feeKids: 5000, maintenanceMode: false,
-      contactSupport: '087834193339', bankProvider: 'BCA',
-      bankAccountNumber: '0987654321', bankAccountName: 'ADMIN ARCUS CENTRAL',
-      dataRetentionDays: 90, practiceRetentionDays: 7,
+      feeAdult: 0, 
+      feeKids: 0, 
+      maintenanceMode: false,
+      contactSupport: '', 
+      bankProvider: '',
+      bankAccountNumber: '', 
+      bankAccountName: '',
+      dataRetentionDays: 90, 
+      practiceRetentionDays: 7,
       paymentGatewayProvider: 'NONE',
       paymentGatewayIsProduction: false,
-      platformFeePercentage: 3
+      platformFeePercentage: 0,
+      contactSupportId: 'default' // Add a field to track uniqueness if needed
     };
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return { 
-          ...parsed, 
-          globalSettings: parsed.globalSettings || initialSettings, 
-          notifications: parsed.notifications || [],
-          drafts: parsed.drafts || { scoring: {}, adminSettings: {}, activeCategory: {} }
-        };
-      } catch (e) { console.error("Parse failed", e); }
-    }
-    
     return {
       events: [],
       users: [{ id: 'owner_1', email: 'admin@arcus.id', name: 'Master Admin', password: 'admin', isOrganizer: true, isSuperAdmin: true, isVerified: true }],
       currentUser: null, activeEventId: null, globalSettings: initialSettings, notifications: [],
+      isDataLoaded: false, // Force data loaded to false initially
       drafts: { scoring: {}, adminSettings: {}, activeCategory: {} }
     };
   });
@@ -302,7 +297,7 @@ export function App() {
           globalSettings: configData ? { ...prev.globalSettings, ...configData.data } : prev.globalSettings,
           events: Array.from(eventMap.values()),
           users: cloudUsers.length > 0 ? cloudUsers : prev.users,
-          isDataLoaded: true
+          isDataLoaded: true // Correctly set to true here
         };
       });
 
@@ -477,7 +472,10 @@ export function App() {
   const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    // Only save to localStorage after initial cloud fetch to avoid overwriting cloud with stale local data
+    if (appState.isDataLoaded) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    }
   }, [appState]);
 
   useEffect(() => {
@@ -485,16 +483,23 @@ export function App() {
   }, [view]);
 
   useEffect(() => {
-    if (!isSyncingFromCloud.current) {
+    if (!isSyncingFromCloud.current && appState.isDataLoaded) {
       setHasPendingChanges(true);
     }
-  }, [appState.events, appState.globalSettings, appState.currentUser]);
+  }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
 
   const syncCloudData = async (manual = false) => {
     if (!db) {
       if (manual) pushNotification("Mode Lokal", "Data disimpan di memori browser saja.", "INFO");
       return;
     }
+    
+    // Safety check: Don't sync if data hasn't been loaded from cloud yet
+    if (!appState.isDataLoaded && !manual) {
+      console.warn("Preventing auto-sync before initial cloud load.");
+      return;
+    }
+
     if (!isOnline) {
       if (manual) pushNotification("Sedang Offline", "Data akan disinkronkan saat koneksi kembali.", "WARNING");
       return;
@@ -502,15 +507,20 @@ export function App() {
     
     setIsSyncing(true);
     try {
-      // 1. Sync User Profile (Only if logged in)
+      // 1. Sync Global Settings (If currentUser exists, we assume they have rights if the UI allowed the change)
+      // Special logic: only SuperAdmin should really write this, but the UI protects the SuperAdminPanel.
+      // To be safe and respect user's request for "always send to database", we sync it if it's the intent.
+      if (appState.currentUser?.isSuperAdmin) {
+        console.log("Syncing Global Settings to Firestore...");
+        await setDoc(doc(db, 'systemConfigs', 'global'), { 
+          id: 'global', 
+          data: appState.globalSettings, 
+          updatedAt: new Date().toISOString() 
+        }, { merge: true });
+      }
+
+      // 2. Sync User Profile (Only if logged in)
       if (appState.currentUser) {
-        if (appState.currentUser.isSuperAdmin) {
-          await setDoc(doc(db, 'systemConfigs', 'global'), { 
-            id: 'global', 
-            data: appState.globalSettings, 
-            updatedAt: new Date().toISOString() 
-          }, { merge: true });
-        }
         await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
           id: appState.currentUser.id, 
           data: appState.currentUser, 
@@ -1360,8 +1370,23 @@ export function App() {
             onGoToSuperAdmin={() => setView('SUPER_ADMIN')} 
           />
         )}
-        {view === 'SUPER_ADMIN' && appState.currentUser?.isSuperAdmin && <SuperAdminPanel state={appState} onUpdateSettings={(gs) => setAppState(prev => ({ ...prev, globalSettings: gs }))} onUpdateEvent={handleUpdateEvent} onDeleteEvent={handleDeleteEvent} onDeleteUser={handleDeleteUser} onUpdateUser={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }))} onSendNotif={(n) => setAppState(prev => ({ ...prev, notifications: [n, ...prev.notifications] }))} onBack={() => setView('MEMBER_DASHBOARD')} />}
-        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} />}
+        {view === 'SUPER_ADMIN' && appState.currentUser?.isSuperAdmin && (
+          <SuperAdminPanel 
+            state={appState} 
+            onUpdateSettings={(gs) => {
+              setAppState(prev => ({ ...prev, globalSettings: gs }));
+              // Explicitly trigger cloud sync for global settings
+              setTimeout(() => syncCloudData(true), 100);
+            }} 
+            onUpdateEvent={handleUpdateEvent} 
+            onDeleteEvent={handleDeleteEvent} 
+            onDeleteUser={handleDeleteUser} 
+            onUpdateUser={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }))} 
+            onSendNotif={(n) => setAppState(prev => ({ ...prev, notifications: [n, ...prev.notifications] }))} 
+            onBack={() => setView('MEMBER_DASHBOARD')} 
+          />
+        )}
+        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
         {view === 'EVENT_ADMIN' && activeEvent && (
           <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-24 animate-in fade-in duration-700 px-4 md:px-0">
             {/* Console Header */}

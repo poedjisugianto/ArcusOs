@@ -332,6 +332,21 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onUpdateEve
           </div>
 
           <div className="space-y-6 border-t pt-10">
+             <h4 className="font-black text-xs uppercase text-slate-400">Kontak Support WhatsApp</h4>
+              <div className="max-w-md space-y-1.5">
+                 <label className="text-[9px] font-black uppercase text-slate-400">Nomor WA Support</label>
+                 <input 
+                   type="text" 
+                   placeholder="Contoh: 0812XXXXXXXX" 
+                   value={localSettings.contactSupport || ''} 
+                   onChange={e => setLocalSettings({...localSettings, contactSupport: e.target.value})} 
+                   className="w-full p-4 bg-slate-50 border rounded-2xl font-black text-xs" 
+                 />
+                 <p className="text-[8px] font-medium text-slate-400 italic leading-snug mt-1 uppercase">Nomor ini akan tampil di footer aplikasi dan panel bantuan untuk memudahkan pengguna menghubungi Anda.</p>
+              </div>
+           </div>
+
+          <div className="space-y-6 border-t pt-10">
              <div className="flex items-center justify-between">
                 <h4 className="font-black text-xs uppercase text-slate-400">Konfigurasi Payment Gateway</h4>
                 <div className="flex items-center gap-2">

@@ -8,9 +8,10 @@ interface Props {
   eventsManaged: number;
   onUpdate: (user: UserType) => void;
   onBack: () => void;
+  contactSupport: string;
 }
 
-const ProfilePanel: React.FC<Props> = ({ user, eventsManaged, onUpdate, onBack }) => {
+const ProfilePanel: React.FC<Props> = ({ user, eventsManaged, onUpdate, onBack, contactSupport }) => {
   const [formData, setFormData] = useState<UserType>({ ...user });
   const [isEditing, setIsEditing] = useState(false);
   const [showSavedFlag, setShowSavedFlag] = useState(false);
@@ -189,7 +190,7 @@ const ProfilePanel: React.FC<Props> = ({ user, eventsManaged, onUpdate, onBack }
                   <div>
                     <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1">Pusat Bantuan Profil</p>
                     <p className="text-[11px] text-blue-600 leading-relaxed italic">
-                      Jika Anda ingin mengubah email institusi atau status verifikasi, silakan hubungi tim support ARCUS (WA: 087834193339) melalui pusat bantuan.
+                      Jika Anda ingin mengubah email institusi atau status verifikasi, silakan hubungi tim support ARCUS (WA: {contactSupport}) melalui pusat bantuan.
                     </p>
                   </div>
                 </div>

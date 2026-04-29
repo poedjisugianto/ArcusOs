@@ -80,7 +80,21 @@ export function App() {
       platformFeePercentage: 0
     };
 
-    // Note: LocalStorage is secondary. We start with empty and fetch from Cloud.
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
+        return { 
+          ...parsed, 
+          isDataLoaded: false,
+          notifications: parsed.notifications || []
+        };
+      }
+    } catch (e) {
+      console.error("Local storage recovery failed:", e);
+    }
+
     return {
       events: [],
       users: [],
@@ -148,6 +162,8 @@ export function App() {
     } catch (err: any) { 
       console.error("Fetch Cloud Error:", err);
       if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
+      // Set to loaded even on error to allow app to use local state fallback
+      setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
       setIsSyncing(false);
       isSyncingFromCloud.current = false;
@@ -434,8 +450,10 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser, isOnline, hasPendingChanges]);
 */
 
-  // Consistency Check for View and State
+  // Consistency Check for View and State - Wait for data to be loaded to avoid false kicks
   useEffect(() => {
+    if (!appState.isDataLoaded || isCheckingLink) return;
+
     const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE', 'PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'];
     if (eventRequiredViews.includes(view) && !activeEvent) {
       if (['PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'].includes(view as any)) {
@@ -448,7 +466,7 @@ export function App() {
     if (authViews.includes(view) && !appState.currentUser) {
       setView('LANDING');
     }
-  }, [view, activeEvent, appState.currentUser]);
+  }, [view, activeEvent, appState.currentUser, appState.isDataLoaded, isCheckingLink]);
 
   useEffect(() => {
     if (activeEvent?.status === 'DRAFT' && view.startsWith('PUBLIC_')) {

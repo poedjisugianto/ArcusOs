@@ -185,7 +185,9 @@ const ArcherList: React.FC<Props> = ({
         });
 
         if ((activeCategory as any) === "ALL") {
-          onBulkUpdate(updatedCategoryArchers);
+          // If in "ALL" tab, we still need to preserve OFFICIALS if they were excluded from shuffle
+          const officials = archers.filter(a => a.category === CategoryType.OFFICIAL);
+          onBulkUpdate([...updatedCategoryArchers, ...officials]);
         } else {
           const otherArchers = archers.filter((a) => a.category !== activeCategory);
           console.log(`Updating ${updatedCategoryArchers.length} archers. Keeping ${otherArchers.length} from other categories.`);

@@ -548,19 +548,25 @@ export function App() {
     }
   };
 
-  const handleUpdateEvent = (id: string, updated: Partial<ArcheryEvent>) => {
+  const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
+    let finalEvent: ArcheryEvent | null = null;
     setAppState(prev => {
       const event = prev.events.find(e => e.id === id);
       if (!event) return prev;
 
-      const finalEvent: ArcheryEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
+      finalEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
       return { 
         ...prev, 
-        events: prev.events.map(e => e.id === id ? finalEvent : e) 
+        events: prev.events.map(e => e.id === id ? finalEvent! : e) 
       };
     });
 
     setHasPendingChanges(true);
+    // CRITICAL: Immediately sync management changes to cloud to avoid race conditions
+    if (finalEvent && db && isOnline) {
+      await saveEventToCloud(finalEvent);
+      setHasPendingChanges(false);
+    }
   };
 
   const handleDeleteEvent = async (id: string) => {

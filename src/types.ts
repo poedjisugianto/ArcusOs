@@ -202,6 +202,7 @@ export interface ArcheryEvent {
   scorerAccess?: any;
   disbursementRequests?: DisbursementRequest[];
   ownerId?: string;
+  localUpdatedAt?: string;
 }
 
 export interface AppState {

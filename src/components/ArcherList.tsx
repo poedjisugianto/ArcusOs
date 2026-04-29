@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import {
   Search,
   Trash2,
@@ -135,46 +136,70 @@ const ArcherList: React.FC<Props> = ({
   };
 
   const handleSmartRandomize = () => {
-    const categoryArchers = archers.filter(
+    const isAll = (activeCategory as any) === "ALL";
+    const categoryArchers = isAll ? [...archers] : archers.filter(
       (a) => a.category === activeCategory,
     );
-    if (categoryArchers.length === 0) return;
+    
+    if (categoryArchers.length === 0) {
+      alert("Tidak ada peserta yang bisa diacak.");
+      return;
+    }
 
-    const categoryLabel = CATEGORY_LABELS[activeCategory];
+    const effectiveArchersPerTarget = Number(archersPerTarget) || 4;
+    const effectiveTotalTargets = Number(totalTargets) || 20;
+
+    const categoryLabel = (activeCategory as any) === "ALL" ? "SEMUA KATEGORI" : CATEGORY_LABELS[activeCategory];
     if (
       !confirm(
-        `Sistem akan mengacak posisi pemanah KHUSUS KATEGORI ${categoryLabel} dan menyusun nomor bantalan secara otomatis mulai dari Sesi 1. Lanjutkan?`,
+        `Sistem akan mengacak posisi pemanah untuk ${categoryLabel} dan menyusun nomor bantalan secara otomatis (Kapasitas: ${effectiveTotalTargets} Bantalan x ${effectiveArchersPerTarget} Pemanah). Lanjutkan?`,
       )
     )
       return;
 
     setIsShuffling(true);
+    const shuffleToastId = toast.loading(`Mengacak ${categoryArchers.length} peserta...`);
 
     setTimeout(() => {
-      let updatedCategoryArchers: Archer[] = [];
-      const shuffled = [...categoryArchers].sort(() => Math.random() - 0.5);
+      try {
+        console.log(`Starting shuffle for: ${categoryLabel}. Archers to shuffle:`, categoryArchers.map(a => a.name));
+        
+        // Use a high-quality shuffle
+        const shuffled = [...categoryArchers];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
 
-      shuffled.forEach((a, index) => {
-        const archersPerWave = totalTargets * archersPerTarget;
-        const wave = Math.floor(index / archersPerWave) + 1;
+        const archersPerWave = effectiveTotalTargets * effectiveArchersPerTarget;
+        
+        const updatedCategoryArchers = shuffled.map((a, index) => {
+          const wave = Math.floor(index / archersPerWave) + 1;
+          const indexInWave = index % archersPerWave;
+          const targetNo = Math.floor(indexInWave / effectiveArchersPerTarget) + 1;
+          const posIndex = indexInWave % effectiveArchersPerTarget;
+          const position = ["A", "B", "C", "D"][posIndex] as "A" | "B" | "C" | "D";
 
-        const indexInWave = index % archersPerWave;
-        const targetNo = Math.floor(indexInWave / archersPerTarget) + 1;
-        const posIndex = indexInWave % archersPerTarget;
-        const position = ["A", "B", "C", "D"][posIndex] as
-          | "A"
-          | "B"
-          | "C"
-          | "D";
+          console.log(`Assigning ${a.name} to ${targetNo}${position}`);
+          return { ...a, targetNo, position, wave };
+        });
 
-        updatedCategoryArchers.push({ ...a, targetNo, position, wave });
-      });
-
-      // Merge with other categories
-      const otherArchers = archers.filter((a) => a.category !== activeCategory);
-      onBulkUpdate([...otherArchers, ...updatedCategoryArchers]);
-      setIsShuffling(false);
-    }, 1500);
+        if ((activeCategory as any) === "ALL") {
+          onBulkUpdate(updatedCategoryArchers);
+        } else {
+          const otherArchers = archers.filter((a) => a.category !== activeCategory);
+          console.log(`Updating ${updatedCategoryArchers.length} archers. Keeping ${otherArchers.length} from other categories.`);
+          onBulkUpdate([...otherArchers, ...updatedCategoryArchers]);
+        }
+        
+        toast.success(`Berhasil mengacak ${updatedCategoryArchers.length} peserta!`, { id: shuffleToastId });
+      } catch (err: any) {
+        console.error("Shuffle Error:", err);
+        toast.error("Gagal mengacak bantalan: " + err.message, { id: shuffleToastId });
+      } finally {
+        setIsShuffling(false);
+      }
+    }, 500); // Reduced delay for better UX
   };
 
   const handlePrint = (all: boolean = false) => {

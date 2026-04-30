@@ -135,26 +135,60 @@ export function App() {
     try {
       isSyncingFromCloud.current = true;
       
-      // 1. Fetch System Config
-      const configSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
-      const cloudSettings = configSnap.exists() ? configSnap.data().data : null;
-      
-      // 2. Fetch Events (Only relevant ones if possible, but for now we pull list)
-      const eventsSnap = await getDocs(collection(db, 'events'));
-      const cloudEvents = eventsSnap.docs.map(doc => {
-        const e = doc.data();
-        return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
-      });
+      // We fetch all three independently so one failure doesn't block the others
+      const fetchJobs = [
+        // 1. Fetch System Config (Public)
+        getDoc(doc(db, 'systemConfigs', 'global')).catch(err => {
+          console.warn("Failed to fetch system config:", err.message);
+          return null;
+        }),
+        // 2. Fetch Events (Public)
+        getDocs(collection(db, 'events')).catch(err => {
+          console.warn("Failed to fetch events:", err.message);
+          return null;
+        }),
+      ];
 
-      // 3. Profiles
-      const profilesSnap = await getDocs(collection(db, 'profiles'));
-      const cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
+      // 3. Fetch Profiles (Only if Admin)
+      const canFetchProfiles = appState.currentUser?.isSuperAdmin || 
+                              appState.currentUser?.role === UserRole.SUPERADMIN ||
+                              appState.currentUser?.email === 'admin@arcus.id' ||
+                              appState.currentUser?.email === 'poedji.sugianto@gmail.com';
+
+      if (canFetchProfiles) {
+        fetchJobs.push(
+          getDocs(collection(db, 'profiles')).catch(err => {
+            console.warn("Failed to fetch profiles:", err.message);
+            return null;
+          })
+        );
+      }
+
+      const results = await Promise.all(fetchJobs);
+      const configSnap = results[0] as any;
+      const eventsSnap = results[1] as any;
+      const profilesSnap = results[2] as any;
+
+      const cloudSettings = configSnap?.exists() ? configSnap.data().data : null;
+      
+      let cloudEvents: any[] | null = null;
+      if (eventsSnap) {
+        cloudEvents = eventsSnap.docs.map((doc: any) => {
+          const e = doc.data();
+          return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
+        });
+      }
+
+      let cloudUsers: any[] | null = null;
+      if (profilesSnap) {
+        cloudUsers = profilesSnap.docs.map((doc: any) => doc.data().data);
+      }
       
       setAppState(prev => ({
         ...prev,
         globalSettings: cloudSettings || prev.globalSettings,
-        events: cloudEvents.length > 0 ? cloudEvents : prev.events,
-        users: cloudUsers.length > 0 ? cloudUsers : prev.users,
+        events: (cloudEvents && cloudEvents.length > 0) ? cloudEvents : prev.events,
+        users: (cloudUsers && cloudUsers.length > 0) ? cloudUsers : prev.users,
         isDataLoaded: true
       }));
 

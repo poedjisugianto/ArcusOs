@@ -236,7 +236,12 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-[1400px] mx-auto px-4 md:px-8 h-12 md:h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={onBack} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg md:rounded-xl text-slate-400 hover:text-arcus-red transition-all">
+            <button 
+              type="button"
+              tabIndex={-1}
+              onClick={onBack} 
+              className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg md:rounded-xl text-slate-400 hover:text-arcus-red transition-all"
+            >
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div className="flex flex-col">
@@ -335,7 +340,17 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-0.5">
                     <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nama Lengkap</span>
-                    <input required placeholder="NAMA LENGKAP" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                    <input 
+                      required 
+                      type="text"
+                      placeholder="NAMA LENGKAP" 
+                      value={formData.name} 
+                      onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} 
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') e.stopPropagation();
+                      }}
+                      className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" 
+                    />
                   </div>
                   <div className="space-y-0.5">
                     <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Email</span>
@@ -343,11 +358,31 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                   </div>
                   <div className="space-y-0.5">
                     <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nomor WA</span>
-                    <input required placeholder="NOMOR TELEPON (WA)" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                    <input 
+                      required 
+                      type="text"
+                      placeholder="NOMOR TELEPON (WA)" 
+                      value={formData.phone} 
+                      onChange={e => setFormData({...formData, phone: e.target.value})} 
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') e.stopPropagation();
+                      }}
+                      className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" 
+                    />
                   </div>
                   <div className="space-y-0.5">
                     <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Klub</span>
-                    <input required placeholder="KLUB" value={formData.club} onChange={e => setFormData({...formData, club: e.target.value.toUpperCase()})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                    <input 
+                      required 
+                      type="text"
+                      placeholder="KLUB" 
+                      value={formData.club} 
+                      onChange={e => setFormData({...formData, club: e.target.value.toUpperCase()})} 
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') e.stopPropagation();
+                      }}
+                      className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" 
+                    />
                   </div>
                   {formData.regType === 'ARCHER' && (
                     <div className="md:col-span-2 space-y-0.5">

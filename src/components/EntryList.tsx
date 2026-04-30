@@ -21,8 +21,24 @@ export default function EntryList({ event, onBack, onRefresh, isSyncing }: Props
   }, []);
 
   const archers = useMemo(() => {
-    return (event.archers || []).filter(a => a.category !== CategoryType.OFFICIAL);
-  }, [event.archers]);
+    const list = [...(event.archers || [])];
+    const archerIds = new Set(list.map(a => a.id));
+    
+    // Add pending/paid registrations that aren't already in archers
+    (event.registrations || []).forEach(reg => {
+      if (!archerIds.has(reg.id)) {
+        list.push({
+          ...reg,
+          targetNo: 0,
+          position: 'A',
+          wave: 1,
+          pin: ''
+        } as Archer);
+      }
+    });
+
+    return list.filter(a => a.category !== CategoryType.OFFICIAL);
+  }, [event.archers, event.registrations]);
 
   const officials = useMemo(() => {
     return (event.archers || []).filter(a => a.category === CategoryType.OFFICIAL);

@@ -21,10 +21,16 @@ interface Props {
 const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
   const stats = useMemo(() => {
     const totalEvents = events.length;
-    const totalArchers = events.reduce((acc, e) => acc + e.archers.length, 0);
-    const totalRevenue = events.reduce((acc, e) => 
-      acc + e.archers.reduce((a, arc) => a + (arc.totalPaid || 0), 0), 0
-    );
+    const totalArchers = events.reduce((acc, e) => {
+      const archerIds = new Set(e.archers.map(a => a.id));
+      const uniqueRegistrations = (e.registrations || []).filter(r => !archerIds.has(r.id));
+      return acc + e.archers.length + uniqueRegistrations.length;
+    }, 0);
+    const totalRevenue = events.reduce((acc, e) => {
+      const archerRev = e.archers.reduce((a, arc) => a + (arc.totalPaid || 0), 0);
+      const regRev = (e.registrations || []).reduce((a, r) => a + (r.totalPaid || 0), 0);
+      return acc + Math.max(archerRev, regRev); // Use max to avoid double counting if merged
+    }, 0);
     const activeEvents = events.filter(e => e.status === 'ONGOING').length;
     const upcomingEvents = events.filter(e => e.status === 'UPCOMING').length;
     const completedEvents = events.filter(e => e.status === 'COMPLETED').length;
@@ -210,9 +216,19 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
                     </span>
                   </td>
                   <td className="px-8 py-5">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-3 h-3 text-slate-300" />
-                      <span className="text-xs font-bold text-slate-700">{event.archers.length}</span>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-3 h-3 text-slate-300" />
+                        <span className="text-xs font-bold text-slate-700">{event.archers.length} Archer</span>
+                      </div>
+                      {(event.registrations?.filter(r => r.status === 'PENDING').length || 0) > 0 && (
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-3 h-3 text-amber-500" />
+                          <span className="text-[9px] font-black text-amber-600 uppercase tracking-tighter">
+                            {event.registrations.filter(r => r.status === 'PENDING').length} Menunggu
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-8 py-5">

@@ -13,7 +13,7 @@ import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, App
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import AdminPanel from './components/AdminPanel';
@@ -176,13 +176,18 @@ export function App() {
           const localEvent = prev.events.find(e => e.id === cloudEvent.id);
           
           if (localEvent && hasPendingChanges && !manual) {
-            // Keep local settings but take cloud registrations/archers which are atomic
-            // Also respect the status from cloud if it's not DRAFT anymore
+            // Priority list: Take cloud registrations and archers as they are atomic in cloud
+            // to ensure online registrations appear immediately, but keep local settings/status
+            // if we are currently editing them.
             return {
               ...localEvent,
+              // Move status from cloud if it's not draft
               status: cloudEvent.status !== 'DRAFT' ? cloudEvent.status : localEvent.status,
               registrations: cloudEvent.registrations || [],
               archers: cloudEvent.archers || [],
+              // Carry over scores and logs from cloud as they are often external
+              scores: cloudEvent.scores || [],
+              scoreLogs: cloudEvent.scoreLogs || []
             };
           }
           return cloudEvent;
@@ -217,6 +222,58 @@ export function App() {
   }, [appState.currentUser?.id, appState.activeEventId]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
+
+  // Real-time listener for active event to catch remote updates (like online registrations)
+  useEffect(() => {
+    if (!db || !appState.activeEventId) return;
+
+    const eventRef = doc(db, 'events', appState.activeEventId);
+    const unsubscribe = onSnapshot(eventRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const e = docSnap.data();
+        const baseData = e.data || {};
+        const cloudEvent: ArcheryEvent = { 
+          ...baseData, 
+          id: e.id, 
+          ownerId: e.userId || baseData.ownerId, 
+          status: e.status || baseData.status || 'DRAFT',
+          settings: baseData.settings || { ...DEFAULT_SETTINGS, tournamentName: 'Unnamed Event' },
+          archers: baseData.archers || [],
+          scores: baseData.scores || [],
+          scoreLogs: baseData.scoreLogs || [],
+          registrations: baseData.registrations || []
+        };
+
+        setAppState(prev => {
+          // If we are currently editing the event (managing people), we might want to merge carefully
+          // but for registrations, we definitely want the latest cloud versions.
+          const existingEvent = prev.events.find(ev => ev.id === appState.activeEventId);
+          
+          const updatedEvents = prev.events.map(ev => {
+            if (ev.id === appState.activeEventId) {
+              // Merge: take cloud registrations/archers but keep local UI state if needed
+              // Actually, most of the time we just want the cloud state for data-heavy fields
+              return {
+                ...cloudEvent,
+                // If the user has local pending changes to settings, we might want to preserve them
+                // but let's prioritize cloud consistency for now as requested.
+                settings: hasPendingChanges && existingEvent ? existingEvent.settings : cloudEvent.settings
+              };
+            }
+            return ev;
+          });
+
+          return { ...prev, events: updatedEvents };
+        });
+        
+        console.log("Real-time update received for event:", appState.activeEventId);
+      }
+    }, (err) => {
+       console.error("Real-time listener error:", err);
+    });
+
+    return () => unsubscribe();
+  }, [db, appState.activeEventId, hasPendingChanges]);
 
   // Handle URL Parameters for Sharing
   useEffect(() => {
@@ -422,7 +479,7 @@ export function App() {
 
           // Only overwrite registrations/archers if we are in management views
           // to prevent "race conditions" where two browsers sync at same time
-          const isManagingPeople = ['ARCHERS', 'OFFICIALS', 'FINANCE', 'EVENT_ADMIN'].includes(view);
+          const isManagingPeople = ['ARCHERS', 'OFFICIALS', 'FINANCE'].includes(view);
           if (isManagingPeople) {
             updates["data.registrations"] = activeEvent.registrations || [];
             updates["data.archers"] = activeEvent.archers || [];
@@ -622,21 +679,65 @@ export function App() {
     setView('LANDING');
   };
 
-  const saveEventToCloud = async (event: ArcheryEvent) => {
+  const saveEventToCloud = async (event: ArcheryEvent, fields?: (keyof ArcheryEvent)[]) => {
     if (!db) return;
     
     try {
-      await setDoc(doc(db, 'events', event.id), {
-        id: event.id,
-        userId: event.settings.organizerId || appState.currentUser?.id || 'guest',
-        data: event,
-        status: event.status,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      const eventRef = doc(db, 'events', event.id);
       
-      console.log(`Firestore sync success for event: ${event.id} (Status: ${event.status})`);
+      // Use surgical updates to prevent overwriting cloud registrations/archers 
+      // if we are only updating specific fields like settings or status.
+      const updates: any = {
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (fields && fields.length > 0) {
+        // Explicit fields requested
+        fields.forEach(f => {
+          if (f === 'settings') updates['data.settings'] = event.settings;
+          if (f === 'archers') updates['data.archers'] = event.archers || [];
+          if (f === 'registrations') updates['data.registrations'] = event.registrations || [];
+          if (f === 'scores') updates['data.scores'] = event.scores || [];
+          if (f === 'scoreLogs') updates['data.scoreLogs'] = event.scoreLogs || [];
+          if (f === 'matches') updates['data.matches'] = event.matches || {};
+          if (f === 'status') {
+            updates['data.status'] = event.status;
+            updates['status'] = event.status;
+          }
+        });
+      } else {
+        // Default behavior (original logic)
+        updates.userId = event.settings.organizerId || appState.currentUser?.id || 'guest';
+        updates.status = event.status;
+        updates['data.settings'] = event.settings;
+        updates['data.status'] = event.status;
+        updates['data.scorerAccess'] = event.scorerAccess || [];
+        updates['data.scores'] = event.scores || [];
+        updates['data.scoreLogs'] = event.scoreLogs || [];
+
+        // Only update heavy lists if explicitly requested or if we are in management views
+        const isPeopleView = ['ARCHERS', 'OFFICIALS', 'FINANCE'].includes(view);
+        if (isPeopleView) {
+          updates['data.registrations'] = event.registrations || [];
+          updates['data.archers'] = event.archers || [];
+        }
+      }
+
+      await updateDoc(eventRef, updates);
+      console.log(`Firestore surgical sync success for event: ${event.id} (Fields: ${fields?.join(',') || 'DEFAULT'})`);
     } catch (err: any) {
-      console.error(`Firestore sync failed for event ${event.id}:`, err);
+      console.error(`Firestore surgical sync failed for event ${event.id}:`, err);
+      // Fallback to setDoc merge if updateDoc fails (e.g. if document doesn't exist)
+      if (err.message?.includes('not-found') || err.code === 'not-found') {
+        const fullEvent = { ...event };
+        await setDoc(doc(db, 'events', event.id), {
+          id: event.id,
+          userId: event.settings.organizerId || appState.currentUser?.id || 'guest',
+          data: fullEvent,
+          status: event.status,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
     }
   };
 
@@ -656,7 +757,7 @@ export function App() {
     setHasPendingChanges(true);
     // CRITICAL: Immediately sync management changes to cloud to avoid race conditions
     if (finalEvent && db && isOnline) {
-      await saveEventToCloud(finalEvent);
+      await saveEventToCloud(finalEvent, Object.keys(updated) as (keyof ArcheryEvent)[]);
       setHasPendingChanges(false);
     }
   };
@@ -1483,6 +1584,7 @@ export function App() {
         {view === 'ARCHERS' && activeEvent && (
           <ArcherList 
             archers={activeEvent.archers} 
+            registrations={activeEvent.registrations || []}
             archersPerTarget={activeEvent.settings.archersPerTarget} 
             totalTargets={activeEvent.settings.totalTargets} 
             settings={activeEvent.settings}
@@ -1578,107 +1680,128 @@ export function App() {
             }} 
           />
         )}
-        {view === 'REGISTER_PARTICIPANT' && activeEvent && <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (r) => {
-          const pin = Math.floor(1000 + Math.random() * 9000).toString();
-          const newArcher: Archer = {
-            ...r,
-            targetNo: 0,
-            position: 'A',
-            wave: 1,
-            pin: pin
-          };
-
-          const registerLocallyOnly = () => {
-            setAppState(prev => {
-              const event = prev.events.find(e => e.id === (activeEvent as any).id);
-              if (!event) return prev;
-              const updatedEvent = { 
-                ...event, 
-                registrations: [...(event.registrations || []), r],
-                archers: [...(event.archers || []), newArcher],
-                localUpdatedAt: new Date().toISOString()
+        {view === 'REGISTER_PARTICIPANT' && activeEvent && (
+          <OnlineRegistration 
+            event={activeEvent} 
+            globalSettings={appState.globalSettings} 
+            onRegister={async (r) => {
+              console.log("App: Online registration for", r.name);
+              if (!activeEvent) {
+                pushNotification("Error", "Event tidak aktif.", "WARNING");
+                return;
+              }
+              
+              const pin = Math.floor(1000 + Math.random() * 9000).toString();
+              const newArcher: Archer = {
+                ...r,
+                targetNo: 0,
+                position: 'A' as any,
+                wave: 1,
+                pin: pin,
+                createdAt: Date.now()
               };
-              const newState = {
-                ...prev,
-                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+
+              const registerLocallyOnly = () => {
+                setAppState(prev => {
+                  const event = prev.events.find(e => e.id === (activeEvent as any).id);
+                  if (!event) return prev;
+                  const updatedEvent = { 
+                    ...event, 
+                    registrations: [...(event.registrations || []), r],
+                    archers: [...(event.archers || []), newArcher],
+                    localUpdatedAt: new Date().toISOString()
+                  };
+                  const newState = {
+                    ...prev,
+                    events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+                  };
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+                  return newState;
+                });
+                setHasPendingChanges(true);
+                pushNotification("Pendaftaran Lokal", "Tersimpan di perangkat. Akan dikirim saat online.", "INFO");
               };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-              return newState;
-            });
-            setHasPendingChanges(true);
-            pushNotification("Pendaftaran Lokal", "Data disimpan di perangkat. Akan dikirim ke cloud saat online.", "INFO");
-          };
 
-          if (!isOnline) {
-            registerLocallyOnly();
-            return;
-          }
+              if (!isOnline) {
+                registerLocallyOnly();
+                return;
+              }
 
-          try {
-            const response = await fetch('/api/register-participant', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                eventId: activeEvent.id,
-                registration: r,
-                archer: newArcher
-              })
-            });
-            
-            const result = await response.json();
-            
-            if (!result.success) {
-              throw new Error(result.error || "Gagal menyimpan pendaftaran ke cloud");
-            }
+              try {
+                pushNotification("Sinkronisasi Cloud", "Sedang mendaftarkan peserta...", "INFO");
+                
+                const response = await fetch('/api/register-participant', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    eventId: activeEvent.id,
+                    registration: r,
+                    archer: newArcher
+                  })
+                });
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                  throw new Error(result.error || "Gagal menyimpan pendaftaran ke cloud");
+                }
 
-            pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, pendaftaran cloud sukses!`, "SUCCESS");
-            
-            // Sync local state for immediate feedback
-            setAppState(prev => {
-              const event = prev.events.find(e => e.id === (activeEvent as any).id);
-              if (!event) return prev;
-              const updatedEvent = { 
-                ...event, 
-                registrations: [...(event.registrations || []), r],
-                archers: [...(event.archers || []), newArcher],
-                localUpdatedAt: new Date().toISOString()
-              };
-              const newState = {
-                ...prev,
-                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
-              };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-              return newState;
-            });
+                pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, pendaftaran cloud sukses!`, "SUCCESS");
+                
+                // Sync local state for immediate feedback
+                setAppState(prev => {
+                  const event = prev.events.find(e => e.id === (activeEvent as any).id);
+                  if (!event) return prev;
+                  const updatedEvent = { 
+                    ...event, 
+                    registrations: [...(event.registrations || []), r],
+                    archers: [...(event.archers || []), newArcher],
+                    localUpdatedAt: new Date().toISOString()
+                  };
+                  const newState = {
+                    ...prev,
+                    events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+                  };
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+                  return newState;
+                });
 
-            // Re-fetch after a short delay to ensure everything is synced
-            setTimeout(() => {
-              fetchCloudData(true);
-            }, 3000);
+                // Auto-send confirmation email
+                try {
+                  const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
+                  const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}` : `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`;
+                  const message = isAutoConfirm 
+                    ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nPendaftaran Anda telah BERHASIL diverifikasi.\n\nSelamat bertanding!`
+                    : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
 
-            // Auto-send confirmation email
-            const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
-            const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}` : `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`;
-            const message = isAutoConfirm 
-              ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nPendaftaran Anda telah BERHASIL diverifikasi.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nSelamat bertanding!`
-              : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.\n\nKami akan mengirimkan email konfirmasi setelah pembayaran Anda diverifikasi oleh panitia.`;
+                  await fetch('/api/send-email-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      email: r.email,
+                      subject,
+                      message
+                    })
+                  });
+                } catch (emailErr) {
+                  console.warn("Email sending failed:", emailErr);
+                }
 
-            await fetch('/api/send-email-otp', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: r.email,
-                subject,
-                message
-              })
-            });
-            
-          } catch (error: any) {
-            console.error("Online registration error:", error);
-            registerLocallyOnly();
-            pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
-          }
-        }} onBack={() => setView('LANDING')} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
+                // Re-fetch after a short delay to ensure everything is synced
+                setTimeout(() => {
+                  fetchCloudData(true);
+                }, 5000);
+                
+              } catch (error: any) {
+                console.error("Online registration error:", error);
+                registerLocallyOnly();
+                pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
+              }
+            }} 
+            onBack={() => setView('LANDING')} 
+            onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} 
+          />
+        )}
         {view === 'PUBLIC_LIVE' && activeEvent && (
           <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
         )}

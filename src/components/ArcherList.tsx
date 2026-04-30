@@ -28,6 +28,7 @@ import ScoringSheet from "./ScoringSheet";
 
 interface Props {
   archers: Archer[];
+  registrations?: any[];
   onAdd: (archer: Archer) => void;
   onUpdate: (archer: Archer) => void;
   onRemove: (id: string) => void;
@@ -46,6 +47,7 @@ interface Props {
 
 const ArcherList: React.FC<Props> = ({
   archers,
+  registrations = [],
   onAdd,
   onUpdate,
   onRemove,
@@ -305,7 +307,32 @@ const ArcherList: React.FC<Props> = ({
             </div>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-center md:justify-end gap-2">
+      </div>
+
+      {/* Pending Registrations Alert */}
+      {registrations.filter((r) => r.status === "PENDING").length > 0 && (
+        <div className="mx-4 bg-amber-50 border-2 border-amber-200 p-6 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4 print:hidden">
+          <div className="flex items-center gap-4 text-center sm:text-left">
+            <div className="bg-amber-500 p-3 rounded-2xl text-white shadow-lg shrink-0">
+              <RefreshCw className="w-5 h-5 animate-spin" />
+            </div>
+            <div>
+              <h3 className="font-black font-oswald uppercase italic text-amber-900 text-lg leading-tight">
+                Pendaftaran Baru Menunggu
+              </h3>
+              <p className="text-[10px] text-amber-700 font-bold uppercase tracking-widest mt-1">
+                Ada {registrations.filter((r) => r.status === "PENDING").length}{" "}
+                calon peserta baru yang butuh verifikasi pembayaran.
+              </p>
+            </div>
+          </div>
+          <p className="text-[9px] font-black uppercase text-amber-600 tracking-widest bg-amber-200/50 px-4 py-2 rounded-xl">
+            Cek Menu Finance
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 px-4 print:hidden">
           <button
             onClick={onGoToIdCardEditor}
             className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-blue-700 transition-all active:scale-95 shadow-xl shadow-blue-600/20"
@@ -377,7 +404,6 @@ const ArcherList: React.FC<Props> = ({
             Acak Bantalan
           </button>
         </div>
-      </div>
 
       {showAddForm && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">

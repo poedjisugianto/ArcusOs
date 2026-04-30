@@ -13,7 +13,7 @@ import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, App
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import AdminPanel from './components/AdminPanel';
@@ -43,18 +43,13 @@ import ResetPasswordPanel from './components/ResetPasswordPanel';
 
 type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'RESET_PASSWORD' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
 
 export function App() {
   const [view, setView] = useState<View>(() => {
-    try {
-      const saved = localStorage.getItem('ARCUS_CURRENT_VIEW');
-      return (saved as View) || 'LANDING';
-    } catch (e) {
-      console.warn("View restoration failed:", e);
-      return 'LANDING';
-    }
+    const saved = localStorage.getItem('ARCUS_CURRENT_VIEW');
+    return (saved as View) || 'LANDING';
   });
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -86,16 +81,15 @@ export function App() {
     };
 
     try {
-      if (typeof localStorage !== 'undefined') {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          return { 
-            ...parsed, 
-            isDataLoaded: false,
-            notifications: parsed.notifications || []
-          };
-        }
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
+        return { 
+          ...parsed, 
+          isDataLoaded: false,
+          notifications: parsed.notifications || []
+        };
       }
     } catch (e) {
       console.error("Local storage recovery failed:", e);
@@ -129,101 +123,50 @@ export function App() {
   };
 
   const fetchCloudData = async (manual = false) => {
-    if (!db) {
-      console.warn("Fetch Cloud Data skipped: Database not initialized.");
-      setAppState(prev => ({ ...prev, isDataLoaded: true }));
-      return;
-    }
+    if (!db) return;
     if (manual) setIsSyncing(true);
     
+    // Safety: If we have pending local changes, don't overwrite with cloud data
+    // unless explicitly requested via manual refresh
+    if (hasPendingChanges && !manual) {
+      return;
+    }
+
     try {
       isSyncingFromCloud.current = true;
       
-      // 1. Fetch System Config (rarely changes, but good to have)
+      // 1. Fetch System Config
       const configSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
       const cloudSettings = configSnap.exists() ? configSnap.data().data : null;
       
-      // 2. Fetch Events
-      let cloudEvents: any[] = [];
-      try {
-        const eventsSnap = await getDocs(collection(db, 'events'));
-        cloudEvents = eventsSnap.docs.map(doc => {
-          const e = doc.data();
-          const baseData = e.data || {};
-          return { 
-            ...baseData, 
-            id: e.id, 
-            ownerId: e.userId || baseData.ownerId, 
-            status: e.status || baseData.status || 'DRAFT',
-            settings: baseData.settings || { ...DEFAULT_SETTINGS, tournamentName: 'Unnamed Event' },
-            archers: baseData.archers || [],
-            scores: baseData.scores || [],
-            scoreLogs: baseData.scoreLogs || [],
-            registrations: baseData.registrations || []
-          };
-        });
-      } catch (err) {
-        console.warn("Could not fetch events:", err);
-      }
-
-      // 3. Profiles (Only for admins/organizers or if we have permission)
-      let cloudUsers: any[] = [];
-      if (appState.currentUser) {
-        try {
-          const profilesSnap = await getDocs(collection(db, 'profiles'));
-          cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
-        } catch (err) {
-          console.warn("Could not fetch profiles (restricted):", err);
-        }
-      }
-      
-      setAppState(prev => {
-        // Merge strategy:
-        // If we have manual refresh, or no pending changes, use cloud data as primary.
-        // If we have pending changes, keep local settings/stats for active event 
-        // but merge cloud registrations/archers.
-        const updatedEvents = cloudEvents.map(cloudEvent => {
-          const localEvent = prev.events.find(e => e.id === cloudEvent.id);
-          
-          if (localEvent && hasPendingChanges && !manual) {
-            // Priority list: Take cloud registrations and archers as they are atomic in cloud
-            // to ensure online registrations appear immediately, but keep local settings/status
-            // if we are currently editing them.
-            return {
-              ...localEvent,
-              // Move status from cloud if it's not draft
-              status: cloudEvent.status !== 'DRAFT' ? cloudEvent.status : localEvent.status,
-              registrations: cloudEvent.registrations || [],
-              archers: cloudEvent.archers || [],
-              // Carry over scores and logs from cloud as they are often external
-              scores: cloudEvent.scores || [],
-              scoreLogs: cloudEvent.scoreLogs || []
-            };
-          }
-          return cloudEvent;
-        });
-
-        return {
-          ...prev,
-          globalSettings: cloudSettings || prev.globalSettings,
-          events: updatedEvents.length > 0 ? updatedEvents : prev.events,
-          users: cloudUsers.length > 0 ? cloudUsers : prev.users,
-          isDataLoaded: true
-        };
+      // 2. Fetch Events (Only relevant ones if possible, but for now we pull list)
+      const eventsSnap = await getDocs(collection(db, 'events'));
+      const cloudEvents = eventsSnap.docs.map(doc => {
+        const e = doc.data();
+        return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
       });
+
+      // 3. Profiles
+      const profilesSnap = await getDocs(collection(db, 'profiles'));
+      const cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
+      
+      setAppState(prev => ({
+        ...prev,
+        globalSettings: cloudSettings || prev.globalSettings,
+        events: cloudEvents.length > 0 ? cloudEvents : prev.events,
+        users: cloudUsers.length > 0 ? cloudUsers : prev.users,
+        isDataLoaded: true
+      }));
 
       setLastSync(new Date());
     } catch (err: any) { 
       console.error("Fetch Cloud Error:", err);
       if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
+      // Set to loaded even on error to allow app to use local state fallback
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
       setIsSyncing(false);
       isSyncingFromCloud.current = false;
-      if (manual) {
-        setHasPendingChanges(false);
-        pushNotification("Sinkronisasi Berhasil", "Data terbaru telah dimuat.", "SUCCESS");
-      }
     }
   };
 
@@ -233,157 +176,71 @@ export function App() {
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
 
-  // Real-time listener for active event to catch remote updates (like online registrations)
-  useEffect(() => {
-    if (!db || !appState.activeEventId) return;
-
-    const eventRef = doc(db, 'events', appState.activeEventId);
-    const unsubscribe = onSnapshot(eventRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const e = docSnap.data();
-        const baseData = e.data || {};
-        const cloudEvent: ArcheryEvent = { 
-          ...baseData, 
-          id: e.id, 
-          ownerId: e.userId || baseData.ownerId, 
-          status: e.status || baseData.status || 'DRAFT',
-          settings: baseData.settings || { ...DEFAULT_SETTINGS, tournamentName: 'Unnamed Event' },
-          archers: baseData.archers || [],
-          scores: baseData.scores || [],
-          scoreLogs: baseData.scoreLogs || [],
-          registrations: baseData.registrations || []
-        };
-
-        setAppState(prev => {
-          // If we are currently editing the event (managing people), we might want to merge carefully
-          // but for registrations, we definitely want the latest cloud versions.
-          const existingEvent = prev.events.find(ev => ev.id === appState.activeEventId);
-          
-          const updatedEvents = prev.events.map(ev => {
-            if (ev.id === appState.activeEventId) {
-              // Merge: take cloud registrations/archers but keep local UI state if needed
-              // Actually, most of the time we just want the cloud state for data-heavy fields
-              return {
-                ...cloudEvent,
-                // If the user has local pending changes to settings, we might want to preserve them
-                // but let's prioritize cloud consistency for now as requested.
-                settings: hasPendingChanges && existingEvent ? existingEvent.settings : cloudEvent.settings
-              };
-            }
-            return ev;
-          });
-
-          return { ...prev, events: updatedEvents };
-        });
-        
-        console.log("Real-time update received for event:", appState.activeEventId);
-      }
-    }, (err) => {
-       console.error("Real-time listener error:", err);
-    });
-
-    return () => unsubscribe();
-  }, [db, appState.activeEventId, hasPendingChanges]);
-
   // Handle URL Parameters for Sharing
   useEffect(() => {
     const handleDeepLink = async () => {
+      const hash = window.location.hash;
+      if (hash.includes('type=recovery')) {
+        setView('RESET_PASSWORD');
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get('event');
+      const registerId = params.get('register');
+      const viewParam = params.get('view');
+
+      if (!eventId && !registerId) return;
+
+      if (!db) {
+        console.log("Deep link validation skipped: Database not ready.");
+        return;
+      }
+
+      setIsCheckingLink(true);
+
+      // Safety timeout to prevent infinite loading if something goes wrong
+      const safetyTimeout = setTimeout(() => {
+        setIsCheckingLink(false);
+      }, 5000);
+
       try {
-        const hash = window.location.hash || '';
-        if (hash.includes('type=recovery')) {
-          setView('RESET_PASSWORD');
-          return;
-        }
+        const idToFetch = eventId || registerId;
+        if (idToFetch) {
+          console.log("Deep link validation starting for:", idToFetch);
+          const eventSnap = await getDoc(doc(db, 'events', idToFetch));
 
-        // Robust URL Parameter extraction
-        const search = window.location.search;
-        let eventId = null;
-        let registerId = null;
-        let viewParam = null;
-
-        if (search) {
-          try {
-            const params = new URLSearchParams(search);
-            eventId = params.get('event');
-            registerId = params.get('register');
-            viewParam = params.get('view');
-          } catch (e) {
-            console.warn("URLSearchParams fallback used");
-            const pairs = search.substring(1).split('&');
-            for (const pair of pairs) {
-              const [key, value] = pair.split('=');
-              if (key === 'event') eventId = decodeURIComponent(value || '');
-              if (key === 'register') registerId = decodeURIComponent(value || '');
-              if (key === 'view') viewParam = decodeURIComponent(value || '');
-            }
-          }
-        }
-
-        if (!eventId && !registerId) return;
-
-        if (!db) {
-          console.warn("Deep link validation skipped: Database not ready.");
-          // Still try to find it in local events if possible
-          if (eventId) {
+          if (eventSnap.exists()) {
+            console.log("Deep link data found in Firestore.");
+            const eventRecord = eventSnap.data();
+            const targetEvent = eventRecord.data as ArcheryEvent;
+            
+            // Inject into state and activate
             setAppState(prev => {
-              const local = prev.events.find(e => e.id === eventId);
-              if (local) {
-                return { ...prev, activeEventId: eventId };
-              }
-              return prev;
+              const exists = prev.events.some(e => e.id === targetEvent.id);
+              return { 
+                ...prev, 
+                events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
+                activeEventId: targetEvent.id
+              };
             });
+
+            // Navigate based on view
+            if (registerId) setView('REGISTER_PARTICIPANT');
+            else if (viewParam === 'live') setView('PUBLIC_LIVE');
+            else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
+            else setView('PUBLIC_EVENT_INFO');
+            
+          } else {
+            console.warn("Shared event not found in cloud:", idToFetch);
+            pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
           }
-          return;
-        }
-
-        setIsCheckingLink(true);
-
-        // Safety timeout to prevent infinite loading if something goes wrong
-        const safetyTimeout = setTimeout(() => {
-          setIsCheckingLink(false);
-        }, 8000);
-
-        try {
-          const idToFetch = eventId || registerId;
-          if (idToFetch) {
-            console.log("Deep link validation starting for:", idToFetch);
-            const eventSnap = await getDoc(doc(db, 'events', idToFetch));
-
-            if (eventSnap.exists()) {
-              console.log("Deep link data found in Firestore.");
-              const eventRecord = eventSnap.data();
-              
-              if (eventRecord && eventRecord.data) {
-                const targetEvent = eventRecord.data as ArcheryEvent;
-                targetEvent.id = eventRecord.id || targetEvent.id;
-                
-                setAppState(prev => {
-                  const exists = prev.events.some(e => e.id === targetEvent.id);
-                  return { 
-                    ...prev, 
-                    events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
-                    activeEventId: targetEvent.id
-                  };
-                });
-
-                if (registerId) setView('REGISTER_PARTICIPANT');
-                else if (viewParam === 'live') setView('PUBLIC_LIVE');
-                else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
-                else setView('PUBLIC_EVENT_INFO');
-              }
-            } else {
-              console.warn("Shared event not found in cloud:", idToFetch);
-              pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan.", "WARNING");
-            }
-          }
-        } catch (err) {
-          console.error("Deep link fetch error:", err);
-        } finally {
-          setIsCheckingLink(false);
-          clearTimeout(safetyTimeout);
         }
       } catch (err) {
-        console.error("Critical handleDeepLink error:", err);
+        console.error("Deep link fetch error:", err);
+      } finally {
+        setIsCheckingLink(false);
+        clearTimeout(safetyTimeout);
       }
     };
 
@@ -498,49 +355,19 @@ export function App() {
         }, { merge: true });
       }
       
-      // 3. Sync Active Event (Surgical updates to prevent overwriting cloud registrations)
+      // 3. Sync Active Event (Sync all including practice)
       if (activeEvent) {
         const isAuthorizedAtCloud = appState.currentUser?.isSuperAdmin || 
                                    activeEvent.settings.organizerId === appState.currentUser?.id || 
                                    activeEvent.ownerId === appState.currentUser?.id;
                                    
         if (isAuthorizedAtCloud) {
-          const eventRef = doc(db, 'events', activeEvent.id);
-          
-          // Use surgical updates for settings and status to avoid overwriting 
-          // atomic registration/archer updates happening in the background via API
-          const updates: any = {
-            "id": activeEvent.id,
-            "userId": activeEvent.settings.organizerId || appState.currentUser?.id || null,
-            "status": activeEvent.status,
-            "updatedAt": new Date().toISOString(),
-            // Surgical data updates
-            "data.settings": activeEvent.settings,
-            "data.status": activeEvent.status, // keep in sync with top level
-            "data.scores": activeEvent.scores || [],
-            "data.scoreLogs": activeEvent.scoreLogs || []
-          };
-
-          // Only overwrite registrations/archers if we are in management views
-          // to prevent "race conditions" where two browsers sync at same time
-          const isManagingPeople = ['ARCHERS', 'OFFICIALS', 'FINANCE'].includes(view);
-          if (isManagingPeople) {
-            updates["data.registrations"] = activeEvent.registrations || [];
-            updates["data.archers"] = activeEvent.archers || [];
-          }
-
-          try {
-            // updateDoc is safer as it only changes specified fields
-            const { updateDoc } = await import('firebase/firestore');
-            await updateDoc(eventRef, updates);
-          } catch (err: any) {
-            // Fallback to setDoc if document doesn't exist yet (unlikely for active events)
-            if (err.code === 'not-found') {
-              await setDoc(eventRef, { ...updates, data: activeEvent }, { merge: true });
-            } else {
-              throw err;
-            }
-          }
+          await setDoc(doc(db, 'events', activeEvent.id), { 
+            id: activeEvent.id, 
+            userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
+            data: activeEvent,
+            updatedAt: new Date().toISOString() 
+          }, { merge: true });
         }
       }
       
@@ -693,74 +520,17 @@ export function App() {
   // Polling for registration updates when in admin screens
   useEffect(() => {
     if (!db || !isOnline) return;
-    const adminViews = ['LANDING', 'MEMBER_DASHBOARD', 'EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
+    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
     if (adminViews.includes(view)) {
       const interval = setInterval(() => {
-        // Polling faster for live views, medium for dashboard, slower for landing
+        // Polling faster for live views, slower for admin views
         const isLive = view === 'LIVE' || view === 'PUBLIC_LIVE';
-        const isDashboard = view === 'MEMBER_DASHBOARD' || view === 'EVENT_ADMIN';
-        
-        console.log(`Auto-polling cloud updates (${view})...`);
-        fetchCloudData(false).catch(err => console.error("Polling fetch error:", err));
-      }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : (view === 'LANDING' ? 30000 : 15000)); 
+        console.log(`Auto-polling cloud updates (${isLive ? 'RAID' : 'STANDARD'})...`);
+        fetchCloudData().catch(err => console.error("Polling fetch error:", err));
+      }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : 15000); 
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);
-
-  const [runtimeError, setRuntimeError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const handleError = (event: ErrorEvent) => {
-      console.error("Global Error Caught:", event.error);
-      setRuntimeError(event.error?.message || "Unknown Runtime Error");
-    };
-    window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
-  }, []);
-
-  if (runtimeError) {
-    return (
-      <div className="fixed inset-0 bg-red-950 flex flex-col items-center justify-center p-6 text-white z-[99999]">
-        <AlertTriangle className="w-16 h-16 text-red-500 mb-6 animate-pulse" />
-        <h1 className="text-2xl font-black uppercase mb-2">Terjadi Kesalahan Aplikasi</h1>
-        <p className="text-[10px] opacity-60 uppercase mb-8 text-center max-w-md">
-          Aplikasi mengalami kegagalan saat memuat komponen. Silakan muat ulang atau buka dengan Chrome/Safari.
-        </p>
-        <div className="bg-black/40 p-4 rounded-xl font-mono text-[9px] w-full max-w-lg mb-8 overflow-auto max-h-40 border border-red-900/50">
-          {runtimeError}
-        </div>
-        <button 
-          onClick={() => window.location.reload()}
-          className="bg-white text-red-950 px-8 py-3 rounded-2xl font-black uppercase text-xs hover:bg-slate-200"
-        >
-          Muat Ulang Aplikasi
-        </button>
-      </div>
-    );
-  }
-
-  // Safety rendering: If we are checking a deep link or initial cloud fetch hasn't finished,
-  // show a minimal splash to prevent component crashes from undefined data.
-  if (!appState.isDataLoaded || isCheckingLink) {
-    return (
-      <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center z-[9999]">
-        <div className="relative mb-8">
-          <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full"></div>
-          <ArcusLogo className="w-24 h-24 text-white relative animate-pulse" />
-        </div>
-        <div className="flex flex-col items-center gap-4">
-          <div className="flex gap-1">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-          </div>
-          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">
-            {isCheckingLink ? 'Memvalidasi Link...' : 'Menghubungkan ke Arcus...'}
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -778,65 +548,21 @@ export function App() {
     setView('LANDING');
   };
 
-  const saveEventToCloud = async (event: ArcheryEvent, fields?: (keyof ArcheryEvent)[]) => {
+  const saveEventToCloud = async (event: ArcheryEvent) => {
     if (!db) return;
     
     try {
-      const eventRef = doc(db, 'events', event.id);
+      await setDoc(doc(db, 'events', event.id), {
+        id: event.id,
+        userId: event.settings.organizerId || appState.currentUser?.id || 'guest',
+        data: event,
+        status: event.status,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
       
-      // Use surgical updates to prevent overwriting cloud registrations/archers 
-      // if we are only updating specific fields like settings or status.
-      const updates: any = {
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (fields && fields.length > 0) {
-        // Explicit fields requested
-        fields.forEach(f => {
-          if (f === 'settings') updates['data.settings'] = event.settings;
-          if (f === 'archers') updates['data.archers'] = event.archers || [];
-          if (f === 'registrations') updates['data.registrations'] = event.registrations || [];
-          if (f === 'scores') updates['data.scores'] = event.scores || [];
-          if (f === 'scoreLogs') updates['data.scoreLogs'] = event.scoreLogs || [];
-          if (f === 'matches') updates['data.matches'] = event.matches || {};
-          if (f === 'status') {
-            updates['data.status'] = event.status;
-            updates['status'] = event.status;
-          }
-        });
-      } else {
-        // Default behavior (original logic)
-        updates.userId = event.settings.organizerId || appState.currentUser?.id || 'guest';
-        updates.status = event.status;
-        updates['data.settings'] = event.settings;
-        updates['data.status'] = event.status;
-        updates['data.scorerAccess'] = event.scorerAccess || [];
-        updates['data.scores'] = event.scores || [];
-        updates['data.scoreLogs'] = event.scoreLogs || [];
-
-        // Only update heavy lists if explicitly requested or if we are in management views
-        const isPeopleView = ['ARCHERS', 'OFFICIALS', 'FINANCE'].includes(view);
-        if (isPeopleView) {
-          updates['data.registrations'] = event.registrations || [];
-          updates['data.archers'] = event.archers || [];
-        }
-      }
-
-      await updateDoc(eventRef, updates);
-      console.log(`Firestore surgical sync success for event: ${event.id} (Fields: ${fields?.join(',') || 'DEFAULT'})`);
+      console.log(`Firestore sync success for event: ${event.id} (Status: ${event.status})`);
     } catch (err: any) {
-      console.error(`Firestore surgical sync failed for event ${event.id}:`, err);
-      // Fallback to setDoc merge if updateDoc fails (e.g. if document doesn't exist)
-      if (err.message?.includes('not-found') || err.code === 'not-found') {
-        const fullEvent = { ...event };
-        await setDoc(doc(db, 'events', event.id), {
-          id: event.id,
-          userId: event.settings.organizerId || appState.currentUser?.id || 'guest',
-          data: fullEvent,
-          status: event.status,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      }
+      console.error(`Firestore sync failed for event ${event.id}:`, err);
     }
   };
 
@@ -856,7 +582,7 @@ export function App() {
     setHasPendingChanges(true);
     // CRITICAL: Immediately sync management changes to cloud to avoid race conditions
     if (finalEvent && db && isOnline) {
-      await saveEventToCloud(finalEvent, Object.keys(updated) as (keyof ArcheryEvent)[]);
+      await saveEventToCloud(finalEvent);
       setHasPendingChanges(false);
     }
   };
@@ -1166,7 +892,7 @@ export function App() {
       </div>
 
       <AnimatePresence>
-        {(isSplashVisible || isCheckingLink || !appState.isDataLoaded) && (
+        {(isSplashVisible || isCheckingLink) && (
           <motion.div 
             key="splash"
             exit={{ opacity: 0, scale: 1.1 }}
@@ -1666,10 +1392,9 @@ export function App() {
           <AdminPanel 
             eventId={activeEvent.id}
             settings={activeEvent.settings} 
-            status={activeEvent.status}
             scorerAccess={activeEvent.scorerAccess || []}
             isSuperAdmin={appState.currentUser?.isSuperAdmin}
-            onSave={(s, status) => handleUpdateEvent(activeEvent.id, { settings: s, status: status || activeEvent.status })} 
+            onSave={(s) => handleUpdateEvent(activeEvent.id, { settings: s })} 
             onUpdateScorers={(scorers) => handleUpdateEvent(activeEvent.id, { scorerAccess: scorers })}
             onClear={() => {}} 
             onDelete={() => handleDeleteEvent(activeEvent.id)} 
@@ -1683,7 +1408,6 @@ export function App() {
         {view === 'ARCHERS' && activeEvent && (
           <ArcherList 
             archers={activeEvent.archers} 
-            registrations={activeEvent.registrations || []}
             archersPerTarget={activeEvent.settings.archersPerTarget} 
             totalTargets={activeEvent.settings.totalTargets} 
             settings={activeEvent.settings}
@@ -1779,128 +1503,107 @@ export function App() {
             }} 
           />
         )}
-        {view === 'REGISTER_PARTICIPANT' && activeEvent && (
-          <OnlineRegistration 
-            event={activeEvent} 
-            globalSettings={appState.globalSettings} 
-            onRegister={async (r) => {
-              console.log("App: Online registration for", r.name);
-              if (!activeEvent) {
-                pushNotification("Error", "Event tidak aktif.", "WARNING");
-                return;
-              }
-              
-              const pin = Math.floor(1000 + Math.random() * 9000).toString();
-              const newArcher: Archer = {
-                ...r,
-                targetNo: 0,
-                position: 'A' as any,
-                wave: 1,
-                pin: pin,
-                createdAt: Date.now()
+        {view === 'REGISTER_PARTICIPANT' && activeEvent && <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (r) => {
+          const pin = Math.floor(1000 + Math.random() * 9000).toString();
+          const newArcher: Archer = {
+            ...r,
+            targetNo: 0,
+            position: 'A',
+            wave: 1,
+            pin: pin
+          };
+
+          const registerLocallyOnly = () => {
+            setAppState(prev => {
+              const event = prev.events.find(e => e.id === (activeEvent as any).id);
+              if (!event) return prev;
+              const updatedEvent = { 
+                ...event, 
+                registrations: [...(event.registrations || []), r],
+                archers: [...(event.archers || []), newArcher],
+                localUpdatedAt: new Date().toISOString()
               };
-
-              const registerLocallyOnly = () => {
-                setAppState(prev => {
-                  const event = prev.events.find(e => e.id === (activeEvent as any).id);
-                  if (!event) return prev;
-                  const updatedEvent = { 
-                    ...event, 
-                    registrations: [...(event.registrations || []), r],
-                    archers: [...(event.archers || []), newArcher],
-                    localUpdatedAt: new Date().toISOString()
-                  };
-                  const newState = {
-                    ...prev,
-                    events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
-                  };
-                  localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-                  return newState;
-                });
-                setHasPendingChanges(true);
-                pushNotification("Pendaftaran Lokal", "Tersimpan di perangkat. Akan dikirim saat online.", "INFO");
+              const newState = {
+                ...prev,
+                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
               };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+              return newState;
+            });
+            setHasPendingChanges(true);
+            pushNotification("Pendaftaran Lokal", "Data disimpan di perangkat. Akan dikirim ke cloud saat online.", "INFO");
+          };
 
-              if (!isOnline) {
-                registerLocallyOnly();
-                return;
-              }
+          if (!isOnline) {
+            registerLocallyOnly();
+            return;
+          }
 
-              try {
-                pushNotification("Sinkronisasi Cloud", "Sedang mendaftarkan peserta...", "INFO");
-                
-                const response = await fetch('/api/register-participant', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    eventId: activeEvent.id,
-                    registration: r,
-                    archer: newArcher
-                  })
-                });
-                
-                const result = await response.json();
-                
-                if (!result.success) {
-                  throw new Error(result.error || "Gagal menyimpan pendaftaran ke cloud");
-                }
+          try {
+            const response = await fetch('/api/register-participant', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventId: activeEvent.id,
+                registration: r,
+                archer: newArcher
+              })
+            });
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+              throw new Error(result.error || "Gagal menyimpan pendaftaran ke cloud");
+            }
 
-                pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, pendaftaran cloud sukses!`, "SUCCESS");
-                
-                // Sync local state for immediate feedback
-                setAppState(prev => {
-                  const event = prev.events.find(e => e.id === (activeEvent as any).id);
-                  if (!event) return prev;
-                  const updatedEvent = { 
-                    ...event, 
-                    registrations: [...(event.registrations || []), r],
-                    archers: [...(event.archers || []), newArcher],
-                    localUpdatedAt: new Date().toISOString()
-                  };
-                  const newState = {
-                    ...prev,
-                    events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
-                  };
-                  localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-                  return newState;
-                });
+            pushNotification("Pendaftaran Berhasil", `Selamat ${r.name}, pendaftaran cloud sukses!`, "SUCCESS");
+            
+            // Sync local state for immediate feedback
+            setAppState(prev => {
+              const event = prev.events.find(e => e.id === (activeEvent as any).id);
+              if (!event) return prev;
+              const updatedEvent = { 
+                ...event, 
+                registrations: [...(event.registrations || []), r],
+                archers: [...(event.archers || []), newArcher],
+                localUpdatedAt: new Date().toISOString()
+              };
+              const newState = {
+                ...prev,
+                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+              return newState;
+            });
 
-                // Auto-send confirmation email
-                try {
-                  const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
-                  const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}` : `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`;
-                  const message = isAutoConfirm 
-                    ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nPendaftaran Anda telah BERHASIL diverifikasi.\n\nSelamat bertanding!`
-                    : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
+            // Re-fetch after a short delay to ensure everything is synced
+            setTimeout(() => {
+              fetchCloudData(true);
+            }, 3000);
 
-                  await fetch('/api/send-email-otp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      email: r.email,
-                      subject,
-                      message
-                    })
-                  });
-                } catch (emailErr) {
-                  console.warn("Email sending failed:", emailErr);
-                }
+            // Auto-send confirmation email
+            const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
+            const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}` : `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`;
+            const message = isAutoConfirm 
+              ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nPendaftaran Anda telah BERHASIL diverifikasi.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nSelamat bertanding!`
+              : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.\n\nKami akan mengirimkan email konfirmasi setelah pembayaran Anda diverifikasi oleh panitia.`;
 
-                // Re-fetch after a short delay to ensure everything is synced
-                setTimeout(() => {
-                  fetchCloudData(true);
-                }, 5000);
-                
-              } catch (error: any) {
-                console.error("Online registration error:", error);
-                registerLocallyOnly();
-                pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
-              }
-            }} 
-            onBack={() => setView('LANDING')} 
-            onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} 
-          />
-        )}
+            await fetch('/api/send-email-otp', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: r.email,
+                subject,
+                message
+              })
+            });
+            
+          } catch (error: any) {
+            console.error("Online registration error:", error);
+            registerLocallyOnly();
+            pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
+          }
+        }} onBack={() => setView('LANDING')} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
         {view === 'PUBLIC_LIVE' && activeEvent && (
           <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
         )}

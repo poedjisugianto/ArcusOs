@@ -3,7 +3,7 @@ import { Trophy, Clock, X, Swords, Medal, LayoutList, Target, ChevronRight, Info
 import { ArcheryEvent, CategoryType, Match, TargetType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
   state: ArcheryEvent;

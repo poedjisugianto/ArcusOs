@@ -5,7 +5,7 @@ import {
   Save, Calendar, ImageIcon, FileText, Trophy, Target as TargetIcon, 
   Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
   Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
-  Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft, Globe,
+  Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
   FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords, Monitor
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
@@ -15,8 +15,7 @@ interface Props {
   eventId: string;
   settings: TournamentSettings;
   scorerAccess?: ScorerAccess[];
-  status: string;
-  onSave: (settings: TournamentSettings, status?: any) => void;
+  onSave: (settings: TournamentSettings) => void;
   onUpdateScorers?: (scorers: ScorerAccess[]) => void;
   onClear: () => void;
   onDelete?: () => void;
@@ -25,7 +24,7 @@ interface Props {
   isSuperAdmin?: boolean;
 }
 
-const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, onOpenTV, isSuperAdmin = false }) => {
+const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onSave, onUpdateScorers, onClear, onDelete, onBack, onOpenTV, isSuperAdmin = false }) => {
   const [localSettings, setLocalSettings] = useState<TournamentSettings>(() => {
     const savedDraft = localStorage.getItem(`admin_draft_${eventId}`);
     if (savedDraft) {
@@ -41,8 +40,6 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
   const isPractice = localSettings.isPractice;
   const [isDirty, setIsDirty] = useState(false);
   const [localScorers, setLocalScorers] = useState<ScorerAccess[]>(scorerAccess);
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const [showValidationSummary, setShowValidationSummary] = useState(false);
 
   // Sync draft to localStorage when settings change
   useEffect(() => {
@@ -72,15 +69,6 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
   const updateSettings = (updates: Partial<TournamentSettings>) => {
     setLocalSettings(prev => ({ ...prev, ...updates }));
     setIsDirty(true);
-    // Clear validation error when user types
-    if (Object.keys(updates).length > 0) {
-      const field = Object.keys(updates)[0];
-      setValidationErrors(prev => {
-        const next = { ...prev };
-        delete next[field];
-        return next;
-      });
-    }
   };
 
   const updateCategoryConfig = (cat: CategoryType, field: keyof CategoryConfig, value: any) => {
@@ -156,53 +144,29 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
   };
 
   const handleFinalSave = () => {
-    const errors: Record<string, string> = {};
-    
     // Validation for Tournament (not practice)
     if (!localSettings.isPractice) {
-      if (!localSettings.tournamentName?.trim()) errors.tournamentName = 'Nama Turnamen wajib diisi';
-      if (!localSettings.description?.trim()) errors.description = 'Deskripsi wajib diisi agar peserta paham';
-      if (!localSettings.location?.trim()) errors.location = 'Lokasi wajib diisi';
-      if (!localSettings.eventDate?.trim()) errors.eventDate = 'Tanggal wajib diisi';
-      
-      // These are often missed
-      if (!localSettings.pamphletUrl?.trim()) errors.pamphletUrl = 'Link Gambar Pamflet diperlukan untuk tampilan Landing Page';
-      if (!localSettings.thbUrl?.trim()) errors.thbUrl = 'Link THB (PDF) diperlukan sebagai panduan peserta';
-      
-      if ((localSettings.paymentMethods || []).length === 0) {
-        errors.paymentMethods = 'Minimal harus ada 1 Rekening Pembayaran agar peserta bisa mendaftar online';
-      }
+      const missingFields = [];
+      if (!localSettings.tournamentName) missingFields.push('Nama Turnamen');
+      if (!localSettings.description) missingFields.push('Keterangan');
+      if (!localSettings.location) missingFields.push('Lokasi');
+      if (!localSettings.eventDate) missingFields.push('Tanggal');
+      if (!localSettings.pamphletUrl) missingFields.push('Link Pamflet');
+      if (!localSettings.thbUrl) missingFields.push('Link THB');
+      if ((localSettings.paymentMethods || []).length === 0) missingFields.push('Metode Pembayaran');
 
-      // Check categories - at least one needed for registration
-      if (Object.keys(localSettings.categoryConfigs || {}).length === 0) {
-        errors.categories = 'Minimal harus ada 1 Kategori yang aktif';
+      if (missingFields.length > 0) {
+        setShowDraftConfirm(true);
+        setShowConfirmModal(false);
+        return;
       }
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      setShowValidationSummary(true);
-      setShowConfirmModal(false);
-      
-      // Auto-switch tab if error is in another tab (though mostly in General)
-      if (errors.paymentMethods && activeTab !== 'PAYMENT') setActiveTab('PAYMENT');
-      else if (activeTab !== 'GENERAL') setActiveTab('GENERAL');
-      
-      // Scroll to top to see summary
-      const form = document.getElementById('settings-form');
-      if (form) form.scrollIntoView({ behavior: 'smooth' });
-      
-      return;
     }
 
     executeFinalSave();
   };
 
   const executeFinalSave = () => {
-    // Determine status based on activation
-    const status = localSettings.isActivated ? (currentStatus === 'DRAFT' ? 'ACTIVE' : currentStatus) : 'DRAFT';
-    
-    onSave(localSettings, status as any);
+    onSave(localSettings);
     if (onUpdateScorers) onUpdateScorers(localScorers);
     
     // Clear draft
@@ -261,21 +225,6 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
         </div>
       )}
 
-      {/* Validation Warning Bar */}
-      {showValidationSummary && !showSavedFlag && (
-        <div className="sticky top-0 z-[110] bg-amber-500 text-white px-6 py-3 flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5" />
-            <span className="text-[10px] font-black uppercase tracking-widest">
-              Gagal Menyimpan: {Object.keys(validationErrors).length} Informasi Penting Belum Terisi
-            </span>
-          </div>
-          <button onClick={() => setShowValidationSummary(false)} className="p-1 hover:bg-white/20 rounded-lg transition-all">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       <div className="sticky top-0 z-[100] bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6">
           <div className="flex items-center gap-3">
@@ -302,19 +251,8 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
                   </span>
                 )}
                 {!isPractice && (
-                  <div className="flex flex-col">
-                    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Public Status</p>
-                    <div className={`px-2 py-1 rounded text-[8px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${localSettings.isActivated !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse'}`}>
-                      {localSettings.isActivated !== false ? (
-                        <>
-                          <Globe className="w-3 h-3 text-emerald-500" /> PUBLISHED
-                        </>
-                      ) : (
-                        <>
-                          <ShieldCheck className="w-3 h-3 text-orange-500" /> NEEDS ACTIVATION
-                        </>
-                      )}
-                    </div>
+                  <div className={`px-1.5 py-0.5 rounded text-[6px] md:text-[7px] font-black uppercase tracking-widest border ${localSettings.isActivated !== false ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-orange-100 text-orange-700 border-orange-200'}`}>
+                    {localSettings.isActivated !== false ? 'AKTIF' : 'PENDING'}
                   </div>
                 )}
               </div>
@@ -386,27 +324,6 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
           
           {activeTab === 'GENERAL' && (
             <div className="space-y-16 animate-in fade-in duration-500">
-              {/* Validation Summary Box */}
-              {Object.keys(validationErrors).length > 0 && (
-                <div className="p-6 bg-red-50 border-2 border-red-200 rounded-[2rem] space-y-4 animate-in slide-in-from-top-4">
-                  <div className="flex items-center gap-3 text-red-600">
-                    <AlertTriangle className="w-6 h-6" />
-                    <h4 className="text-sm font-black uppercase tracking-widest">Wajib Dilengkapi:</h4>
-                  </div>
-                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-                    {Object.values(validationErrors).map((err, i) => (
-                      <li key={i} className="flex items-center gap-2 text-[11px] font-bold text-red-700 italic">
-                        <div className="w-1.5 h-1.5 bg-red-400 rounded-full" />
-                        {err}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="pt-2 text-[9px] font-medium text-red-500 italic border-t border-red-100">
-                    * Pastikan semua field yang ditandai merah sudah diisi agar Turnamen Anda dapat aktif/publik di Landing Page.
-                  </p>
-                </div>
-              )}
-
               {/* Section: Basic Identity */}
               <div className="space-y-8">
              <div className="flex items-center gap-4 border-b border-slate-100 pb-4">
@@ -419,59 +336,29 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2 space-y-8">
                     <label className="block group">
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Nama Sesi / Turnamen</span>
-                        {validationErrors.tournamentName && <span className="text-[9px] font-bold text-red-500 italic">{validationErrors.tournamentName}</span>}
-                      </div>
-                      <input 
-                        type="text" 
-                        value={localSettings.tournamentName} 
-                        onChange={e => updateSettings({ tournamentName: e.target.value })} 
-                        className={`mt-1 block w-full rounded-lg p-3 border font-bold text-base outline-none transition-all text-slate-900 ${validationErrors.tournamentName ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-arcus-red'}`} 
-                        required 
-                      />
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Nama Sesi / Turnamen</span>
+                      <input type="text" value={localSettings.tournamentName} onChange={e => updateSettings({ tournamentName: e.target.value })} className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-base outline-none focus:border-arcus-red transition-all text-slate-900" required />
                     </label>
 
                     <label className="block group">
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Keterangan Singkat</span>
-                        {validationErrors.description && <span className="text-[9px] font-bold text-red-500 italic">{validationErrors.description}</span>}
-                      </div>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Keterangan Singkat</span>
                       <textarea 
                         value={localSettings.description} 
                         onChange={e => updateSettings({ description: e.target.value })} 
-                        className={`mt-1 block w-full rounded-lg p-3 border font-bold text-sm outline-none transition-all h-24 resize-none text-slate-900 ${validationErrors.description ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-arcus-red'}`} 
+                        className="mt-1 block w-full rounded-lg border-slate-200 p-3 border font-bold text-sm outline-none focus:border-arcus-red transition-all h-24 resize-none text-slate-900" 
                         placeholder="Deskripsi turnamen..."
                       />
                     </label>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <label className="block group">
-                        <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Lokasi</span>
-                          {validationErrors.location && <span className="text-[9px] font-bold text-red-500 italic">{validationErrors.location}</span>}
-                        </div>
-                        <input 
-                          type="text" 
-                          placeholder="Lokasi..." 
-                          value={localSettings.location} 
-                          onChange={e => updateSettings({ location: e.target.value })} 
-                          className={`block mt-1 w-full rounded-lg p-3 border font-bold outline-none transition-all text-slate-900 ${validationErrors.location ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-arcus-red'}`} 
-                        />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Lokasi</span>
+                        <input type="text" placeholder="Lokasi..." value={localSettings.location} onChange={e => updateSettings({ location: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
 
                       <label className="block group">
-                        <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Tanggal</span>
-                          {validationErrors.eventDate && <span className="text-[9px] font-bold text-red-500 italic">{validationErrors.eventDate}</span>}
-                        </div>
-                        <input 
-                          type="text" 
-                          placeholder="Tanggal..." 
-                          value={localSettings.eventDate} 
-                          onChange={e => updateSettings({ eventDate: e.target.value })} 
-                          className={`block mt-1 w-full rounded-lg p-3 border font-bold outline-none transition-all text-slate-900 ${validationErrors.eventDate ? 'border-red-500 bg-red-50 focus:border-red-600' : 'border-slate-200 focus:border-arcus-red'}`} 
-                        />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 italic">Tanggal</span>
+                        <input type="text" placeholder="Tanggal..." value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
                     </div>
 
@@ -632,35 +519,29 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div className="space-y-6">
                    <label className="block group">
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Link Gambar Pamflet / Poster (URL)</span>
-                        {validationErrors.pamphletUrl && <span className="text-[9px] font-bold text-red-500 italic">{validationErrors.pamphletUrl}</span>}
-                      </div>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Link Gambar Pamflet / Poster (URL)</span>
                       <div className="relative mt-2">
-                        <ImageIcon className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${validationErrors.pamphletUrl ? 'text-red-400' : 'text-slate-300'}`} />
+                        <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         <input 
                           type="url" 
                           placeholder="https://i.imgur.com/xyz123.jpg"
                           value={localSettings.pamphletUrl} 
                           onChange={e => updateSettings({ pamphletUrl: e.target.value })} 
-                          className={`w-full pl-10 pr-5 py-3 rounded-lg font-bold text-sm outline-none transition-all ${validationErrors.pamphletUrl ? 'border-2 border-red-500 bg-red-50 focus:border-red-600' : 'bg-white border border-slate-200 focus:border-arcus-red'}`} 
+                          className="w-full pl-10 pr-5 py-3 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none focus:border-arcus-red transition-all" 
                         />
                       </div>
                    </label>
 
                    <label className="block group">
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Link Technical Hand Book (THB / PDF URL)</span>
-                        {validationErrors.thbUrl && <span className="text-[9px] font-bold text-red-500 italic">{validationErrors.thbUrl}</span>}
-                      </div>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Link Technical Hand Book (THB / PDF URL)</span>
                       <div className="relative mt-2">
-                        <FileText className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${validationErrors.thbUrl ? 'text-red-400' : 'text-slate-300'}`} />
+                        <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         <input 
                           type="url" 
                           placeholder="https://drive.google.com/your-pdf"
                           value={localSettings.thbUrl} 
                           onChange={e => updateSettings({ thbUrl: e.target.value })} 
-                          className={`w-full pl-10 pr-5 py-3 rounded-lg font-bold text-sm outline-none transition-all ${validationErrors.thbUrl ? 'border-2 border-red-500 bg-red-50 focus:border-red-600' : 'bg-white border border-slate-200 focus:border-arcus-red'}`} 
+                          className="w-full pl-10 pr-5 py-3 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none focus:border-arcus-red transition-all" 
                         />
                       </div>
                    </label>
@@ -703,10 +584,7 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
                     <div className={`p-3 rounded-2xl ${isPractice ? 'bg-teal-50' : 'bg-red-50'}`}>
                       <Trophy className={`w-6 h-6 ${isPractice ? 'text-teal-600' : 'text-arcus-red'}`} />
                     </div>
-                    <div className="flex flex-col">
-                      <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Aturan Skor Kategori</h3>
-                      {validationErrors.categories && <p className="text-[10px] font-bold text-red-500 uppercase italic tracking-widest mt-1">{validationErrors.categories}</p>}
-                    </div>
+                    <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Aturan Skor Kategori</h3>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="relative group">
@@ -920,10 +798,7 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, status: currentStatus,
                     <div className="p-3 bg-green-50 rounded-2xl">
                       <Landmark className="w-6 h-6 text-green-600" />
                     </div>
-                    <div className="flex flex-col">
-                      <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Metode Pembayaran Transfer</h3>
-                      {validationErrors.paymentMethods && <p className="text-[10px] font-bold text-red-500 uppercase italic tracking-widest mt-1">{validationErrors.paymentMethods}</p>}
-                    </div>
+                    <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Metode Pembayaran Transfer</h3>
                 </div>
                 <button type="button" onClick={addPaymentMethod} className="bg-arcus-dark text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
                   <Plus className="w-3.5 h-3.5" /> Tambah Rekening

@@ -6,7 +6,7 @@ import {
   ShieldCheck, UserCheck, CheckCircle, FileText, X, 
   Trophy, ArrowRight, AlertTriangle, CheckCircle2,
   DollarSign, Landmark, CreditCard, Printer, Info, Check, Target, Zap,
-  QrCode, Loader2, Smartphone, Share2, Shield, ChevronRight, ShieldAlert, Globe,
+  QrCode, Loader2, Smartphone, Share2, Shield, ChevronRight, ShieldAlert,
   Bell, BellRing, Mail, Inbox, Send, MessageSquare, History, RefreshCw,
   TrendingUp, BarChart2, Database, Search, Users, Filter, Calendar, MapPin
 } from 'lucide-react';
@@ -805,16 +805,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                                <span className="bg-teal-50 text-teal-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-teal-100">Latihan</span>
                              )}
                              {event.status === 'DRAFT' && (
-                               <div className="group/tip relative flex items-center">
-                                 <span className="bg-amber-50 text-amber-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-amber-100 cursor-help flex items-center gap-1">
-                                   <Info className="w-2.5 h-2.5" /> DRAFT
-                                 </span>
-                                 <div className="absolute bottom-full mb-3 left-0 w-64 p-4 bg-slate-900 text-white rounded-2xl text-[10px] font-medium leading-relaxed shadow-2xl opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-[100] border border-white/10">
-                                   <p className="mb-2 font-black text-amber-400 uppercase tracking-widest">Status: Draf (Privat)</p>
-                                   <p className="italic">Event ini belum muncul di Landing Page publik. Klik <b>"Kelola"</b> lalu pilih <b>"Aktifkan Turnamen"</b> agar statusnya menjadi ACTIVE.</p>
-                                   <div className="absolute top-full left-6 w-3 h-3 bg-slate-900 rotate-45 -mt-1.5" />
-                                 </div>
-                               </div>
+                               <span className="bg-amber-50 text-amber-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-amber-100">DRAFT</span>
                              )}
                              {event.status === 'ACTIVE' && (
                                <span className="bg-arcus-red text-white text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest">LIVE NOW</span>
@@ -877,9 +868,9 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                         {event.status === 'DRAFT' ? (
                           <button 
                             onClick={() => onActivateEvent?.(event.id)} 
-                            className="col-span-2 px-10 py-4 bg-arcus-red text-white hover:bg-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-red-200"
+                            className="col-span-2 px-10 py-4 bg-emerald-600 text-white hover:bg-emerald-700 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95"
                           >
-                            <Globe className="w-5 h-5" /> AKTIFKAN KE PUBLIK
+                            <ShieldCheck className="w-5 h-5" /> AKTIVASI
                           </button>
                         ) : (
                           <button onClick={() => onManageEvent(event.id)} className={`col-span-2 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 ${event.settings.isPractice ? 'bg-teal-900 text-white hover:bg-black' : 'bg-slate-900 text-white hover:bg-arcus-red'}`}>

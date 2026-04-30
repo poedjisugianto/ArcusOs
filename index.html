@@ -12,69 +12,7 @@
     <title>Arcus Digital | Archery Scoring System</title>
   </head>
   <body>
-    <div id="root">
-      <div id="loading-fallback" style="position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-family: sans-serif; gap: 24px; z-index: 10;">
-        <div style="position: relative;">
-          <div style="position: absolute; inset: -20px; background: #ef4444; border-radius: 50%; blur: 40px; opacity: 0.1;"></div>
-          <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: pulse 2s infinite;"><path d="m12 14 4-4"/><path d="m3.34 7 10 10"/><path d="m17 21 4-4"/><path d="m2 14h20"/><path d="m20 8-5 5"/><path d="m5 22 5-5"/><path d="m12 10-6 6"></path></svg>
-        </div>
-        <div style="text-align: center;">
-          <h2 style="font-weight: 900; letter-spacing: 0.1em; margin: 0; text-transform: uppercase; font-size: 14px;">Memuat Arcus Digital</h2>
-          <p style="font-size: 10px; opacity: 0.4; letter-spacing: 0.3em; margin-top: 8px; text-transform: uppercase;">Menyiapkan Arena...</p>
-        </div>
-        <div style="width: 40px; height: 3px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
-          <div style="width: 100%; height: 100%; background: #ef4444; transform: translateX(-100%); animation: slide 1.5s infinite;"></div>
-        </div>
-      </div>
-    </div>
-    
-    <style>
-      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
-      @keyframes slide { 0% { transform: translateX(-100%); } 50% { transform: translateX(0); } 100% { transform: translateX(100%); } }
-    </style>
-
-    <script>
-      // Force remove fallback if app mounts
-      window.addEventListener('load', function() {
-        var observer = new MutationObserver(function(mutations) {
-          var fallback = document.getElementById('loading-fallback');
-          var root = document.getElementById('root');
-          if (fallback && root && root.children.length > 1) {
-             fallback.style.display = 'none';
-          }
-        });
-        observer.observe(document.getElementById('root'), { childList: true });
-      });
-
-      // Global error collector
-      window.onerror = function(msg, url, line) {
-        var fallback = document.getElementById('loading-fallback');
-        if (fallback) {
-          fallback.style.background = '#7f1d1d';
-          fallback.innerHTML = '<div style="padding: 30px; text-align: center; color: white;">' +
-            '<h1 style="font-weight: 900; text-transform: uppercase;">Aplikasi Gagal</h1>' +
-            '<p style="font-size: 12px; opacity: 0.8;">Browser tidak mendukung atau terjadi kesalahan serius.</p>' +
-            '<div style="font-size: 8px; font-family: monospace; background: rgba(0,0,0,0.3); padding: 10px; margin: 20px 0; border-radius: 4px; word-break: break-all;">' + msg + '</div>' +
-            '<button onclick="localStorage.clear(); window.location.reload();" style="background: white; color: #7f1d1d; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">RESET DATA & MUAT ULANG</button>' +
-            '</div>';
-        }
-        return false;
-      };
-
-      // Fallback if the module doesn't load after 15 seconds
-      setTimeout(function() {
-        var fallback = document.getElementById('loading-fallback');
-        if (fallback && fallback.style.display !== 'none') {
-          fallback.innerHTML = '<div style="background: #991b1b; padding: 30px; border-radius: 20px; color: white; width: 90%; max-width: 350px; text-align: center;">' +
-            '<h1 style="font-weight: 900; text-transform: uppercase; margin: 0 0 10px 0;">Gagal Memuat</h1>' +
-            '<p style="font-size: 12px; opacity: 0.8; line-height: 1.5; margin-bottom: 24px;">Browser (Hola Browser/Bawaan HP) mungkin terlalu lama memproses sistem. Silakan pakai <b>Chrome</b> atau <b>Safari</b>.</p>' +
-            '<button onclick="window.location.reload()" style="background: white; color: #991b1b; border: none; padding: 14px; border-radius: 10px; font-weight: 900; width: 100%; cursor: pointer;">MUAT ULANG</button>' +
-            '<button onclick="localStorage.clear(); window.location.reload();" style="background: transparent; color: rgba(255,255,255,0.5); border: none; margin-top: 15px; font-size: 10px; cursor: pointer; text-decoration: underline;">RISET PENYIMPANAN LOKAL</button>' +
-            '</div>';
-        }
-      }, 15000);
-    </script>
+    <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

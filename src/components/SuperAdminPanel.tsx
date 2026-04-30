@@ -26,6 +26,13 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
   const [searchTerm, setSearchTerm] = useState('');
   const [localSettings, setLocalSettings] = useState<GlobalSettings>(state.globalSettings);
   const [showSavedFlag, setShowSavedFlag] = useState(false);
+
+  // Sync localSettings if global settings change in the app state (e.g. from cloud)
+  useEffect(() => {
+    if (!showSavedFlag) {
+      setLocalSettings(state.globalSettings);
+    }
+  }, [state.globalSettings, showSavedFlag]);
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<{ id: string, name: string } | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<{ id: string, name: string } | null>(null);

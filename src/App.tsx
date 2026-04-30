@@ -69,7 +69,7 @@ export function App() {
       feeAdult: 0, 
       feeKids: 0, 
       maintenanceMode: false,
-      contactSupport: '', 
+      contactSupport: '087834193339', 
       bankProvider: '',
       bankAccountNumber: '', 
       bankAccountName: '',
@@ -106,6 +106,12 @@ export function App() {
       drafts: { scoring: {}, adminSettings: {}, activeCategory: {} }
     };
   });
+
+  const appStateRef = React.useRef(appState);
+
+  useEffect(() => {
+    appStateRef.current = appState;
+  }, [appState]);
 
   const pushNotification = (title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' = 'INFO') => {
     const newNotif: AppNotification = {
@@ -436,31 +442,37 @@ export function App() {
     }
   }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
 
-  const syncCloudData = async (manual = false) => {
+  const syncCloudData = async (manual = false, overrideState?: AppState) => {
     if (!db || !isOnline) return;
     
+    // Use overrideState if provided (for immediate syncs), otherwise use latest state from ref
+    const state = overrideState || appStateRef.current;
+    if (!state) return;
+    
+    const activeEvent = state.activeEventId ? state.events.find(e => e.id === state.activeEventId) : null;
+    
     // Safety check: Don't sync if data hasn't been loaded from cloud yet
-    if (!appState.isDataLoaded && !manual) return;
+    if (!state.isDataLoaded && !manual) return;
 
     setIsSyncing(true);
     try {
-      const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === UserRole.SUPERADMIN || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
+      const isPrivileged = !!(state.currentUser?.isSuperAdmin || state.currentUser?.role === 'SUPERADMIN' || state.currentUser?.email === 'poedji.sugianto@gmail.com');
 
       // 1. Sync Global Settings (Only SuperAdmin)
-      if (appState.currentUser?.isSuperAdmin) {
+      if (state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com') {
         await setDoc(doc(db, 'systemConfigs', 'global'), { 
           id: 'global', 
-          data: appState.globalSettings, 
+          data: state.globalSettings, 
           updatedAt: new Date().toISOString() 
         }, { merge: true });
       }
 
       // 2. Sync User Profile
-      if (appState.currentUser) {
+      if (state.currentUser) {
         try {
-          await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
-            id: appState.currentUser.id, 
-            data: appState.currentUser, 
+          await setDoc(doc(db, 'profiles', state.currentUser.id), { 
+            id: state.currentUser.id, 
+            data: state.currentUser, 
             updatedAt: new Date().toISOString() 
           }, { merge: true });
         } catch (e) {
@@ -472,7 +484,7 @@ export function App() {
       if (activeEvent && isPrivileged) {
         await setDoc(doc(db, 'events', activeEvent.id), { 
           id: activeEvent.id, 
-          userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
+          userId: activeEvent.settings.organizerId || state.currentUser?.id || null, 
           data: activeEvent,
           updatedAt: new Date().toISOString() 
         }, { merge: true });
@@ -900,21 +912,22 @@ export function App() {
         }
       }
 
-      // 3. Reset Global Settings to null/defaults
-      const initialSettings: GlobalSettings = {
-        feeAdult: 0, 
-        feeKids: 0, 
-        maintenanceMode: false,
-        contactSupport: '', 
-        bankProvider: '',
-        bankAccountNumber: '', 
-        bankAccountName: '',
-        dataRetentionDays: 90, 
-        practiceRetentionDays: 7,
-        paymentGatewayProvider: 'NONE',
-        paymentGatewayIsProduction: false,
-        platformFeePercentage: 0
-      };
+        {/* Reset System Data (CRITICAL) */}
+        // 3. Reset Global Settings to null/defaults
+        const initialSettings: GlobalSettings = {
+          feeAdult: 0, 
+          feeKids: 0, 
+          maintenanceMode: false,
+          contactSupport: '087834193339', 
+          bankProvider: '',
+          bankAccountNumber: '', 
+          bankAccountName: '',
+          dataRetentionDays: 90, 
+          practiceRetentionDays: 7,
+          paymentGatewayProvider: 'NONE',
+          paymentGatewayIsProduction: false,
+          platformFeePercentage: 0
+        };
       
       await setDoc(doc(db, 'systemConfigs', 'global'), { 
         id: 'global', 
@@ -948,14 +961,12 @@ export function App() {
   };
 
   const handleUpdateGlobalSettings = (newSettings: GlobalSettings) => {
-    setAppState(prev => {
-      const newState = { ...prev, globalSettings: newSettings };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      return newState;
-    });
+    const newState = { ...appState, globalSettings: newSettings };
+    setAppState(newState);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
     setHasPendingChanges(true);
-    // Trigger immediate sync for global settings
-    setTimeout(() => syncCloudData(true), 500);
+    // Trigger immediate sync for global settings with the NEW state
+    syncCloudData(true, newState);
   };
 
   return (
@@ -1788,10 +1799,18 @@ export function App() {
                 <button onClick={() => setView('DOCUMENTATION')} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-colors">Dokumentasi</button>
               </div>
             </div>
-            <div className="text-center md:text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Kontak Support</p>
-              <p className="text-xl font-black font-oswald uppercase italic tracking-wider text-slate-900">WA: {appState.globalSettings.contactSupport}</p>
-              <div className="mt-6 pt-6 border-t border-slate-50">
+            <div className="text-center md:text-right flex flex-col gap-4">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Kontak Support</p>
+                <p className="text-xl font-black font-oswald uppercase italic tracking-wider text-slate-900">WA: {appState.globalSettings.contactSupport || '087834193339'}</p>
+              </div>
+              <div className="text-slate-500 max-w-xs ml-auto">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1">Kantor Pengembang</p>
+                <p className="text-[9px] font-bold leading-relaxed uppercase opacity-80">
+                  Jl. Bengawan No. 45 Kutosari, Kebumen, Kebumen - Jawa Tengah 54317
+                </p>
+              </div>
+              <div className="mt-2 pt-6 border-t border-slate-50">
                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Tournament OS v{APP_VERSION} &copy; 2026</p>
               </div>
             </div>

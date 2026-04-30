@@ -6,7 +6,7 @@ import {
   ShieldCheck, UserCheck, CheckCircle, FileText, X, 
   Trophy, ArrowRight, AlertTriangle, CheckCircle2,
   DollarSign, Landmark, CreditCard, Printer, Info, Check, Target, Zap,
-  QrCode, Loader2, Smartphone, Share2, Shield, ChevronRight, ShieldAlert,
+  QrCode, Loader2, Smartphone, Share2, Shield, ChevronRight, ShieldAlert, Globe,
   Bell, BellRing, Mail, Inbox, Send, MessageSquare, History, RefreshCw,
   TrendingUp, BarChart2, Database, Search, Users, Filter, Calendar, MapPin
 } from 'lucide-react';

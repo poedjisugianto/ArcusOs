@@ -5,7 +5,7 @@ import {
   Save, Calendar, ImageIcon, FileText, Trophy, Target as TargetIcon, 
   Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
   Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
-  Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
+  Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft, Globe,
   FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords, Monitor
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';

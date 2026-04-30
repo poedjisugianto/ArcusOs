@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Trophy, Clock, Plus, ExternalLink } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArcheryEvent } from '../types';
 import { generateGoogleCalendarLink, generateICalFile } from '../lib/calendarUtils';
 

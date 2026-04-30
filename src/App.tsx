@@ -43,7 +43,7 @@ import ResetPasswordPanel from './components/ResetPasswordPanel';
 
 type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'RESET_PASSWORD' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
 
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
 
 export function App() {
@@ -139,7 +139,18 @@ export function App() {
         const eventsSnap = await getDocs(collection(db, 'events'));
         cloudEvents = eventsSnap.docs.map(doc => {
           const e = doc.data();
-          return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
+          const baseData = e.data || {};
+          return { 
+            ...baseData, 
+            id: e.id, 
+            ownerId: e.userId || baseData.ownerId, 
+            status: e.status || baseData.status || 'DRAFT',
+            settings: baseData.settings || { ...DEFAULT_SETTINGS, tournamentName: 'Unnamed Event' },
+            archers: baseData.archers || [],
+            scores: baseData.scores || [],
+            scoreLogs: baseData.scoreLogs || [],
+            registrations: baseData.registrations || []
+          };
         });
       } catch (err) {
         console.warn("Could not fetch events:", err);
@@ -404,11 +415,9 @@ export function App() {
             "updatedAt": new Date().toISOString(),
             // Surgical data updates
             "data.settings": activeEvent.settings,
-            "data.stats": activeEvent.stats || null,
             "data.status": activeEvent.status, // keep in sync with top level
-            "data.categories": activeEvent.categories || [],
             "data.scores": activeEvent.scores || [],
-            "data.logs": activeEvent.logs || []
+            "data.scoreLogs": activeEvent.scoreLogs || []
           };
 
           // Only overwrite registrations/archers if we are in management views

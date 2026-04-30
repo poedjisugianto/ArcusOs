@@ -156,6 +156,11 @@ export function App() {
           console.warn("Failed to fetch events:", err.message);
           return null;
         }),
+        // 4. Fetch Submissions (Only for active event if applicable)
+        (appState.activeEventId ? getDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)).catch(err => {
+          console.warn("Failed to fetch submissions:", err.message);
+          return null;
+        })
       ];
 
       // 3. Fetch Profiles (Only if Admin)
@@ -177,6 +182,7 @@ export function App() {
       const configSnap = results[0];
       const eventsSnap = results[1];
       const profilesSnap = results[2];
+      const submissionsSnap = results[3];
 
       const cloudSettings = configSnap?.exists?.() ? configSnap.data().data : null;
       
@@ -184,7 +190,19 @@ export function App() {
       if (eventsSnap?.docs) {
         cloudEvents = eventsSnap.docs.map((doc: any) => {
           const e = doc.data();
-          return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
+          let eventObj = { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
+          
+          // Merge submissions into the event if this is the active one
+          if (submissionsSnap?.docs && e.id === appState.activeEventId) {
+            const submissions = submissionsSnap.docs.map((sd: any) => sd.data());
+            const existingIds = new Set(eventObj.registrations?.map((r: any) => r.id) || []);
+            const newRegistrations = submissions.filter((s: any) => !existingIds.has(s.id));
+            if (newRegistrations.length > 0) {
+              console.log(`Merging ${newRegistrations.length} submissions into event ${e.id}`);
+              eventObj.registrations = [...(eventObj.registrations || []), ...newRegistrations];
+            }
+          }
+          return eventObj;
         });
       }
 
@@ -1623,6 +1641,16 @@ export function App() {
           }
 
           try {
+            // NEW: Directly push to a public submissions collection FIRST
+            // This works even if the API lags, ensuring the data is in Cloud immediately
+            if (db) {
+              await setDoc(doc(db, 'events', activeEvent.id, 'submissions', r.id), {
+                ...r,
+                submittedAt: new Date().toISOString()
+              });
+              console.log("Submission mirrored to public cloud subcollection.");
+            }
+
             const response = await fetch('/api/register-participant', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

@@ -39,22 +39,38 @@
       window.addEventListener('load', function() {
         var observer = new MutationObserver(function(mutations) {
           var fallback = document.getElementById('loading-fallback');
-          if (fallback && document.getElementById('root').children.length > 1) {
+          var root = document.getElementById('root');
+          if (fallback && root && root.children.length > 1) {
              fallback.style.display = 'none';
           }
         });
         observer.observe(document.getElementById('root'), { childList: true });
       });
 
-      // Fallback if the module doesn't load after 10 seconds
-      setTimeout(function() {
+      // Global error collector
+      window.onerror = function(msg, url, line) {
         var fallback = document.getElementById('loading-fallback');
         if (fallback) {
-          fallback.innerHTML = '<div style="background: #991b1b; padding: 40px; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 400px;">' +
-            '<h1 style="font-weight: 900; text-transform: uppercase; margin-bottom: 8px;">Gagal Memuat</h1>' +
-            '<p style="font-size: 12px; opacity: 0.8; margin-bottom: 24px; line-height: 1.6;">Browser (Hola/Bawaan HP) mungkin tidak mendukung sistem ini. Silakan gunakan <b>Google Chrome</b> atau <b>Safari</b> terbaru.</p>' +
-            '<button onclick="window.location.reload()" style="background: white; color: #991b1b; border: none; padding: 16px; border-radius: 12px; font-weight: 900; font-size: 11px; width: 100%; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em;">MUAT ULANG</button>' +
-            '<p style="font-size: 9px; opacity: 0.4; margin-top: 16px; text-transform: uppercase;">Error: Module Load Timeout</p>' +
+          fallback.style.background = '#7f1d1d';
+          fallback.innerHTML = '<div style="padding: 30px; text-align: center; color: white;">' +
+            '<h1 style="font-weight: 900; text-transform: uppercase;">Aplikasi Gagal</h1>' +
+            '<p style="font-size: 12px; opacity: 0.8;">Browser tidak mendukung atau terjadi kesalahan serius.</p>' +
+            '<div style="font-size: 8px; font-family: monospace; background: rgba(0,0,0,0.3); padding: 10px; margin: 20px 0; border-radius: 4px; word-break: break-all;">' + msg + '</div>' +
+            '<button onclick="localStorage.clear(); window.location.reload();" style="background: white; color: #7f1d1d; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">RESET DATA & MUAT ULANG</button>' +
+            '</div>';
+        }
+        return false;
+      };
+
+      // Fallback if the module doesn't load after 15 seconds
+      setTimeout(function() {
+        var fallback = document.getElementById('loading-fallback');
+        if (fallback && fallback.style.display !== 'none') {
+          fallback.innerHTML = '<div style="background: #991b1b; padding: 30px; border-radius: 20px; color: white; width: 90%; max-width: 350px; text-align: center;">' +
+            '<h1 style="font-weight: 900; text-transform: uppercase; margin: 0 0 10px 0;">Gagal Memuat</h1>' +
+            '<p style="font-size: 12px; opacity: 0.8; line-height: 1.5; margin-bottom: 24px;">Browser (Hola Browser/Bawaan HP) mungkin terlalu lama memproses sistem. Silakan pakai <b>Chrome</b> atau <b>Safari</b>.</p>' +
+            '<button onclick="window.location.reload()" style="background: white; color: #991b1b; border: none; padding: 14px; border-radius: 10px; font-weight: 900; width: 100%; cursor: pointer;">MUAT ULANG</button>' +
+            '<button onclick="localStorage.clear(); window.location.reload();" style="background: transparent; color: rgba(255,255,255,0.5); border: none; margin-top: 15px; font-size: 10px; cursor: pointer; text-decoration: underline;">RISET PENYIMPANAN LOKAL</button>' +
             '</div>';
         }
       }, 15000);

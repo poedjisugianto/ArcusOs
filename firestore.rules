@@ -75,31 +75,16 @@ service cloud.firestore {
                       (incoming().userId == request.auth.uid) || 
                       (incoming().ownerId == request.auth.uid)
                     );
-      allow update: if (isSignedIn() && (
+      allow update: if isSignedIn() && (
                       isAdmin() || 
                       (existing().userId == request.auth.uid) || 
                       (existing().ownerId == request.auth.uid)
-                    )) || (
-                      // PUBLIC REGISTRATION HOOK: Allow public to add registrations via arrayUnion safely
-                      // We limit what they can touch
-                      incoming().diff(existing()).affectedKeys().hasOnly(['data', 'updatedAt']) &&
-                      incoming().data.keys().hasAll(existing().data.keys()) &&
-                      // Basic check: they cannot decrease the count of archers or registrations
-                      incoming().data.registrations.size() >= existing().data.registrations.size() &&
-                      incoming().data.archers.size() >= existing().data.archers.size()
                     );
       allow delete: if isSignedIn() && (
                       isAdmin() || 
                       (existing().userId == request.auth.uid) || 
                       (existing().ownerId == request.auth.uid)
                     );
-
-      // Subcollection for more reliable public registrations
-      match /submissions/{subId} {
-        allow read: if true;
-        allow create: if true; // OPEN FOR PUBLIC REGISTRATION
-        allow update, delete: if isAdmin() || (isSignedIn() && existing().email == request.auth.token.email);
-      }
     }
 
     // --- System Configs ---

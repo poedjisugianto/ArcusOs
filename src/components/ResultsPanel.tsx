@@ -401,20 +401,20 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
         <div className="mt-20 pt-20 border-t border-slate-200 print:hidden">
           <div className="bg-red-50 rounded-[3rem] p-12 border border-red-100 flex flex-col md:flex-row items-center justify-between gap-8">
             <div>
-              <h3 className="text-2xl font-black font-oswald uppercase italic text-red-600 mb-2">Hapus Seluruh Data Skor</h3>
-              <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Tindakan ini tidak dapat dibatalkan. Semua data skor di cloud dan lokal akan dihapus permanen.</p>
+              <h3 className="text-2xl font-black font-oswald uppercase italic text-red-600 mb-2">Reset Semua Skor</h3>
+              <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Tindakan ini tidak dapat dibatalkan. Semua data skor akan dihapus permanen.</p>
             </div>
             <button 
               onClick={() => {
-                if (confirm("Peringatan: Hapus SEMUA skor untuk event ini? Data tidak bisa dikembalikan.")) {
+                if (confirm("Apakah Anda yakin ingin menghapus SEMUA skor untuk event ini?")) {
                   onResetScores();
-                  toast.success("Skor Dihapus dari Cloud");
+                  toast.error("Semua skor telah direset");
                 }
               }}
               className="px-10 py-5 bg-red-600 text-white rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:bg-slate-900 transition-all shadow-xl shadow-red-200 flex items-center gap-3"
             >
               <Trash2 className="w-6 h-6" />
-              KONFIRMASI RESET TOTAL
+              Reset Semua Skor
             </button>
           </div>
         </div>

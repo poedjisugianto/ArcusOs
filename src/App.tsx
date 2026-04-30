@@ -65,44 +65,33 @@ export function App() {
   const isSyncingFromCloud = React.useRef(false);
 
   const [appState, setAppState] = useState<AppState>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
     const initialSettings: GlobalSettings = {
-      feeAdult: 0, 
-      feeKids: 0, 
-      maintenanceMode: false,
-      contactSupport: '', 
-      bankProvider: '',
-      bankAccountNumber: '', 
-      bankAccountName: '',
-      dataRetentionDays: 90, 
-      practiceRetentionDays: 7,
+      feeAdult: 10000, feeKids: 5000, maintenanceMode: false,
+      contactSupport: '087834193339', bankProvider: 'BCA',
+      bankAccountNumber: '0987654321', bankAccountName: 'ADMIN ARCUS CENTRAL',
+      dataRetentionDays: 90, practiceRetentionDays: 7,
       paymentGatewayProvider: 'NONE',
       paymentGatewayIsProduction: false,
-      platformFeePercentage: 0
+      platformFeePercentage: 3
     };
 
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
+    if (saved) {
+      try {
         const parsed = JSON.parse(saved);
-        // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
         return { 
           ...parsed, 
-          isDataLoaded: false,
-          notifications: parsed.notifications || []
+          globalSettings: parsed.globalSettings || initialSettings, 
+          notifications: parsed.notifications || [],
+          drafts: parsed.drafts || { scoring: {}, adminSettings: {}, activeCategory: {} }
         };
-      }
-    } catch (e) {
-      console.error("Local storage recovery failed:", e);
+      } catch (e) { console.error("Parse failed", e); }
     }
-
+    
     return {
       events: [],
-      users: [],
-      currentUser: null, 
-      activeEventId: null, 
-      globalSettings: initialSettings, 
-      notifications: [],
-      isDataLoaded: false,
+      users: [{ id: 'owner_1', email: 'admin@arcus.id', name: 'Master Admin', password: 'admin', isOrganizer: true, isSuperAdmin: true, isVerified: true }],
+      currentUser: null, activeEventId: null, globalSettings: initialSettings, notifications: [],
       drafts: { scoring: {}, adminSettings: {}, activeCategory: {} }
     };
   });
@@ -122,148 +111,226 @@ export function App() {
     }));
   };
 
-  const fetchCloudData = async (manual = false, userOverride?: User | null) => {
-    if (!db) return;
-    if (manual) setIsSyncing(true);
-    
-    // Safety: If we have pending local changes, don't overwrite with cloud data
-    // unless explicitly requested via manual refresh
-    if (hasPendingChanges && !manual) {
+  const fetchCloudData = async (manual = false) => {
+    if (!db) {
+      console.warn("Firestore not configured, skipping cloud fetch.");
       return;
     }
-
+    if (manual) setIsSyncing(true);
     try {
+      console.log("Fetching cloud data from Firestore...");
       isSyncingFromCloud.current = true;
-      const user = userOverride !== undefined ? userOverride : appState.currentUser;
       
-      // Safety: Don't let pending changes block fetch indefinitely if they are old
-      // or if we are a guest who can't sync anyway
-      const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
+      // 1. Fetch System Config (Global Settings)
+      let configData = null;
+      try {
+        const configSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
+        if (configSnap.exists()) {
+          configData = configSnap.data();
+        }
+      } catch (err) {
+        console.warn("Could not fetch system config", err);
+      }
       
-      if (hasPendingChanges && !manual && isPrivileged) {
-        return;
+      // 2. Fetch Events
+      let eventsData: any[] = [];
+      try {
+        const eventsSnap = await getDocs(collection(db, 'events'));
+        eventsData = eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, 'events');
       }
+        
+      console.log(`Fetched ${eventsData.length} events from Firestore.`);
 
-      // We fetch all three independently so one failure doesn't block the others
-      const fetchJobs: Promise<any>[] = [
-        // 1. Fetch System Config (Public)
-        getDoc(doc(db, 'systemConfigs', 'global')).catch(err => {
-          console.warn("Failed to fetch system config:", err.message);
-          return null;
-        }),
-        // 2. Fetch Events (Public)
-        getDocs(collection(db, 'events')).catch(err => {
-          console.warn("Failed to fetch events:", err.message);
-          return null;
-        }),
-        // 4. Fetch Submissions (Only for active event if applicable)
-        (appState.activeEventId ? getDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)).catch(err => {
-          console.warn("Failed to fetch submissions:", err.message);
-          return null;
-        })
-      ];
-
-      // 3. Fetch Profiles (Only if Admin)
-      const canFetchProfiles = !!(user?.isSuperAdmin || 
-                                user?.role === UserRole.SUPERADMIN ||
-                                user?.email === 'admin@arcus.id' ||
-                                user?.email === 'poedji.sugianto@gmail.com');
-
-      if (canFetchProfiles) {
-        fetchJobs.push(
-          getDocs(collection(db, 'profiles')).catch(err => {
-            console.warn("Failed to fetch profiles (Permission error usually):", err.message);
-            return null;
-          })
-        );
+      // 3. Fetch Profiles
+      let cloudUsers: any[] = [];
+      try {
+        const profilesSnap = await getDocs(collection(db, 'profiles'));
+        cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
+      } catch (err) {
+        console.warn("Could not fetch profiles", err);
       }
-
-      const results = await Promise.all(fetchJobs);
-      const configSnap = results[0];
-      const eventsSnap = results[1];
-      const profilesSnap = results[2];
-      const submissionsSnap = results[3];
-
-      const cloudSettings = configSnap?.exists?.() ? configSnap.data().data : null;
       
-      let cloudEvents: any[] | null = null;
-      if (eventsSnap?.docs) {
-        cloudEvents = eventsSnap.docs.map((doc: any) => {
-          const e = doc.data();
-          let eventObj = { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
-          
-          // Merge submissions into the event if this is the active one
-          if (submissionsSnap?.docs && e.id === appState.activeEventId) {
-            const submissions = submissionsSnap.docs.map((sd: any) => sd.data());
-            const existingIds = new Set(eventObj.registrations?.map((r: any) => r.id) || []);
-            const newRegistrations = submissions.filter((s: any) => !existingIds.has(s.id));
-            if (newRegistrations.length > 0) {
-              console.log(`Merging ${newRegistrations.length} submissions into event ${e.id}`);
-              eventObj.registrations = [...(eventObj.registrations || []), ...newRegistrations];
-            }
-          }
-          return eventObj;
-        });
+      const cloudEventsRaw = eventsData.map(e => {
+        const data = e.data as any;
+        return { 
+          ...data, 
+          ownerId: e.userId,
+          status: data.status || 'DRAFT',
+          cloudUpdatedAt: e.updatedAt,
+          // Ensure arrays exist
+          archers: data.archers || [],
+          registrations: data.registrations || [],
+          scores: data.scores || [],
+          scoreLogs: data.scoreLogs || []
+        };
+      });
+      
+      console.log(`Cloud events raw count: ${cloudEventsRaw.length}`);
+      if (cloudEventsRaw.length > 0) {
+        console.table(cloudEventsRaw.map(ce => ({ id: ce.id, name: ce.settings?.tournamentName || 'Untitled', status: ce.status, owner: ce.ownerId })));
       }
 
-      let cloudUsers: any[] | null = null;
-      if (profilesSnap?.docs) {
-        cloudUsers = profilesSnap.docs.map((doc: any) => doc.data().data);
-      }
+      // Filter events outside setAppState to keep them available for notifications
+      const filteredCloudEvents = cloudEventsRaw.filter(ce => {
+        const isSuperAdmin = appState.currentUser?.isSuperAdmin;
+        if (isSuperAdmin) return true;
+        
+        const isMine = appState.currentUser && (ce.settings?.organizerId === appState.currentUser.id || ce.ownerId === appState.currentUser.id);
+        const isPublic = ce.status !== 'DRAFT';
+        const isActive = ce.id === appState.activeEventId;
+        
+        return (isMine || isPublic || isActive) && !deletedEventIds.has(ce.id);
+      });
+      
+      console.log(`Filtered cloud events count: ${filteredCloudEvents.length}`);
       
       setAppState(prev => {
-        let updatedEvents = [...prev.events];
+        const eventMap = new Map<string, ArcheryEvent>();
+        // Initialize with existing local events
+        prev.events.forEach(e => eventMap.set(e.id, e));
         
-        if (cloudEvents && cloudEvents.length > 0) {
-          // If we are master/admin, we might want to replace entirely, but for participants/guests,
-          // we merge to avoid losing the registration that was just made locally.
-          const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN);
-          
-          if (isPrivileged) {
-            updatedEvents = cloudEvents;
+        // Merge cloud events into map
+        filteredCloudEvents.forEach(ce => {
+          const local = eventMap.get(ce.id);
+          if (!local) {
+            eventMap.set(ce.id, ce);
           } else {
-            // MERGE LOGIC: Keep local events if they have more registrations or are "newer"
-            cloudEvents.forEach(ce => {
-              const localIndex = updatedEvents.findIndex(le => le.id === ce.id);
-              if (localIndex === -1) {
-                updatedEvents.push(ce);
-              } else {
-                const le = updatedEvents[localIndex];
-                // Heuristic: If cloud event has fewer registrations than local, it's probably stale
-                const cloudRegs = ce.registrations?.length || 0;
-                const localRegs = le.registrations?.length || 0;
-                const cloudArchers = ce.archers?.length || 0;
-                const localArchers = le.archers?.length || 0;
+            const cloudDate = ce.cloudUpdatedAt ? new Date(ce.cloudUpdatedAt).getTime() : 0;
+            const localDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : (local.settings?.createdAt || 0);
 
-                if (cloudRegs >= localRegs && cloudArchers >= localArchers) {
-                  updatedEvents[localIndex] = ce;
-                } else {
-                  console.log(`Keeping local version of event ${ce.id} as it has more data than cloud.`);
+            const cloudArchers = ce.archers || [];
+            const localArchers = local.archers || [];
+            const mergedArchers = [...localArchers];
+            
+            cloudArchers.forEach((ca: any) => {
+              const existingIdx = mergedArchers.findIndex(la => la.id === ca.id);
+              if (existingIdx === -1) {
+                mergedArchers.push(ca);
+              } else {
+                const cloudArcherDate = ca.updatedAt ? new Date(ca.updatedAt).getTime() : cloudDate;
+                const localArcherDate = mergedArchers[existingIdx].updatedAt ? new Date(mergedArchers[existingIdx].updatedAt).getTime() : localDate;
+                // Favor cloud if it's the active event or if cloud data is newer
+                if (cloudArcherDate > localArcherDate || ce.id === prev.activeEventId) {
+                  mergedArchers[existingIdx] = { ...mergedArchers[existingIdx], ...ca, updatedAt: new Date(Math.max(cloudArcherDate, localArcherDate)).toISOString() };
                 }
               }
             });
-          }
-        }
 
+            const mergedRegistrations = [...(local.registrations || [])];
+            (ce.registrations || []).forEach((cr: any) => {
+              if (!mergedRegistrations.some(lr => lr.id === cr.id)) {
+                mergedRegistrations.push(cr);
+              }
+            });
+
+            const lastResetAt = ce.settings?.lastResetAt || local.settings?.lastResetAt || 0;
+            const mergedScores = (local.scores || []).filter(s => (s.lastUpdated || 0) > lastResetAt);
+            (ce.scores || []).forEach((cs: any) => {
+              if ((cs.lastUpdated || 0) <= lastResetAt) return; // Skip old scores
+              
+              // Normalize sessionId if it looks like a wave string
+              const normalizedSessionId = (cs.sessionId === '1' || cs.sessionId === '2' || !cs.sessionId) ? 'QUAL' : cs.sessionId;
+              
+              const existingIdx = mergedScores.findIndex(ls => 
+                ls.archerId === cs.archerId && 
+                (ls.sessionId === normalizedSessionId || (ls.sessionId === 'QUAL' && (normalizedSessionId === '1' || normalizedSessionId === '2'))) &&
+                ls.endIndex === cs.endIndex
+              );
+
+              const csWithNormalized = { ...cs, sessionId: normalizedSessionId };
+
+              if (existingIdx === -1) {
+                mergedScores.push(csWithNormalized);
+              } else {
+                const cloudScoreDate = cs.lastUpdated || 0;
+                const localScoreDate = mergedScores[existingIdx].lastUpdated || 0;
+                
+                // Favor cloud if it's strictly newer via timestamp
+                // Fallback to cloudDate/localDate only if timestamps are missing
+                if (cloudScoreDate > localScoreDate || (cloudScoreDate === 0 && localScoreDate === 0 && cloudDate > localDate)) {
+                  mergedScores[existingIdx] = csWithNormalized;
+                }
+              }
+            });
+
+            const mergedLogs = [...(local.scoreLogs || [])];
+            (ce.scoreLogs || []).forEach((cl: any) => {
+              if (!mergedLogs.some(ll => ll.id === cl.id)) {
+                mergedLogs.push(cl);
+              }
+            });
+
+            // If cloud is strictly newer OR it's a draft-to-active transition, favors cloud structure
+            // BUT always keep our merged arrays
+            const shouldFavorCloud = (ce.status !== 'DRAFT' && local.status === 'DRAFT') || cloudDate > localDate;
+            
+            if (shouldFavorCloud || ce.id === prev.activeEventId) {
+              // SECURITY: If we're an admin/organizer and we have local changes, 
+              // we must be careful not to lose them if they are newer than what we just pulled.
+              const isMine = prev.currentUser && (ce.settings.organizerId === prev.currentUser.id || ce.ownerId === prev.currentUser.id);
+              const finalLocalUpdateDate = (local as any).localUpdatedAt ? new Date((local as any).localUpdatedAt).getTime() : 0;
+              
+              // Only overwrite local with cloud if cloud is strictly newer OR it's not our own event (where we are the authority)
+              const useCloudStructure = shouldFavorCloud || !isMine || (cloudDate > finalLocalUpdateDate);
+
+              eventMap.set(ce.id, { 
+                ...local, 
+                ...(useCloudStructure ? ce : {}),
+                archers: mergedArchers, 
+                registrations: mergedRegistrations,
+                scores: mergedScores,
+                scoreLogs: mergedLogs,
+                localUpdatedAt: localDate > cloudDate ? (local as any).localUpdatedAt : new Date().toISOString()
+              });
+            } else {
+              // Local is newer, just keep the merged archers/registrations/scores
+              eventMap.set(ce.id, { 
+                ...local, 
+                archers: mergedArchers, 
+                registrations: mergedRegistrations,
+                scores: mergedScores,
+                scoreLogs: mergedLogs
+              });
+            }
+          }
+        });
+        
         return {
           ...prev,
-          globalSettings: cloudSettings || prev.globalSettings,
-          events: updatedEvents,
-          users: (cloudUsers && cloudUsers.length > 0) ? cloudUsers : prev.users,
+          globalSettings: configData ? { ...prev.globalSettings, ...configData.data } : prev.globalSettings,
+          events: Array.from(eventMap.values()),
+          users: cloudUsers.length > 0 ? cloudUsers : prev.users,
           isDataLoaded: true
         };
       });
 
+      if (manual && appState.activeEventId) {
+        const cloudActive = filteredCloudEvents.find(ce => ce.id === appState.activeEventId);
+        if (cloudActive) {
+          const count = cloudActive.archers?.length || 0;
+          pushNotification("Cloud Terhubung", `Ditemukan ${count} peserta di database. Sinkronisasi berhasil.`, "SUCCESS");
+        } else {
+          pushNotification("Peringatan Cloud", "Event ini tidak ditemukan di Cloud atau Anda tidak memiliki akses.", "WARNING");
+        }
+      }
       setLastSync(new Date());
+      if (manual) {
+        pushNotification("Data Diperbarui", "Sinkronisasi awan selesai.", "SUCCESS");
+      }
+      // Reset flag after state update propagation
+      setTimeout(() => {
+        isSyncingFromCloud.current = false;
+        setHasPendingChanges(false);
+      }, 500);
     } catch (err: any) { 
-      console.error("Fetch Cloud General Error:", err);
-      // If it's a permission error, we should probably stop the loading spinner but keep trying other things
-      if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
-      // Set even on error to allow UI to show
-      setAppState(prev => ({ ...prev, isDataLoaded: true }));
+      console.error("Fetch error detail:", err);
+      if (manual) {
+        pushNotification("Gagal Sinkron", `Error: ${err.message || 'Unknown'}`, "WARNING");
+      }
     } finally {
-      setIsSyncing(false);
-      isSyncingFromCloud.current = false;
+      if (manual) setIsSyncing(false);
     }
   };
 
@@ -410,10 +477,7 @@ export function App() {
   const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
 
   useEffect(() => {
-    // Only save to localStorage after initial cloud fetch to avoid overwriting cloud with stale local data
-    if (appState.isDataLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   }, [appState]);
 
   useEffect(() => {
@@ -421,140 +485,177 @@ export function App() {
   }, [view]);
 
   useEffect(() => {
-    if (!isSyncingFromCloud.current && appState.isDataLoaded) {
+    if (!isSyncingFromCloud.current) {
       setHasPendingChanges(true);
     }
-  }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
+  }, [appState.events, appState.globalSettings, appState.currentUser]);
 
   const syncCloudData = async (manual = false) => {
-    if (!db || !isOnline) return;
+    if (!db) {
+      if (manual) pushNotification("Mode Lokal", "Data disimpan di memori browser saja.", "INFO");
+      return;
+    }
+    if (!isOnline) {
+      if (manual) pushNotification("Sedang Offline", "Data akan disinkronkan saat koneksi kembali.", "WARNING");
+      return;
+    }
     
-    // Safety check: Don't sync if data hasn't been loaded from cloud yet
-    if (!appState.isDataLoaded && !manual) return;
-
     setIsSyncing(true);
     try {
-      const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === UserRole.SUPERADMIN || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
-
-      // 1. Sync Global Settings (Only SuperAdmin)
-      if (appState.currentUser?.isSuperAdmin) {
-        await setDoc(doc(db, 'systemConfigs', 'global'), { 
-          id: 'global', 
-          data: appState.globalSettings, 
+      // 1. Sync User Profile (Only if logged in)
+      if (appState.currentUser) {
+        if (appState.currentUser.isSuperAdmin) {
+          await setDoc(doc(db, 'systemConfigs', 'global'), { 
+            id: 'global', 
+            data: appState.globalSettings, 
+            updatedAt: new Date().toISOString() 
+          }, { merge: true });
+        }
+        await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
+          id: appState.currentUser.id, 
+          data: appState.currentUser, 
           updatedAt: new Date().toISOString() 
         }, { merge: true });
       }
-
-      // 2. Sync User Profile
+      
+      // 2. Sync Events
+      let eventsToSync: ArcheryEvent[] = [];
       if (appState.currentUser) {
-        try {
-          await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
-            id: appState.currentUser.id, 
-            data: appState.currentUser, 
-            updatedAt: new Date().toISOString() 
-          }, { merge: true });
-        } catch (e) {
-          console.warn("Failed to sync profile - likely no permission for guests:", e);
+        eventsToSync = appState.events.filter(e => 
+          (e.settings.organizerId === appState.currentUser?.id || (e as any).ownerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin) &&
+          !e.settings.isPractice 
+        );
+      } else if (appState.activeEventId) {
+        const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
+        if (activeEvent && !activeEvent.settings.isPractice) {
+          eventsToSync = [activeEvent];
         }
       }
       
-      // 3. Sync Active Event (Only if authorized)
-      if (activeEvent && isPrivileged) {
-        await setDoc(doc(db, 'events', activeEvent.id), { 
-          id: activeEvent.id, 
-          userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
-          data: activeEvent,
+      for (const event of eventsToSync) {
+        console.log(`Syncing event ${event.id} to Firestore...`);
+        
+        // Safety Merge
+        const eventRef = doc(db, 'events', event.id);
+        const cloudRes = await getDoc(eventRef);
+          
+        let finalData = { ...event };
+        if (cloudRes.exists()) {
+          const ceRecord = cloudRes.data();
+          const ce = ceRecord.data as ArcheryEvent;
+          const lastResetAt = Math.max(event.settings?.lastResetAt || 0, ce.settings?.lastResetAt || 0);
+
+          const mergedArchers = [...(finalData.archers || [])];
+          const mergedRegistrations = [...(finalData.registrations || [])];
+          const mergedScores = (finalData.scores || []).filter(s => (s.lastUpdated || 0) > lastResetAt);
+          const mergedLogs = [...(finalData.scoreLogs || [])];
+          
+          (ce.archers || []).forEach((ca: any) => {
+            if (!mergedArchers.some(la => la.id === ca.id)) mergedArchers.push(ca);
+          });
+          
+          (ce.registrations || []).forEach((cr: any) => {
+            if (!mergedRegistrations.some(lr => lr.id === cr.id)) mergedRegistrations.push(cr);
+          });
+
+          (ce.scores || []).forEach((cs: any) => {
+            if ((cs.lastUpdated || 0) <= lastResetAt) return; // Skip old cloud scores
+            
+            const normalizedSessionId = (cs.sessionId === '1' || cs.sessionId === '2' || !cs.sessionId) ? 'QUAL' : cs.sessionId;
+            const csWithNormalized = { ...cs, sessionId: normalizedSessionId };
+
+            const exists = mergedScores.find(ls => 
+              ls.archerId === cs.archerId && 
+              (ls.sessionId === normalizedSessionId || (ls.sessionId === 'QUAL' && (normalizedSessionId === '1' || normalizedSessionId === '2'))) &&
+              ls.endIndex === cs.endIndex
+            );
+            
+            if (!exists) {
+              mergedScores.push(csWithNormalized);
+            } else {
+              // If local is explicitly deleted or newer, stick with local
+              if (exists.isDeleted) return; 
+
+              const cloudScoreDate = cs.lastUpdated || 0;
+              const localScoreDate = exists.lastUpdated || 0;
+              // Favor cloud score if it's strictly newer
+              if (cloudScoreDate > localScoreDate) {
+                const idx = mergedScores.findIndex(ls => 
+                  ls.archerId === cs.archerId && 
+                  (ls.sessionId === normalizedSessionId || (ls.sessionId === 'QUAL' && (normalizedSessionId === '1' || normalizedSessionId === '2'))) &&
+                  ls.endIndex === cs.endIndex
+                );
+                mergedScores[idx] = csWithNormalized;
+              }
+            }
+          });
+
+          (ce.scoreLogs || []).forEach((cl: any) => {
+            if (!mergedLogs.some(ll => ll.id === cl.id)) mergedLogs.push(cl);
+          });
+          
+          finalData.archers = mergedArchers;
+          finalData.registrations = mergedRegistrations;
+          finalData.scores = mergedScores;
+          finalData.scoreLogs = mergedLogs;
+
+          // Update local state as well so the organizer sees new online registrations and scores immediately
+          setAppState(prev => ({
+            ...prev,
+            events: prev.events.map(e => e.id === event.id ? { 
+              ...e, 
+              archers: mergedArchers, 
+              registrations: mergedRegistrations,
+              scores: mergedScores,
+              scoreLogs: mergedLogs
+            } : e)
+          }));
+        }
+
+        await setDoc(eventRef, { 
+          id: event.id, 
+          userId: event.settings.organizerId || appState.currentUser?.id || null, 
+          data: finalData,
           updatedAt: new Date().toISOString() 
         }, { merge: true });
       }
       
       setLastSync(new Date());
       setHasPendingChanges(false);
-      if (manual) pushNotification("Sinkronisasi Selesai", "Data telah aman di cloud.", "SUCCESS");
-    } catch (err: any) { 
+      if (manual) pushNotification("Sinkronisasi Selesai", "Data Anda telah aman di cloud.", "SUCCESS");
+    } catch (err) { 
       console.error("Sync error", err); 
-      if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
-      // If permission error, clear pending changes so we don't loop forever
-      if (err.message?.includes('permission')) {
-        setHasPendingChanges(false);
-      }
+      if (manual) pushNotification("Gagal Sinkron", "Gagal menyimpan data ke cloud.", "WARNING");
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Real-time Subscriptions - Only for active event when necessary
-  useEffect(() => {
-    if (!db || !appState.activeEventId) return;
-    
-    // Only subscribe in views that need live updates
-    const liveViews = ['LIVE', 'PUBLIC_LIVE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'ARCHERS', 'FINANCE'];
-    if (!liveViews.includes(view)) return;
-
-    const unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
-      if (docSnap.exists()) {
-        // IMPROVEMENT: Use metadata to check if the change is local or remote
-        // If it's a remote change AND we don't have pending changes, update local state
-        // OR if it's a remote change and we ARE in a live view (LiveBoard), always sync to keep board updated
-        const isRemoteChange = !docSnap.metadata.hasPendingWrites;
-        const isLiveView = view === 'LIVE' || view === 'PUBLIC_LIVE';
-        
-        if (isRemoteChange && (!hasPendingChanges || isLiveView)) {
-          console.log("Cloud update received for active event:", appState.activeEventId);
-          const cloudEventData = docSnap.data().data as ArcheryEvent;
-          const cloudStatus = docSnap.data().status;
-          
-          setAppState(prev => ({
-            ...prev,
-            events: prev.events.map(e => 
-              e.id === appState.activeEventId 
-                ? { ...cloudEventData, id: e.id, status: cloudStatus } 
-                : e
-            )
-          }));
-        }
-      }
-    }, (error) => {
-      console.error("Event Snapshot Error:", error);
-    });
-
-    return () => unsub();
-  }, [db, appState.activeEventId, view, hasPendingChanges]);
-
-  // Global Config Subscription
+  // Real-time Subscriptions
   useEffect(() => {
     if (!db) return;
-    const unsubConfig = onSnapshot(doc(db, 'systemConfigs', 'global'), (docSnap) => {
-      if (docSnap.exists() && !hasPendingChanges) {
-        const cloudSettings = docSnap.data().data as GlobalSettings;
-        setAppState(prev => ({ ...prev, globalSettings: cloudSettings }));
-      }
-    });
-    return () => unsubConfig();
-  }, [db, hasPendingChanges]);
 
-  // Debounced Sync for Profile, Global Settings, and Events (Pushes)
-  useEffect(() => {
-    if (!hasPendingChanges) return;
-    const debounce = setTimeout(() => {
-      console.log("Auto-syncing all pending changes...");
-      syncCloudData(false).then(() => {
-        setHasPendingChanges(false);
-      });
-    }, 1500); 
-    return () => clearTimeout(debounce);
-  }, [appState.globalSettings, appState.currentUser, appState.events, hasPendingChanges]);
-/*
+    const unsubEvents = onSnapshot(collection(db, 'events'), () => {
+      fetchCloudData().catch(err => console.error("Real-time events sync error:", err));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'events'));
+
+    const unsubConfig = onSnapshot(collection(db, 'systemConfigs'), () => {
+      fetchCloudData().catch(err => console.error("Real-time config sync error:", err));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'systemConfigs'));
+
+    return () => {
+      unsubEvents();
+      unsubConfig();
+    };
+  }, [db]);
+
   useEffect(() => {
     const debounce = setTimeout(syncCloudData, 3000); // 3s for batching
     return () => clearTimeout(debounce);
   }, [appState.events, appState.globalSettings, appState.currentUser, isOnline, hasPendingChanges]);
-*/
 
-  // Consistency Check for View and State - Wait for data to be loaded to avoid false kicks
+  // Consistency Check for View and State
   useEffect(() => {
-    if (!appState.isDataLoaded || isCheckingLink) return;
-
     const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE', 'PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'];
     if (eventRequiredViews.includes(view) && !activeEvent) {
       if (['PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'].includes(view as any)) {
@@ -567,7 +668,7 @@ export function App() {
     if (authViews.includes(view) && !appState.currentUser) {
       setView('LANDING');
     }
-  }, [view, activeEvent, appState.currentUser, appState.isDataLoaded, isCheckingLink]);
+  }, [view, activeEvent, appState.currentUser]);
 
   useEffect(() => {
     if (activeEvent?.status === 'DRAFT' && view.startsWith('PUBLIC_')) {
@@ -650,7 +751,7 @@ export function App() {
   };
 
   const saveEventToCloud = async (event: ArcheryEvent) => {
-    if (!db) return;
+    if (!db || event.settings.isPractice) return;
     
     try {
       await setDoc(doc(db, 'events', event.id), {
@@ -667,59 +768,82 @@ export function App() {
     }
   };
 
-  const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
-    let finalEvent: ArcheryEvent | null = null;
+  const handleUpdateEvent = (id: string, updated: Partial<ArcheryEvent>) => {
     setAppState(prev => {
       const event = prev.events.find(e => e.id === id);
       if (!event) return prev;
 
-      finalEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
-      return { 
+      const updatedEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
+      const newState = { 
         ...prev, 
-        events: prev.events.map(e => e.id === id ? finalEvent! : e) 
+        events: prev.events.map(e => e.id === id ? updatedEvent : e) 
       };
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      
+      // If online, we don't just wait for the debounce, we can flag it for immediate-ish sync
+      // The debounce in useEffect will catch this via hasPendingChanges
+      
+      return newState;
     });
-
     setHasPendingChanges(true);
-    // CRITICAL: Immediately sync management changes to cloud to avoid race conditions
-    if (finalEvent && db && isOnline) {
-      await saveEventToCloud(finalEvent);
-      setHasPendingChanges(false);
-    }
   };
 
   const handleDeleteEvent = async (id: string) => {
     if (!id) return;
     
     const eventToDelete = appState.events.find(e => e.id === id);
-    if (!eventToDelete) return;
+    if (!eventToDelete) {
+      console.warn("Event not found for deletion:", id);
+      return;
+    }
 
+    const typeLabel = eventToDelete.settings.isPractice ? "Latihan" : "Turnamen";
+    const eventName = eventToDelete.settings.tournamentName;
+
+    // Track as deleted to prevent fetchCloudData from restoring it
     setDeletedEventIds(prev => new Set(prev).add(id));
 
-    setAppState(prev => ({ 
-      ...prev, 
-      events: prev.events.filter(e => e.id !== id),
-      activeEventId: prev.activeEventId === id ? null : prev.activeEventId 
-    }));
+    // 1. Immediate Local Update (Optimistic)
+    setAppState(prev => {
+      const updatedEvents = prev.events.filter(e => e.id !== id);
+      return { 
+        ...prev, 
+        events: updatedEvents,
+        activeEventId: prev.activeEventId === id ? null : prev.activeEventId 
+      };
+    });
     
-    if (view !== 'MEMBER_DASHBOARD' && activeEvent?.id === id) setView('MEMBER_DASHBOARD');
+    // 2. Navigation
+    const eventViews = ['EVENT_ADMIN', 'SETTINGS', 'ARCHERS', 'SCORING', 'OPERATOR_CENTER', 'ELIMINATION', 'RESULTS', 'FINANCE', 'LIVE'];
+    if (eventViews.includes(view)) {
+      setView('MEMBER_DASHBOARD');
+    }
 
-    if (db) {
+    pushNotification("Menghapus...", `Sedang menghapus ${typeLabel} "${eventName}"...`, "INFO");
+
+    // 3. Cloud Sync (Firestore)
+    if (db && !eventToDelete.settings.isPractice) {
       try {
         await deleteDoc(doc(db, 'events', id));
-        pushNotification("Berhasil Dihapus", `Event telah dihapus dari cloud.`, "SUCCESS");
+        console.log("Firestore delete success for ID:", id);
+        pushNotification("Berhasil Dihapus", `${typeLabel} "${eventName}" telah dihapus secara permanen.`, "SUCCESS");
       } catch (err: any) {
-        pushNotification("Error", err.message, "WARNING");
+        console.error("Firestore delete exception:", err);
+        pushNotification("Koneksi Bermasalah", `Gagal menghubungi server: ${err.message || 'Unknown error'}`, "WARNING");
       }
+    } else {
+      pushNotification("Berhasil Dihapus", `${typeLabel} "${eventName}" telah dihapus dari penyimpanan lokal.`, "SUCCESS");
     }
     
+    // Cleanup deleted ID after some time (enough for cloud to settle)
     setTimeout(() => {
       setDeletedEventIds(prev => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
-    }, 5000);
+    }, 10000);
   };
 
   const handleShare = (id: string, name?: string) => {
@@ -768,15 +892,12 @@ export function App() {
     }
   };
 
-  const onSaveScore = async (score: ScoreEntry | ScoreEntry[], log?: ScoreLog | ScoreLog[]) => {
+  const onSaveScore = (score: ScoreEntry | ScoreEntry[], log?: ScoreLog | ScoreLog[]) => {
     if (!activeEvent) return;
     const now = Date.now();
     const scoresArray = (Array.isArray(score) ? score : [score]).map(s => ({ ...s, lastUpdated: now }));
     const logsArray = Array.isArray(log) ? log : (log ? [log] : []);
     
-    // Calculate the updated event first to ensure we sync the EXACT SAME data we set in state
-    let updatedEvent: ArcheryEvent | null = null;
-
     setAppState(prev => {
       const event = prev.events.find(e => e.id === activeEvent.id);
       if (!event) return prev;
@@ -786,6 +907,7 @@ export function App() {
         const normalizedS = (s.sessionId === '1' || s.sessionId === '2' || !s.sessionId) ? 'QUAL' : s.sessionId;
         const entryToSave = { ...s, sessionId: normalizedS };
 
+        // Remove existing match
         newScores = newScores.filter(existing => {
           const normalizedExisting = (existing.sessionId === '1' || existing.sessionId === '2' || !existing.sessionId) ? 'QUAL' : existing.sessionId;
           return !(
@@ -794,164 +916,75 @@ export function App() {
             existing.endIndex === s.endIndex
           );
         });
+        
+        // Always push to newScores, so isDeleted: true acts as a "tombstone" in cloud
         newScores.push(entryToSave);
       });
       
-      updatedEvent = {
-        ...event,
-        scores: newScores,
-        scoreLogs: [...logsArray, ...event.scoreLogs],
-        localUpdatedAt: new Date().toISOString()
-      };
-
-      return {
+      const newState = {
         ...prev,
-        events: prev.events.map(e => e.id === event.id ? updatedEvent! : e)
+        events: prev.events.map(e => e.id === event.id ? {
+          ...e,
+          scores: newScores,
+          scoreLogs: [...logsArray, ...e.scoreLogs],
+          localUpdatedAt: new Date().toISOString()
+        } : e)
       };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      
+      // For scores, we want to sync faster so the scoreboard updates in real-time
+      setTimeout(() => syncCloudData(false), 500);
+      
+      return newState;
     });
-
-    setHasPendingChanges(true);
-
-    // Direct Sync to Cloud (Parking Lot to Highway)
-    if (updatedEvent) {
-      await saveEventToCloud(updatedEvent);
-      setHasPendingChanges(false);
-    }
   };
 
-  const onResetScores = async () => {
+  const onResetScores = () => {
     if (!activeEvent) return;
+    
     if (!confirm("PERINGATAN: Ini akan MENGHAPUS SEMUA SKOR secara permanen dari Cloud dan Lokal. Lanjutkan?")) return;
-
-    const now = Date.now();
-    let updatedEvent: ArcheryEvent | null = null;
 
     setAppState(prev => {
       const event = prev.events.find(e => e.id === activeEvent.id);
       if (!event) return prev;
       
-      updatedEvent = {
-        ...event,
-        scores: [], 
-        scoreLogs: [
-          {
-            id: 'reset_' + now,
-            archerId: 'SYSTEM',
-            oldTotal: 0,
-            newTotal: 0,
-            timestamp: now,
-            reason: "PERMANENT HARD RESET",
-            operatorName: "ADMIN"
+      const now = Date.now();
+      
+      const newState = {
+        ...prev,
+        events: prev.events.map(e => e.id === event.id ? {
+          ...e,
+          scores: [], // Clear array permanently
+          scoreLogs: [
+            {
+              id: 'reset_' + now,
+              archerId: 'SYSTEM',
+              oldTotal: 0,
+              newTotal: 0,
+              timestamp: now,
+              reason: "PERMANENT HARD RESET",
+              operatorName: "ADMIN"
+            },
+            ...e.scoreLogs
+          ],
+          settings: {
+            ...e.settings,
+            lastResetAt: now // Scores before this timestamp will be ignored during sync
           },
-          ...event.scoreLogs
-        ],
-        settings: {
-          ...event.settings,
-          lastResetAt: now 
-        },
-        localUpdatedAt: new Date().toISOString()
-      };
-
-      return {
-        ...prev,
-        events: prev.events.map(e => e.id === event.id ? updatedEvent! : e)
-      };
-    });
-
-    setHasPendingChanges(true);
-    if (updatedEvent) {
-      await saveEventToCloud(updatedEvent);
-      setHasPendingChanges(false);
-      pushNotification("Reset Berhasil", "Semua skor telah dihapus dari cloud.", "SUCCESS");
-    }
-  };
-
-  const onResetSystemData = async () => {
-    if (!appState.currentUser?.isSuperAdmin) return;
-    if (!confirm("PERINGATAN KRITIS: Anda akan menghapus SELURUH DATA SISTEM (Events, Profiles, Configs) dari Cloud. Tindakan ini tidak dapat dibatalkan. Lanjutkan?")) return;
-    if (!confirm("KONFIRMASI TERAKHIR: Semua data akan hilang selamanya. Anda yakin?")) return;
-
-    setIsSyncing(true);
-    try {
-      pushNotification("Hard Reset", "Memulai pembersihan data cloud...", "WARNING");
-      
-      // 1. Delete all events
-      const eventsSnap = await getDocs(collection(db, 'events'));
-      for (const d of eventsSnap.docs) {
-        await deleteDoc(doc(db, 'events', d.id));
-      }
-
-      // 2. Delete all profiles (except self)
-      const profilesSnap = await getDocs(collection(db, 'profiles'));
-      for (const d of profilesSnap.docs) {
-        if (d.id !== appState.currentUser.id) {
-          await deleteDoc(doc(db, 'profiles', d.id));
-        }
-      }
-
-      // 3. Reset Global Settings to null/defaults
-      const initialSettings: GlobalSettings = {
-        feeAdult: 0, 
-        feeKids: 0, 
-        maintenanceMode: false,
-        contactSupport: '', 
-        bankProvider: '',
-        bankAccountNumber: '', 
-        bankAccountName: '',
-        dataRetentionDays: 90, 
-        practiceRetentionDays: 7,
-        paymentGatewayProvider: 'NONE',
-        paymentGatewayIsProduction: false,
-        platformFeePercentage: 0
+          localUpdatedAt: new Date().toISOString()
+        } : e)
       };
       
-      await setDoc(doc(db, 'systemConfigs', 'global'), { 
-        id: 'global', 
-        data: initialSettings, 
-        updatedAt: new Date().toISOString() 
-      });
-
-      // Clear Local Storage - CRITICAL to prevent re-syncing old data back to cloud
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.clear();
-
-      pushNotification("Reset Berhasil", "Sistem telah dibersihkan. Memuat ulang...", "SUCCESS");
-      
-      // Force reload state
-      setAppState(prev => ({
-        ...prev,
-        events: [],
-        users: prev.users.filter(u => u.id === appState.currentUser?.id),
-        globalSettings: initialSettings,
-        activeEventId: null
-      }));
-
-      setTimeout(() => window.location.reload(), 2000);
-
-    } catch (err: any) {
-      console.error("Hard Reset Error:", err);
-      pushNotification("Reset Gagal", err.message, "WARNING");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleUpdateGlobalSettings = (newSettings: GlobalSettings) => {
-    setAppState(prev => {
-      const newState = { ...prev, globalSettings: newSettings };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      setTimeout(() => syncCloudData(true), 500);
       return newState;
     });
-    setHasPendingChanges(true);
-    // Trigger immediate sync for global settings
-    setTimeout(() => syncCloudData(true), 500);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
-      <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
+    <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white">
       {/* Global Cloud Sync Status Bar */}
-      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm print:hidden ${
+      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm ${
         !db ? 'bg-emerald-500 text-white border-emerald-600' :
         isSyncing ? 'bg-blue-600 text-white border-blue-700' :
         hasPendingChanges ? 'bg-indigo-600 text-white border-indigo-700' :
@@ -1139,12 +1172,11 @@ export function App() {
             onUpdateUser={async (u) => {
               setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }));
               if (db) {
-                try {
-                  await setDoc(doc(db, 'profiles', u.id), u, { merge: true });
-                  pushNotification("Profil Diperbarui", "User berhasil diperbarui di cloud.", "SUCCESS");
-                } catch (err: any) {
-                  handleFirestoreError(err, OperationType.WRITE, `profiles/${u.id}`);
-                }
+                await setDoc(doc(db, 'profiles', u.id), {
+                  id: u.id,
+                  data: u,
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
               }
             }} 
             onBack={() => setView('LANDING')} 
@@ -1331,22 +1363,15 @@ export function App() {
         {view === 'SUPER_ADMIN' && appState.currentUser?.isSuperAdmin && (
           <SuperAdminPanel 
             state={appState} 
-            onUpdateSettings={handleUpdateGlobalSettings} 
-            onResetSystemData={onResetSystemData}
+            onUpdateSettings={(gs) => {
+              setAppState(prev => ({ ...prev, globalSettings: gs }));
+              // Explicitly trigger cloud sync for global settings
+              setTimeout(() => syncCloudData(true), 100);
+            }} 
             onUpdateEvent={handleUpdateEvent} 
             onDeleteEvent={handleDeleteEvent} 
             onDeleteUser={handleDeleteUser} 
-            onUpdateUser={async (u) => {
-              setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }));
-              if (db) {
-                try {
-                  await setDoc(doc(db, 'profiles', u.id), u);
-                  pushNotification("Profil Diperbarui", "User berhasil diperbarui di cloud.", "SUCCESS");
-                } catch (err: any) {
-                  handleFirestoreError(err, OperationType.WRITE, `profiles/${u.id}`);
-                }
-              }
-            }} 
+            onUpdateUser={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }))} 
             onSendNotif={(n) => setAppState(prev => ({ ...prev, notifications: [n, ...prev.notifications] }))} 
             onBack={() => setView('MEMBER_DASHBOARD')} 
           />
@@ -1641,16 +1666,6 @@ export function App() {
           }
 
           try {
-            // NEW: Directly push to a public submissions collection FIRST
-            // This works even if the API lags, ensuring the data is in Cloud immediately
-            if (db) {
-              await setDoc(doc(db, 'events', activeEvent.id, 'submissions', r.id), {
-                ...r,
-                submittedAt: new Date().toISOString()
-              });
-              console.log("Submission mirrored to public cloud subcollection.");
-            }
-
             const response = await fetch('/api/register-participant', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1740,7 +1755,7 @@ export function App() {
         )}
       </main>
 
-      <footer className="py-12 bg-white border-t border-slate-100 print:hidden">
+      <footer className="py-12 bg-white border-t border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-12">
             <div className="flex flex-col md:flex-row items-center gap-8">

@@ -55,10 +55,6 @@
       "schema": "Event",
       "description": "Collection of archery events"
     },
-    "/events/{eventId}/submissions/{subId}": {
-      "schema": "ParticipantRegistration",
-      "description": "Publicly submitted registrations for an event"
-    },
     "/systemConfigs/{configId}": {
       "schema": "SystemConfig",
       "description": "Global system configurations"

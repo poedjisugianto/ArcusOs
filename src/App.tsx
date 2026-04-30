@@ -122,7 +122,7 @@ export function App() {
     }));
   };
 
-  const fetchCloudData = async (manual = false) => {
+  const fetchCloudData = async (manual = false, userOverride?: User | null) => {
     if (!db) return;
     if (manual) setIsSyncing(true);
     
@@ -134,9 +134,10 @@ export function App() {
 
     try {
       isSyncingFromCloud.current = true;
+      const user = userOverride !== undefined ? userOverride : appState.currentUser;
       
       // We fetch all three independently so one failure doesn't block the others
-      const fetchJobs = [
+      const fetchJobs: Promise<any>[] = [
         // 1. Fetch System Config (Public)
         getDoc(doc(db, 'systemConfigs', 'global')).catch(err => {
           console.warn("Failed to fetch system config:", err.message);
@@ -150,29 +151,29 @@ export function App() {
       ];
 
       // 3. Fetch Profiles (Only if Admin)
-      const canFetchProfiles = appState.currentUser?.isSuperAdmin || 
-                              appState.currentUser?.role === UserRole.SUPERADMIN ||
-                              appState.currentUser?.email === 'admin@arcus.id' ||
-                              appState.currentUser?.email === 'poedji.sugianto@gmail.com';
+      const canFetchProfiles = !!(user?.isSuperAdmin || 
+                                user?.role === UserRole.SUPERADMIN ||
+                                user?.email === 'admin@arcus.id' ||
+                                user?.email === 'poedji.sugianto@gmail.com');
 
       if (canFetchProfiles) {
         fetchJobs.push(
           getDocs(collection(db, 'profiles')).catch(err => {
-            console.warn("Failed to fetch profiles:", err.message);
+            console.warn("Failed to fetch profiles (Permission error usually):", err.message);
             return null;
           })
         );
       }
 
       const results = await Promise.all(fetchJobs);
-      const configSnap = results[0] as any;
-      const eventsSnap = results[1] as any;
-      const profilesSnap = results[2] as any;
+      const configSnap = results[0];
+      const eventsSnap = results[1];
+      const profilesSnap = results[2];
 
-      const cloudSettings = configSnap?.exists() ? configSnap.data().data : null;
+      const cloudSettings = configSnap?.exists?.() ? configSnap.data().data : null;
       
       let cloudEvents: any[] | null = null;
-      if (eventsSnap) {
+      if (eventsSnap?.docs) {
         cloudEvents = eventsSnap.docs.map((doc: any) => {
           const e = doc.data();
           return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
@@ -180,21 +181,56 @@ export function App() {
       }
 
       let cloudUsers: any[] | null = null;
-      if (profilesSnap) {
+      if (profilesSnap?.docs) {
         cloudUsers = profilesSnap.docs.map((doc: any) => doc.data().data);
       }
       
-      setAppState(prev => ({
-        ...prev,
-        globalSettings: cloudSettings || prev.globalSettings,
-        events: (cloudEvents && cloudEvents.length > 0) ? cloudEvents : prev.events,
-        users: (cloudUsers && cloudUsers.length > 0) ? cloudUsers : prev.users,
-        isDataLoaded: true
-      }));
+      setAppState(prev => {
+        let updatedEvents = [...prev.events];
+        
+        if (cloudEvents && cloudEvents.length > 0) {
+          // If we are master/admin, we might want to replace entirely, but for participants/guests,
+          // we merge to avoid losing the registration that was just made locally.
+          const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN);
+          
+          if (isPrivileged) {
+            updatedEvents = cloudEvents;
+          } else {
+            // MERGE LOGIC: Keep local events if they have more registrations or are "newer"
+            cloudEvents.forEach(ce => {
+              const localIndex = updatedEvents.findIndex(le => le.id === ce.id);
+              if (localIndex === -1) {
+                updatedEvents.push(ce);
+              } else {
+                const le = updatedEvents[localIndex];
+                // Heuristic: If cloud event has fewer registrations than local, it's probably stale
+                const cloudRegs = ce.registrations?.length || 0;
+                const localRegs = le.registrations?.length || 0;
+                const cloudArchers = ce.archers?.length || 0;
+                const localArchers = le.archers?.length || 0;
+
+                if (cloudRegs >= localRegs && cloudArchers >= localArchers) {
+                  updatedEvents[localIndex] = ce;
+                } else {
+                  console.log(`Keeping local version of event ${ce.id} as it has more data than cloud.`);
+                }
+              }
+            });
+          }
+        }
+
+        return {
+          ...prev,
+          globalSettings: cloudSettings || prev.globalSettings,
+          events: updatedEvents,
+          users: (cloudUsers && cloudUsers.length > 0) ? cloudUsers : prev.users,
+          isDataLoaded: true
+        };
+      });
 
       setLastSync(new Date());
     } catch (err: any) { 
-      console.error("Fetch Cloud Error:", err);
+      console.error("Fetch Cloud General Error:", err);
       if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
       // Set to loaded even on error to allow app to use local state fallback
       setAppState(prev => ({ ...prev, isDataLoaded: true }));

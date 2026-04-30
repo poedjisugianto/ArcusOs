@@ -225,9 +225,16 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         setIsSubmitting(false);
       }
     } else {
-      onRegister(newReg);
-      // Don't fully clear yet, so they see their name, but we will have a button to register another
-      setStep(3);
+      setIsSubmitting(true);
+      try {
+        await onRegister(newReg);
+        // Don't fully clear yet, so they see their name, but we will have a button to register another
+        setStep(3);
+      } catch (err) {
+        toast.error("Gagal mengirim pendaftaran ke cloud. Mencoba simpan lokal.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 

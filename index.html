@@ -13,20 +13,48 @@
   </head>
   <body>
     <div id="root">
-      <div style="position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-center; color: white; font-family: sans-serif; gap: 20px; z-index: -1;">
-        <div style="width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #f43f5e; border-radius: 50%; animate: spin 1s linear infinite;"></div>
-        <p style="font-size: 10px; opacity: 0.5; letter-spacing: 0.2em; text-transform: uppercase;">Aplikasi sedang dimuat...</p>
+      <div id="loading-fallback" style="position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-family: sans-serif; gap: 24px; z-index: 10;">
+        <div style="position: relative;">
+          <div style="position: absolute; inset: -20px; background: #ef4444; border-radius: 50%; blur: 40px; opacity: 0.1;"></div>
+          <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: pulse 2s infinite;"><path d="m12 14 4-4"/><path d="m3.34 7 10 10"/><path d="m17 21 4-4"/><path d="m2 14h20"/><path d="m20 8-5 5"/><path d="m5 22 5-5"/><path d="m12 10-6 6"></path></svg>
+        </div>
+        <div style="text-align: center;">
+          <h2 style="font-weight: 900; letter-spacing: 0.1em; margin: 0; text-transform: uppercase; font-size: 14px;">Memuat Arcus Digital</h2>
+          <p style="font-size: 10px; opacity: 0.4; letter-spacing: 0.3em; margin-top: 8px; text-transform: uppercase;">Menyiapkan Arena...</p>
+        </div>
+        <div style="width: 40px; height: 3px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
+          <div style="width: 100%; height: 100%; background: #ef4444; transform: translateX(-100%); animation: slide 1.5s infinite;"></div>
+        </div>
       </div>
     </div>
+    
+    <style>
+      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+      @keyframes slide { 0% { transform: translateX(-100%); } 50% { transform: translateX(0); } 100% { transform: translateX(100%); } }
+    </style>
+
     <script>
+      // Force remove fallback if app mounts
+      window.addEventListener('load', function() {
+        var observer = new MutationObserver(function(mutations) {
+          var fallback = document.getElementById('loading-fallback');
+          if (fallback && document.getElementById('root').children.length > 1) {
+             fallback.style.display = 'none';
+          }
+        });
+        observer.observe(document.getElementById('root'), { childList: true });
+      });
+
       // Fallback if the module doesn't load after 10 seconds
       setTimeout(function() {
-        var root = document.getElementById('root');
-        if (root && root.innerHTML.includes('Aplikasi sedang dimuat')) {
-          root.innerHTML = '<div style="position: fixed; inset: 0; background: #991b1b; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-family: sans-serif; gap: 20px; padding: 20px; text-align: center;">' +
-            '<h1 style="font-weight: 900; text-transform: uppercase;">Gagal Memuat Aplikasi</h1>' +
-            '<p style="font-size: 12px; opacity: 0.8;">Browser Anda mungkin tidak kompatibel atau koneksi terputus. Silakan gunakan Chrome atau Safari terbaru.</p>' +
-            '<button onclick="window.location.reload()" style="background: white; color: #991b1b; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">MUAT ULANG</button>' +
+        var fallback = document.getElementById('loading-fallback');
+        if (fallback) {
+          fallback.innerHTML = '<div style="background: #991b1b; padding: 40px; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 400px;">' +
+            '<h1 style="font-weight: 900; text-transform: uppercase; margin-bottom: 8px;">Gagal Memuat</h1>' +
+            '<p style="font-size: 12px; opacity: 0.8; margin-bottom: 24px; line-height: 1.6;">Browser (Hola/Bawaan HP) mungkin tidak mendukung sistem ini. Silakan gunakan <b>Google Chrome</b> atau <b>Safari</b> terbaru.</p>' +
+            '<button onclick="window.location.reload()" style="background: white; color: #991b1b; border: none; padding: 16px; border-radius: 12px; font-weight: 900; font-size: 11px; width: 100%; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em;">MUAT ULANG</button>' +
+            '<p style="font-size: 9px; opacity: 0.4; margin-top: 16px; text-transform: uppercase;">Error: Module Load Timeout</p>' +
             '</div>';
         }
       }, 15000);

@@ -48,8 +48,13 @@ import { Toaster } from 'sonner';
 
 export function App() {
   const [view, setView] = useState<View>(() => {
-    const saved = localStorage.getItem('ARCUS_CURRENT_VIEW');
-    return (saved as View) || 'LANDING';
+    try {
+      const saved = localStorage.getItem('ARCUS_CURRENT_VIEW');
+      return (saved as View) || 'LANDING';
+    } catch (e) {
+      console.warn("View restoration failed:", e);
+      return 'LANDING';
+    }
   });
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -81,15 +86,16 @@ export function App() {
     };
 
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
-        return { 
-          ...parsed, 
-          isDataLoaded: false,
-          notifications: parsed.notifications || []
-        };
+      if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return { 
+            ...parsed, 
+            isDataLoaded: false,
+            notifications: parsed.notifications || []
+          };
+        }
       }
     } catch (e) {
       console.error("Local storage recovery failed:", e);
@@ -123,7 +129,11 @@ export function App() {
   };
 
   const fetchCloudData = async (manual = false) => {
-    if (!db) return;
+    if (!db) {
+      console.warn("Fetch Cloud Data skipped: Database not initialized.");
+      setAppState(prev => ({ ...prev, isDataLoaded: true }));
+      return;
+    }
     if (manual) setIsSyncing(true);
     
     try {
@@ -278,76 +288,102 @@ export function App() {
   // Handle URL Parameters for Sharing
   useEffect(() => {
     const handleDeepLink = async () => {
-      const hash = window.location.hash;
-      if (hash.includes('type=recovery')) {
-        setView('RESET_PASSWORD');
-        return;
-      }
-
-      const params = new URLSearchParams(window.location.search);
-      const eventId = params.get('event');
-      const registerId = params.get('register');
-      const viewParam = params.get('view');
-
-      if (!eventId && !registerId) return;
-
-      if (!db) {
-        console.log("Deep link validation skipped: Database not ready.");
-        return;
-      }
-
-      setIsCheckingLink(true);
-
-      // Safety timeout to prevent infinite loading if something goes wrong
-      const safetyTimeout = setTimeout(() => {
-        setIsCheckingLink(false);
-      }, 5000);
-
       try {
-        const idToFetch = eventId || registerId;
-        if (idToFetch) {
-          console.log("Deep link validation starting for:", idToFetch);
-          const eventSnap = await getDoc(doc(db, 'events', idToFetch));
+        const hash = window.location.hash || '';
+        if (hash.includes('type=recovery')) {
+          setView('RESET_PASSWORD');
+          return;
+        }
 
-          if (eventSnap.exists()) {
-            console.log("Deep link data found in Firestore.");
-            const eventRecord = eventSnap.data();
-            
-            // Safety: Ensure we have data structure
-            if (!eventRecord || !eventRecord.data) {
-                throw new Error("Struktur data event tidak valid");
+        // Robust URL Parameter extraction
+        const search = window.location.search;
+        let eventId = null;
+        let registerId = null;
+        let viewParam = null;
+
+        if (search) {
+          try {
+            const params = new URLSearchParams(search);
+            eventId = params.get('event');
+            registerId = params.get('register');
+            viewParam = params.get('view');
+          } catch (e) {
+            console.warn("URLSearchParams fallback used");
+            const pairs = search.substring(1).split('&');
+            for (const pair of pairs) {
+              const [key, value] = pair.split('=');
+              if (key === 'event') eventId = decodeURIComponent(value || '');
+              if (key === 'register') registerId = decodeURIComponent(value || '');
+              if (key === 'view') viewParam = decodeURIComponent(value || '');
             }
-            
-            const targetEvent = eventRecord.data as ArcheryEvent;
-            // Ensure ID matches
-            targetEvent.id = eventRecord.id || targetEvent.id;
-            
-            // Inject into state and activate
-            setAppState(prev => {
-              const exists = prev.events.some(e => e.id === targetEvent.id);
-              return { 
-                ...prev, 
-                events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
-                activeEventId: targetEvent.id
-              };
-            });
-
-            // Navigate based on view
-            if (registerId) setView('REGISTER_PARTICIPANT');
-            else if (viewParam === 'live') setView('PUBLIC_LIVE');
-            else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
-            else setView('PUBLIC_EVENT_INFO');
-            
-          } else {
-            console.warn("Shared event not found in cloud:", idToFetch);
-            pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
           }
         }
+
+        if (!eventId && !registerId) return;
+
+        if (!db) {
+          console.warn("Deep link validation skipped: Database not ready.");
+          // Still try to find it in local events if possible
+          if (eventId) {
+            setAppState(prev => {
+              const local = prev.events.find(e => e.id === eventId);
+              if (local) {
+                return { ...prev, activeEventId: eventId };
+              }
+              return prev;
+            });
+          }
+          return;
+        }
+
+        setIsCheckingLink(true);
+
+        // Safety timeout to prevent infinite loading if something goes wrong
+        const safetyTimeout = setTimeout(() => {
+          setIsCheckingLink(false);
+        }, 8000);
+
+        try {
+          const idToFetch = eventId || registerId;
+          if (idToFetch) {
+            console.log("Deep link validation starting for:", idToFetch);
+            const eventSnap = await getDoc(doc(db, 'events', idToFetch));
+
+            if (eventSnap.exists()) {
+              console.log("Deep link data found in Firestore.");
+              const eventRecord = eventSnap.data();
+              
+              if (eventRecord && eventRecord.data) {
+                const targetEvent = eventRecord.data as ArcheryEvent;
+                targetEvent.id = eventRecord.id || targetEvent.id;
+                
+                setAppState(prev => {
+                  const exists = prev.events.some(e => e.id === targetEvent.id);
+                  return { 
+                    ...prev, 
+                    events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
+                    activeEventId: targetEvent.id
+                  };
+                });
+
+                if (registerId) setView('REGISTER_PARTICIPANT');
+                else if (viewParam === 'live') setView('PUBLIC_LIVE');
+                else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
+                else setView('PUBLIC_EVENT_INFO');
+              }
+            } else {
+              console.warn("Shared event not found in cloud:", idToFetch);
+              pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan.", "WARNING");
+            }
+          }
+        } catch (err) {
+          console.error("Deep link fetch error:", err);
+        } finally {
+          setIsCheckingLink(false);
+          clearTimeout(safetyTimeout);
+        }
       } catch (err) {
-        console.error("Deep link fetch error:", err);
-      } finally {
-        setIsCheckingLink(false);
-        clearTimeout(safetyTimeout);
+        console.error("Critical handleDeepLink error:", err);
       }
     };
 
@@ -670,6 +706,38 @@ export function App() {
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);
+
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error("Global Error Caught:", event.error);
+      setRuntimeError(event.error?.message || "Unknown Runtime Error");
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  if (runtimeError) {
+    return (
+      <div className="fixed inset-0 bg-red-950 flex flex-col items-center justify-center p-6 text-white z-[99999]">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-6 animate-pulse" />
+        <h1 className="text-2xl font-black uppercase mb-2">Terjadi Kesalahan Aplikasi</h1>
+        <p className="text-[10px] opacity-60 uppercase mb-8 text-center max-w-md">
+          Aplikasi mengalami kegagalan saat memuat komponen. Silakan muat ulang atau buka dengan Chrome/Safari.
+        </p>
+        <div className="bg-black/40 p-4 rounded-xl font-mono text-[9px] w-full max-w-lg mb-8 overflow-auto max-h-40 border border-red-900/50">
+          {runtimeError}
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="bg-white text-red-950 px-8 py-3 rounded-2xl font-black uppercase text-xs hover:bg-slate-200"
+        >
+          Muat Ulang Aplikasi
+        </button>
+      </div>
+    );
+  }
 
   // Safety rendering: If we are checking a deep link or initial cloud fetch hasn't finished,
   // show a minimal splash to prevent component crashes from undefined data.

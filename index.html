@@ -12,7 +12,25 @@
     <title>Arcus Digital | Archery Scoring System</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-center; color: white; font-family: sans-serif; gap: 20px; z-index: -1;">
+        <div style="width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #f43f5e; border-radius: 50%; animate: spin 1s linear infinite;"></div>
+        <p style="font-size: 10px; opacity: 0.5; letter-spacing: 0.2em; text-transform: uppercase;">Aplikasi sedang dimuat...</p>
+      </div>
+    </div>
+    <script>
+      // Fallback if the module doesn't load after 10 seconds
+      setTimeout(function() {
+        var root = document.getElementById('root');
+        if (root && root.innerHTML.includes('Aplikasi sedang dimuat')) {
+          root.innerHTML = '<div style="position: fixed; inset: 0; background: #991b1b; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-family: sans-serif; gap: 20px; padding: 20px; text-align: center;">' +
+            '<h1 style="font-weight: 900; text-transform: uppercase;">Gagal Memuat Aplikasi</h1>' +
+            '<p style="font-size: 12px; opacity: 0.8;">Browser Anda mungkin tidak kompatibel atau koneksi terputus. Silakan gunakan Chrome atau Safari terbaru.</p>' +
+            '<button onclick="window.location.reload()" style="background: white; color: #991b1b; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">MUAT ULANG</button>' +
+            '</div>';
+        }
+      }, 15000);
+    </script>
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

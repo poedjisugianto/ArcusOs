@@ -76,9 +76,9 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(a => 
-        a.name.toLowerCase().includes(term) || 
-        a.club.toLowerCase().includes(term) ||
-        `${a.targetNo}${a.position}`.toLowerCase().includes(term)
+        (a.name || '').toLowerCase().includes(term) || 
+        (a.club || '').toLowerCase().includes(term) ||
+        `${a.targetNo || ''}${a.position || ''}`.toLowerCase().includes(term)
       );
     }
 

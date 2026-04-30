@@ -226,13 +226,14 @@ const ArcherList: React.FC<Props> = ({
   }, [archers]);
 
   const filtered = useMemo(() => {
-    return archers
+    return (archers || [])
       .filter((a) => {
-        const search = searchTerm.toLowerCase();
+        if (!a) return false;
+        const search = (searchTerm || "").toLowerCase();
         const matchesSearch =
-          a.name.toLowerCase().includes(search) ||
-          a.club.toLowerCase().includes(search) ||
-          (a.targetNo + a.position).toLowerCase().includes(search);
+          (a.name || "").toLowerCase().includes(search) ||
+          (a.club || "").toLowerCase().includes(search) ||
+          (String(a.targetNo || "") + String(a.position || "")).toLowerCase().includes(search);
 
         const matchesCategory =
         (activeCategory as any) === "ALL" || a.category === activeCategory;
@@ -246,11 +247,11 @@ const ArcherList: React.FC<Props> = ({
         const wB = b.wave || 1;
         if (wA !== wB) return wA - wB;
 
-        const tA = a.targetNo === 0 ? 9999 : a.targetNo;
-        const tB = b.targetNo === 0 ? 9999 : b.targetNo;
+        const tA = (a.targetNo === 0 || a.targetNo === undefined) ? 9999 : a.targetNo;
+        const tB = (b.targetNo === 0 || b.targetNo === undefined) ? 9999 : b.targetNo;
         if (tA !== tB) return tA - tB;
 
-        return a.position.localeCompare(b.position);
+        return (a.position || "").localeCompare(b.position || "");
       });
   }, [archers, activeCategory, searchTerm, filterWave, filterClub]);
 
@@ -884,7 +885,7 @@ const ArcherList: React.FC<Props> = ({
                   </td>
                   <td className="p-4 text-slate-500 font-medium">{a.club}</td>
                   <td className="p-4 text-slate-400 uppercase font-black tracking-tighter">
-                    {CATEGORY_LABELS[a.category] || a.category.replace("ADULT_", "")}
+                    {CATEGORY_LABELS[a.category as CategoryType] || (a.category || "").replace("ADULT_", "")}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">

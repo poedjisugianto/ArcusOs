@@ -19,11 +19,13 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
   const [searchTerm, setSearchTerm] = useState('');
 
   const filtered = useMemo(() => {
-    return officials.filter(o => 
-      o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.club.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.email.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => a.name.localeCompare(b.name));
+    return (officials || []).filter(o => 
+      !o ? false : (
+        (o.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        (o.club || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        (o.email || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+      )
+    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [officials, searchTerm]);
 
   const handlePrint = () => {
@@ -89,9 +91,9 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-black text-xs">
-                        {o.name.charAt(0)}
+                        {(o.name || '?').charAt(0).toUpperCase()}
                       </div>
-                      <span className="text-xs font-black text-slate-900 uppercase italic font-oswald">{o.name}</span>
+                      <span className="text-xs font-black text-slate-900 uppercase italic font-oswald">{o.name || 'TANPA NAMA'}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">{o.club}</td>

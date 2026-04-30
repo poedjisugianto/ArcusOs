@@ -21,9 +21,9 @@ interface Props {
 const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
   const stats = useMemo(() => {
     const totalEvents = events.length;
-    const totalArchers = events.reduce((acc, e) => acc + e.archers.length, 0);
+    const totalArchers = events.reduce((acc, e) => acc + (e.archers || []).length, 0);
     const totalRevenue = events.reduce((acc, e) => 
-      acc + e.archers.reduce((a, arc) => a + (arc.totalPaid || 0), 0), 0
+      acc + (e.archers || []).reduce((a, arc) => a + (arc.totalPaid || 0), 0), 0
     );
     const activeEvents = events.filter(e => e.status === 'ONGOING').length;
     const upcomingEvents = events.filter(e => e.status === 'UPCOMING').length;
@@ -31,8 +31,8 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
 
     // Chart data: Archers per event
     const archerData = events.slice(0, 5).map(e => ({
-      name: e.settings.tournamentName.length > 15 ? e.settings.tournamentName.substring(0, 12) + '...' : e.settings.tournamentName,
-      archers: e.archers.length,
+      name: (e.settings?.tournamentName || 'UNNAMED').length > 15 ? (e.settings?.tournamentName || 'UNNAMED').substring(0, 12) + '...' : (e.settings?.tournamentName || 'UNNAMED'),
+      archers: (e.archers || []).length,
       id: e.id
     }));
 
@@ -211,8 +211,8 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2">
-                      <Users className="w-3 h-3 text-slate-300" />
-                      <span className="text-xs font-bold text-slate-700">{event.archers.length}</span>
+                       <Users className="w-3 h-3 text-slate-300" />
+                       <span className="text-xs font-bold text-slate-700">{(event.archers || []).length}</span>
                     </div>
                   </td>
                   <td className="px-8 py-5">

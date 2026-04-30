@@ -215,9 +215,9 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
     if (!searchTerm) return leaderBoard;
     const search = searchTerm.toLowerCase();
     return leaderBoard.filter(a => 
-      a.name.toLowerCase().includes(search) || 
-      a.club.toLowerCase().includes(search) ||
-      (a.targetNo + a.position).toLowerCase().includes(search)
+      (a.name || '').toLowerCase().includes(search) || 
+      (a.club || '').toLowerCase().includes(search) ||
+      (String(a.targetNo || '') + String(a.position || '')).toLowerCase().includes(search)
     );
   }, [leaderBoard, searchTerm]);
 
@@ -308,7 +308,7 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
                        onClick={() => setActiveSession(sess)} 
                        className={`px-5 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${activeSession === sess ? 'bg-slate-900 border-slate-900 text-white' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
                       >
-                        {sess === 'QUAL' ? 'KUALIFIKASI' : sess.replace('ELIM_', 'ELIMINASI TOP ')}
+                        {sess === 'QUAL' ? 'KUALIFIKASI' : (sess || '').replace('ELIM_', 'ELIMINASI TOP ')}
                       </button>
                     ))}
                  </div>

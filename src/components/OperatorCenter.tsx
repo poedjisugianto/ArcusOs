@@ -46,8 +46,8 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
 
   const filteredArchers = useMemo(() => {
     return event.archers.filter(a => 
-      (a.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-       a.club.toLowerCase().includes(searchTerm.toLowerCase())) &&
+      ((a.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+       (a.club || '').toLowerCase().includes(searchTerm.toLowerCase())) &&
       (selectedCategory === 'ALL' || a.category === selectedCategory)
     );
   }, [event.archers, searchTerm, selectedCategory]);
@@ -225,7 +225,7 @@ const OperatorCenter: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
                            >
                               {availableSessions.map(s => (
                                 <option key={s} value={s}>
-                                  {s === 'QUAL' ? 'KUALIFIKASI' : s.replace('ELIM_', 'ELIMINASI TOP ')}
+                                  {s === 'QUAL' ? 'KUALIFIKASI' : (s || '').replace('ELIM_', 'ELIMINASI TOP ')}
                                 </option>
                               ))}
                            </select>

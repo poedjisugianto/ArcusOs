@@ -32,10 +32,8 @@ export default function EntryList({ event, onBack, onRefresh, isSyncing }: Props
 
   const filteredData = useMemo(() => {
     return currentList.filter(item => {
-      const name = item.name || '';
-      const club = item.club || '';
-      const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                           club.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           (item.club || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = viewMode === 'OFFICIALS' || activeCategory === 'ALL' || item.category === activeCategory;
       return matchesSearch && matchesCategory;
     });

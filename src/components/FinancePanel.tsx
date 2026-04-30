@@ -34,7 +34,7 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
 
   // Use unique participants to avoid double counting revenue/fees
   const uniqueParticipants = Array.from(
-    new Map([...event.registrations, ...event.archers].map(p => [p.id, p])).values()
+    new Map([...(event.registrations || []), ...(event.archers || [])].map(p => [p.id, p])).values()
   );
   
   const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);
@@ -193,7 +193,7 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
               Total Pendaftar: {uniqueParticipants.length}
             </div>
             <div className="flex items-center gap-2 bg-orange-50 text-orange-600 px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-orange-100">
-              Menunggu Konfirmasi: {event.registrations.filter(reg => reg.status !== 'APPROVED').length}
+              Menunggu Konfirmasi: {(event.registrations || []).filter(reg => reg.status !== 'APPROVED').length}
             </div>
           </div>
         </div>
@@ -211,7 +211,7 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {event.registrations.filter(reg => reg.status !== 'APPROVED').map(reg => (
+              {(event.registrations || []).filter(reg => reg.status !== 'APPROVED').map(reg => (
                 <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-8 py-6">
                     <p className="font-bold text-slate-900 uppercase font-oswald italic leading-none">{reg.name}</p>

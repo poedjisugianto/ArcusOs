@@ -166,8 +166,8 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {state.events.filter(e => e.settings.tournamentName.toLowerCase().includes(searchTerm.toLowerCase())).map(event => {
-                  const organizer = state.users.find(u => u.id === event.settings.organizerId);
+                {state.events.filter(e => (e.settings.tournamentName || '').toLowerCase().includes((searchTerm || '').toLowerCase())).map(event => {
+                  const organizer = state.users.find(u => u.id === (event.settings.organizerId || ''));
                   const activeCategories = Object.keys(event.settings.categoryConfigs || {}).map(cat => CATEGORY_LABELS[cat as CategoryType]);
                   
                   return (
@@ -263,9 +263,9 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {state.users.filter(u => 
-                  u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                  u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  u.phone?.includes(searchTerm)
+                  (u.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                  (u.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+                  (u.phone || '').includes(searchTerm || '')
                 ).map(user => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-6">

@@ -24,12 +24,8 @@ service cloud.firestore {
         request.auth.token.email == 'poedji.sugianto@gmail.com' ||
         request.auth.token.email == 'admin@arcus.id' ||
         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'superadmin'])
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'ADMIN', 'superadmin'])
       );
-    }
-
-    function isVerified() {
-      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.email == 'poedji.sugianto@gmail.com');
     }
 
     function isValidId(id) {
@@ -44,61 +40,34 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isPublicRegistration() {
+      // Allow public update of registrations array IF it's a valid increment
+      return incoming().diff(existing()).affectedKeys().hasOnly(['data', 'updatedAt']) &&
+             incoming().data.registrations.size() > existing().data.registrations.size();
+    }
+
     // --- Profiles ---
     match /profiles/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(userId) && (
-                      isAdmin() || (
-                        incoming().keys().hasAll(['id', 'data']) &&
-                        incoming().id == userId &&
-                        // Allow basic roles on creation
-                        (incoming().data.role == 'PARTICIPANT' || incoming().data.role == 'ORGANIZER' || !('role' in incoming().data))
-                      )
-                    );
-      allow update: if (isOwner(userId) || isAdmin()) &&
-                      // If user is non-admin, they can't change their role
-                      (isAdmin() || 
-                       !('data' in incoming()) || 
-                       !('data' in existing()) ||
-                       !('role' in incoming().data) ||
-                       !('role' in existing().data) ||
-                       incoming().data.role == existing().data.role);
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
     // --- Events ---
     match /events/{eventId} {
-      allow read: if true; // Public for browsing events and live scores
-      allow create: if isSignedIn() && (
-                      isAdmin() || 
-                      (incoming().userId == request.auth.uid) || 
-                      (incoming().ownerId == request.auth.uid)
-                    );
-      allow update: if (isSignedIn() && (
-                      isAdmin() || 
-                      (existing().userId == request.auth.uid) || 
-                      (existing().ownerId == request.auth.uid)
-                    )) || (
-                      // PUBLIC REGISTRATION HOOK: Allow public to add registrations via arrayUnion safely
-                      // We limit what they can touch
-                      incoming().diff(existing()).affectedKeys().hasOnly(['data', 'updatedAt']) &&
-                      incoming().data.keys().hasAll(existing().data.keys()) &&
-                      // Basic check: they cannot decrease the count of archers or registrations
-                      incoming().data.registrations.size() >= existing().data.registrations.size() &&
-                      incoming().data.archers.size() >= existing().data.archers.size()
-                    );
-      allow delete: if isSignedIn() && (
-                      isAdmin() || 
-                      (existing().userId == request.auth.uid) || 
-                      (existing().ownerId == request.auth.uid)
-                    );
+      allow read: if true; 
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || 
+                      (isSignedIn() && (existing().userId == request.auth.uid || existing().ownerId == request.auth.uid)) ||
+                      isPublicRegistration();
+      allow delete: if isAdmin() || 
+                      (isSignedIn() && (existing().userId == request.auth.uid || existing().ownerId == request.auth.uid));
 
-      // Subcollection for more reliable public registrations
       match /submissions/{subId} {
-        allow read: if true;
-        allow create: if true; // OPEN FOR PUBLIC REGISTRATION
-        allow update, delete: if isAdmin() || (isSignedIn() && existing().email == request.auth.token.email);
+        allow read, create: if true;
+        allow update, delete: if isAdmin();
       }
     }
 

@@ -281,7 +281,7 @@ const EliminationPanel: React.FC<Props> = ({ event, onUpdateMatches, onBack }) =
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeCategory === cat ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}
             >
-              {cat.replace('ADULT_', '').replace('_', ' ')}
+              {(cat || '').replace('ADULT_', '').replace('_', ' ')}
             </button>
           ))}
         </div>

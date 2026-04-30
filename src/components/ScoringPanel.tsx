@@ -24,18 +24,18 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
   const [showScanner, setShowScanner] = useState(false);
 
   const availableCategories = useMemo(() => {
-    return Array.from(new Set(state.archers.map(a => a.category)));
+    return Array.from(new Set((state.archers || []).map(a => a.category)));
   }, [state.archers]);
 
   const archersAtTarget = useMemo(() => {
-    return state.archers.filter(a => 
+    return (state.archers || []).filter(a => 
       a.targetNo === selectedTarget && 
       (selectedCategory === 'ALL' || a.category === selectedCategory)
     );
   }, [state.archers, selectedTarget, selectedCategory]);
 
   const selectedArcher = useMemo(() => {
-    return state.archers.find(a => a.id === selectedArcherId);
+    return (state.archers || []).find(a => a.id === selectedArcherId);
   }, [state.archers, selectedArcherId]);
 
   const config = selectedArcher ? (state.settings.categoryConfigs || {})[selectedArcher.category as CategoryType] : null;
@@ -54,7 +54,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
         setTempArrows(JSON.parse(savedDraft));
       } else {
         // 2. If no draft, check if there's already a SAVED score
-        const existing = state.scores
+        const existing = (state.scores || [])
           .filter(s => {
             if (s.isDeleted) return false;
             const norm = (s.sessionId === '1' || s.sessionId === '2' || !s.sessionId) ? 'QUAL' : s.sessionId;
@@ -96,7 +96,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
       if (showScanner) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      const key = e.key.toLowerCase();
+      const key = (e.key || '').toLowerCase();
       
       // Numbers 1-9
       if (/^[1-9]$/.test(key)) {
@@ -366,7 +366,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
                 <div className="flex items-center gap-2">
                    <div className="flex gap-0.5 overflow-hidden max-w-[60px]">
                       {Array.from({ length: (state.settings.categoryConfigs || {})[a.category as CategoryType]?.ends || 6 }).map((_, i) => (
-                         <div key={i} className={`w-1 h-1 rounded-full shrink-0 ${state.scores.find(s => s.archerId === a.id && s.endIndex === i && !s.isDeleted) ? 'bg-slate-900' : 'bg-slate-200'}`} />
+                         <div key={i} className={`w-1 h-1 rounded-full shrink-0 ${(state.scores || []).find(s => s.archerId === a.id && s.endIndex === i && !s.isDeleted) ? 'bg-slate-900' : 'bg-slate-200'}`} />
                       ))}
                    </div>
                 </div>
@@ -392,7 +392,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
               <div className="space-y-6 text-center">
                   <div className="flex items-center justify-center gap-1.5 overflow-x-auto no-scrollbar pb-2">
                     {Array.from({ length: config?.ends || 7 }).map((_, i) => {
-                      const scoreForEnd = state.scores.find(s => s.archerId === selectedArcherId && s.endIndex === i && !s.isDeleted);
+                      const scoreForEnd = (state.scores || []).find(s => s.archerId === selectedArcherId && s.endIndex === i && !s.isDeleted);
                       return (
                         <button 
                           key={i} 

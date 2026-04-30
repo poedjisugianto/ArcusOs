@@ -79,8 +79,8 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
   const filteredEvents = useMemo(() => {
     let result = events.filter(e => {
-      const matchesSearch = e.settings.tournamentName.toLowerCase().includes(eventSearch.toLowerCase()) ||
-        (e.settings.location?.toLowerCase() || '').includes(eventSearch.toLowerCase());
+      const matchesSearch = (e.settings.tournamentName || '').toLowerCase().includes((eventSearch || '').toLowerCase()) ||
+        (e.settings.location || '').toLowerCase().includes((eventSearch || '').toLowerCase());
       
       const matchesStatus = statusFilter === 'ALL' || e.status === statusFilter;
       
@@ -351,7 +351,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                     userRole === UserRole.ORGANIZER ? 'bg-arcus-sun/20 border-arcus-sun/30 text-arcus-sun' :
                     'bg-white/10 border-white/20 text-slate-300'
                     }`}>
-                    {userRole.replace('_', ' ')}
+                    {(userRole || '').replace('_', ' ')}
                     </div>
                 )}
                 {onLogout && (

@@ -40,8 +40,8 @@ export const generateICalFile = (event: { title: string; description: string; lo
     `DTSTART:${start}`,
     `DTEND:${end}`,
     `SUMMARY:${event.title}`,
-    `DESCRIPTION:${event.description.replace(/\n/g, '\\n')}`,
-    `LOCATION:${event.location}`,
+    `DESCRIPTION:${(event.description || '').replace(/\n/g, '\\n')}`,
+    `LOCATION:${event.location || ''}`,
     'END:VEVENT',
     'END:VCALENDAR'
   ].join('\r\n');
@@ -51,7 +51,7 @@ export const generateICalFile = (event: { title: string; description: string; lo
   
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
+  link.setAttribute('download', `${(event.title || 'event').replace(/\s+/g, '_')}.ics`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -255,7 +255,7 @@ export default function ResultsPanel({ state, onResetScores, onBack }: Props) {
                     onClick={() => setActiveSession(sess)}
                     className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${activeSession === sess ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'}`}
                   >
-                    {sess === 'QUAL' ? 'KUALIFIKASI' : sess.replace('ELIM_', 'ELIMINASI TOP ')}
+                    {sess === 'QUAL' ? 'KUALIFIKASI' : (sess || '').replace('ELIM_', 'ELIMINASI TOP ')}
                   </button>
                 ))}
               </div>

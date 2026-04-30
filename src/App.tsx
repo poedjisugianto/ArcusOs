@@ -13,7 +13,7 @@ import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, App
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import AdminPanel from './components/AdminPanel';
@@ -181,8 +181,8 @@ export function App() {
       const results = await Promise.all(fetchJobs);
       const configSnap = results[0];
       const eventsSnap = results[1];
-      const profilesSnap = results[2];
-      const submissionsSnap = results[3];
+      const submissionsSnap = results[2];
+      const profilesSnap = results.length > 3 ? results[3] : null;
 
       const cloudSettings = configSnap?.exists?.() ? configSnap.data().data : null;
       
@@ -270,6 +270,16 @@ export function App() {
   useEffect(() => {
     fetchCloudData().catch(err => console.error("Initial fetch error:", err));
   }, [appState.currentUser?.id, appState.activeEventId]);
+
+  // AUTO-SYNC PENDING CHANGES: Every 30 seconds if anything is pending
+  useEffect(() => {
+    if (!hasPendingChanges || isSyncing) return;
+    const interval = setInterval(() => {
+      console.log("Auto-syncing pending changes...");
+      syncCloudData(false);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [hasPendingChanges, isSyncing]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
 
@@ -967,8 +977,16 @@ export function App() {
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : (hasPendingChanges ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500')}`} />
               <span className="text-[9px] font-black uppercase tracking-widest">
-                {isSyncing ? 'Sinkronisasi Cloud...' : (hasPendingChanges ? 'Data belum sinkron...' : 'Cloud Terhubung')}
+                {isSyncing ? 'Sinkronisasi Cloud...' : (hasPendingChanges ? 'Menunggu Sinkronisasi...' : 'Cloud Terhubung')}
               </span>
+              {hasPendingChanges && !isSyncing && (
+                <button 
+                  onClick={() => syncCloudData(true)}
+                  className="ml-2 bg-white/20 hover:bg-white/40 px-2 py-0.5 rounded text-[8px] font-black transition-all active:scale-95 flex items-center gap-1"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" /> SINKRON SEKARANG
+                </button>
+              )}
             </div>
           )}
           {lastSync && (
@@ -1508,15 +1526,15 @@ export function App() {
         )}
         {view === 'ARCHERS' && activeEvent && (
           <ArcherList 
-            archers={activeEvent.archers} 
+            archers={activeEvent.archers || []} 
             archersPerTarget={activeEvent.settings.archersPerTarget} 
             totalTargets={activeEvent.settings.totalTargets} 
             settings={activeEvent.settings}
             eventId={activeEvent.id}
             globalSettings={appState.globalSettings}
-            onAdd={(a) => handleUpdateEvent(activeEvent.id, { archers: [...activeEvent.archers, a] })} 
-            onUpdate={(a) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.map(arc => arc.id === a.id ? a : arc) })} 
-            onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.filter(a => a.id !== id) })} 
+            onAdd={(a) => handleUpdateEvent(activeEvent.id, { archers: [...(activeEvent.archers || []), a] })} 
+            onUpdate={(a) => handleUpdateEvent(activeEvent.id, { archers: (activeEvent.archers || []).map(arc => arc.id === a.id ? a : arc) })} 
+            onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: (activeEvent.archers || []).filter(a => a.id !== id) })} 
             onBulkUpdate={(updated) => handleUpdateEvent(activeEvent.id, { archers: updated })} 
             onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
             onRefreshData={() => fetchCloudData(true)}
@@ -1527,17 +1545,17 @@ export function App() {
         )}
         {view === 'ID_CARD_EDITOR' && activeEvent && (
           <IdCardEditor 
-            archers={activeEvent.archers} 
+            archers={activeEvent.archers || []} 
             settings={activeEvent.settings} 
             onBack={() => setView('ARCHERS')} 
           />
         )}
         {view === 'OFFICIALS' && activeEvent && (
           <OfficialList 
-            officials={activeEvent.archers.filter(a => a.category === CategoryType.OFFICIAL)}
+            officials={(activeEvent.archers || []).filter(a => a.category === CategoryType.OFFICIAL)}
             settings={activeEvent.settings}
-            onUpdate={(o) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.map(arc => arc.id === o.id ? o : arc) })}
-            onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: activeEvent.archers.filter(a => a.id !== id) })}
+            onUpdate={(o) => handleUpdateEvent(activeEvent.id, { archers: (activeEvent.archers || []).map(arc => arc.id === o.id ? o : arc) })}
+            onRemove={(id) => handleUpdateEvent(activeEvent.id, { archers: (activeEvent.archers || []).filter(a => a.id !== id) })}
             onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
             onBack={() => setView('EVENT_ADMIN')}
           />
@@ -1644,11 +1662,23 @@ export function App() {
             // NEW: Directly push to a public submissions collection FIRST
             // This works even if the API lags, ensuring the data is in Cloud immediately
             if (db) {
+              // 1. Mirrored subcollection for total visibility (Quest 4 support)
               await setDoc(doc(db, 'events', activeEvent.id, 'submissions', r.id), {
                 ...r,
                 submittedAt: new Date().toISOString()
               });
               console.log("Submission mirrored to public cloud subcollection.");
+
+              // 2. Direct arrayUnion attempt (Quest 4 support - frictionless)
+              try {
+                await updateDoc(doc(db, 'events', activeEvent.id), {
+                  "data.registrations": arrayUnion(r),
+                  updatedAt: new Date().toISOString()
+                });
+                console.log("Direct arrayUnion registration successful!");
+              } catch (ue) {
+                console.warn("Direct arrayUnion failed (expected for non-authenticated if rules tight), falling back to API:", ue);
+              }
             }
 
             const response = await fetch('/api/register-participant', {

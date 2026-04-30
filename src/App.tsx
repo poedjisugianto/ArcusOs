@@ -503,9 +503,6 @@ export function App() {
 
     const unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
       if (docSnap.exists()) {
-        // IMPROVEMENT: Use metadata to check if the change is local or remote
-        // If it's a remote change AND we don't have pending changes, update local state
-        // OR if it's a remote change and we ARE in a live view (LiveBoard), always sync to keep board updated
         const isRemoteChange = !docSnap.metadata.hasPendingWrites;
         const isLiveView = view === 'LIVE' || view === 'PUBLIC_LIVE';
         
@@ -514,6 +511,7 @@ export function App() {
           const cloudEventData = docSnap.data().data as ArcheryEvent;
           const cloudStatus = docSnap.data().status;
           
+          isSyncingFromCloud.current = true;
           setAppState(prev => ({
             ...prev,
             events: prev.events.map(e => 
@@ -522,6 +520,7 @@ export function App() {
                 : e
             )
           }));
+          setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
         }
       }
     }, (error) => {
@@ -537,7 +536,9 @@ export function App() {
     const unsubConfig = onSnapshot(doc(db, 'systemConfigs', 'global'), (docSnap) => {
       if (docSnap.exists() && !hasPendingChanges) {
         const cloudSettings = docSnap.data().data as GlobalSettings;
+        isSyncingFromCloud.current = true;
         setAppState(prev => ({ ...prev, globalSettings: cloudSettings }));
+        setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       }
     });
     return () => unsubConfig();
@@ -551,7 +552,7 @@ export function App() {
       syncCloudData(false).then(() => {
         setHasPendingChanges(false);
       });
-    }, 1500); 
+    }, 300); 
     return () => clearTimeout(debounce);
   }, [appState.globalSettings, appState.currentUser, appState.events, hasPendingChanges]);
 /*
@@ -961,10 +962,10 @@ export function App() {
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
       <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
       {/* Global Cloud Sync Status Bar */}
-      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between transition-all duration-500 border-b shadow-sm print:hidden ${
+      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1 flex items-center justify-between transition-all duration-500 border-b shadow-sm print:hidden ${
         !db ? 'bg-emerald-500 text-white border-emerald-600' :
         isSyncing ? 'bg-blue-600 text-white border-blue-700' :
-        hasPendingChanges ? 'bg-indigo-600 text-white border-indigo-700' :
+        hasPendingChanges ? 'bg-slate-800 text-white border-slate-700' :
         'bg-slate-900 text-white border-slate-800'
       }`}>
         <div className="flex items-center gap-3">
@@ -975,16 +976,16 @@ export function App() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : (hasPendingChanges ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500')}`} />
+              <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : (hasPendingChanges ? 'bg-blue-400 animate-pulse' : 'bg-emerald-500')}`} />
               <span className="text-[9px] font-black uppercase tracking-widest">
-                {isSyncing ? 'Sinkronisasi Cloud...' : (hasPendingChanges ? 'Menunggu Sinkronisasi...' : 'Cloud Terhubung')}
+                {isSyncing ? 'Sinkronisasi Cloud...' : (hasPendingChanges ? 'Menyimpan ke Cloud...' : 'Cloud Terhubung')}
               </span>
               {hasPendingChanges && !isSyncing && (
                 <button 
                   onClick={() => syncCloudData(true)}
-                  className="ml-2 bg-white/20 hover:bg-white/40 px-2 py-0.5 rounded text-[8px] font-black transition-all active:scale-95 flex items-center gap-1"
+                  className="ml-2 bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-[8px] font-black transition-all active:scale-95 flex items-center gap-1"
                 >
-                  <RefreshCw className="w-2.5 h-2.5" /> SINKRON SEKARANG
+                  <RefreshCw className="w-2.5 h-2.5" /> PAKSA SINKRON
                 </button>
               )}
             </div>

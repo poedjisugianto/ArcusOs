@@ -134,15 +134,27 @@ export function App() {
       const cloudSettings = configSnap.exists() ? configSnap.data().data : null;
       
       // 2. Fetch Events
-      const eventsSnap = await getDocs(collection(db, 'events'));
-      const cloudEvents = eventsSnap.docs.map(doc => {
-        const e = doc.data();
-        return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
-      });
+      let cloudEvents: any[] = [];
+      try {
+        const eventsSnap = await getDocs(collection(db, 'events'));
+        cloudEvents = eventsSnap.docs.map(doc => {
+          const e = doc.data();
+          return { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
+        });
+      } catch (err) {
+        console.warn("Could not fetch events:", err);
+      }
 
-      // 3. Profiles
-      const profilesSnap = await getDocs(collection(db, 'profiles'));
-      const cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
+      // 3. Profiles (Only for admins/organizers or if we have permission)
+      let cloudUsers: any[] = [];
+      if (appState.currentUser) {
+        try {
+          const profilesSnap = await getDocs(collection(db, 'profiles'));
+          cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
+        } catch (err) {
+          console.warn("Could not fetch profiles (restricted):", err);
+        }
+      }
       
       setAppState(prev => {
         // Merge strategy:
@@ -1445,9 +1457,10 @@ export function App() {
           <AdminPanel 
             eventId={activeEvent.id}
             settings={activeEvent.settings} 
+            status={activeEvent.status}
             scorerAccess={activeEvent.scorerAccess || []}
             isSuperAdmin={appState.currentUser?.isSuperAdmin}
-            onSave={(s) => handleUpdateEvent(activeEvent.id, { settings: s })} 
+            onSave={(s, status) => handleUpdateEvent(activeEvent.id, { settings: s, status: status || activeEvent.status })} 
             onUpdateScorers={(scorers) => handleUpdateEvent(activeEvent.id, { scorerAccess: scorers })}
             onClear={() => {}} 
             onDelete={() => handleDeleteEvent(activeEvent.id)} 

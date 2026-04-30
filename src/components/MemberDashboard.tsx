@@ -877,9 +877,9 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                         {event.status === 'DRAFT' ? (
                           <button 
                             onClick={() => onActivateEvent?.(event.id)} 
-                            className="col-span-2 px-10 py-4 bg-emerald-600 text-white hover:bg-emerald-700 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95"
+                            className="col-span-2 px-10 py-4 bg-arcus-red text-white hover:bg-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-red-200"
                           >
-                            <ShieldCheck className="w-5 h-5" /> AKTIVASI
+                            <Globe className="w-5 h-5" /> AKTIFKAN KE PUBLIK
                           </button>
                         ) : (
                           <button onClick={() => onManageEvent(event.id)} className={`col-span-2 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 ${event.settings.isPractice ? 'bg-teal-900 text-white hover:bg-black' : 'bg-slate-900 text-white hover:bg-arcus-red'}`}>

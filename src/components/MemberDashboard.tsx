@@ -805,7 +805,16 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                                <span className="bg-teal-50 text-teal-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-teal-100">Latihan</span>
                              )}
                              {event.status === 'DRAFT' && (
-                               <span className="bg-amber-50 text-amber-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-amber-100">DRAFT</span>
+                               <div className="group/tip relative flex items-center">
+                                 <span className="bg-amber-50 text-amber-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-amber-100 cursor-help flex items-center gap-1">
+                                   <Info className="w-2.5 h-2.5" /> DRAFT
+                                 </span>
+                                 <div className="absolute bottom-full mb-3 left-0 w-64 p-4 bg-slate-900 text-white rounded-2xl text-[10px] font-medium leading-relaxed shadow-2xl opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-[100] border border-white/10">
+                                   <p className="mb-2 font-black text-amber-400 uppercase tracking-widest">Status: Draf (Privat)</p>
+                                   <p className="italic">Event ini belum muncul di Landing Page publik. Klik <b>"Kelola"</b> lalu pilih <b>"Aktifkan Turnamen"</b> agar statusnya menjadi ACTIVE.</p>
+                                   <div className="absolute top-full left-6 w-3 h-3 bg-slate-900 rotate-45 -mt-1.5" />
+                                 </div>
+                               </div>
                              )}
                              {event.status === 'ACTIVE' && (
                                <span className="bg-arcus-red text-white text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest">LIVE NOW</span>

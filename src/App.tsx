@@ -126,20 +126,14 @@ export function App() {
     if (!db) return;
     if (manual) setIsSyncing(true);
     
-    // Safety: If we have pending local changes, don't overwrite with cloud data
-    // unless explicitly requested via manual refresh
-    if (hasPendingChanges && !manual) {
-      return;
-    }
-
     try {
       isSyncingFromCloud.current = true;
       
-      // 1. Fetch System Config
+      // 1. Fetch System Config (rarely changes, but good to have)
       const configSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
       const cloudSettings = configSnap.exists() ? configSnap.data().data : null;
       
-      // 2. Fetch Events (Only relevant ones if possible, but for now we pull list)
+      // 2. Fetch Events
       const eventsSnap = await getDocs(collection(db, 'events'));
       const cloudEvents = eventsSnap.docs.map(doc => {
         const e = doc.data();
@@ -150,23 +144,48 @@ export function App() {
       const profilesSnap = await getDocs(collection(db, 'profiles'));
       const cloudUsers = profilesSnap.docs.map(doc => doc.data().data);
       
-      setAppState(prev => ({
-        ...prev,
-        globalSettings: cloudSettings || prev.globalSettings,
-        events: cloudEvents.length > 0 ? cloudEvents : prev.events,
-        users: cloudUsers.length > 0 ? cloudUsers : prev.users,
-        isDataLoaded: true
-      }));
+      setAppState(prev => {
+        // Merge strategy:
+        // If we have manual refresh, or no pending changes, use cloud data as primary.
+        // If we have pending changes, keep local settings/stats for active event 
+        // but merge cloud registrations/archers.
+        const updatedEvents = cloudEvents.map(cloudEvent => {
+          const localEvent = prev.events.find(e => e.id === cloudEvent.id);
+          
+          if (localEvent && hasPendingChanges && !manual) {
+            // Keep local settings but take cloud registrations/archers which are atomic
+            // Also respect the status from cloud if it's not DRAFT anymore
+            return {
+              ...localEvent,
+              status: cloudEvent.status !== 'DRAFT' ? cloudEvent.status : localEvent.status,
+              registrations: cloudEvent.registrations || [],
+              archers: cloudEvent.archers || [],
+            };
+          }
+          return cloudEvent;
+        });
+
+        return {
+          ...prev,
+          globalSettings: cloudSettings || prev.globalSettings,
+          events: updatedEvents.length > 0 ? updatedEvents : prev.events,
+          users: cloudUsers.length > 0 ? cloudUsers : prev.users,
+          isDataLoaded: true
+        };
+      });
 
       setLastSync(new Date());
     } catch (err: any) { 
       console.error("Fetch Cloud Error:", err);
       if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
-      // Set to loaded even on error to allow app to use local state fallback
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
       setIsSyncing(false);
       isSyncingFromCloud.current = false;
+      if (manual) {
+        setHasPendingChanges(false);
+        pushNotification("Sinkronisasi Berhasil", "Data terbaru telah dimuat.", "SUCCESS");
+      }
     }
   };
 
@@ -355,19 +374,51 @@ export function App() {
         }, { merge: true });
       }
       
-      // 3. Sync Active Event (Sync all including practice)
+      // 3. Sync Active Event (Surgical updates to prevent overwriting cloud registrations)
       if (activeEvent) {
         const isAuthorizedAtCloud = appState.currentUser?.isSuperAdmin || 
                                    activeEvent.settings.organizerId === appState.currentUser?.id || 
                                    activeEvent.ownerId === appState.currentUser?.id;
                                    
         if (isAuthorizedAtCloud) {
-          await setDoc(doc(db, 'events', activeEvent.id), { 
-            id: activeEvent.id, 
-            userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
-            data: activeEvent,
-            updatedAt: new Date().toISOString() 
-          }, { merge: true });
+          const eventRef = doc(db, 'events', activeEvent.id);
+          
+          // Use surgical updates for settings and status to avoid overwriting 
+          // atomic registration/archer updates happening in the background via API
+          const updates: any = {
+            "id": activeEvent.id,
+            "userId": activeEvent.settings.organizerId || appState.currentUser?.id || null,
+            "status": activeEvent.status,
+            "updatedAt": new Date().toISOString(),
+            // Surgical data updates
+            "data.settings": activeEvent.settings,
+            "data.stats": activeEvent.stats || null,
+            "data.status": activeEvent.status, // keep in sync with top level
+            "data.categories": activeEvent.categories || [],
+            "data.scores": activeEvent.scores || [],
+            "data.logs": activeEvent.logs || []
+          };
+
+          // Only overwrite registrations/archers if we are in management views
+          // to prevent "race conditions" where two browsers sync at same time
+          const isManagingPeople = ['ARCHERS', 'OFFICIALS', 'FINANCE', 'EVENT_ADMIN'].includes(view);
+          if (isManagingPeople) {
+            updates["data.registrations"] = activeEvent.registrations || [];
+            updates["data.archers"] = activeEvent.archers || [];
+          }
+
+          try {
+            // updateDoc is safer as it only changes specified fields
+            const { updateDoc } = await import('firebase/firestore');
+            await updateDoc(eventRef, updates);
+          } catch (err: any) {
+            // Fallback to setDoc if document doesn't exist yet (unlikely for active events)
+            if (err.code === 'not-found') {
+              await setDoc(eventRef, { ...updates, data: activeEvent }, { merge: true });
+            } else {
+              throw err;
+            }
+          }
         }
       }
       
@@ -520,14 +571,16 @@ export function App() {
   // Polling for registration updates when in admin screens
   useEffect(() => {
     if (!db || !isOnline) return;
-    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
+    const adminViews = ['LANDING', 'MEMBER_DASHBOARD', 'EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
     if (adminViews.includes(view)) {
       const interval = setInterval(() => {
-        // Polling faster for live views, slower for admin views
+        // Polling faster for live views, medium for dashboard, slower for landing
         const isLive = view === 'LIVE' || view === 'PUBLIC_LIVE';
-        console.log(`Auto-polling cloud updates (${isLive ? 'RAID' : 'STANDARD'})...`);
-        fetchCloudData().catch(err => console.error("Polling fetch error:", err));
-      }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : 15000); 
+        const isDashboard = view === 'MEMBER_DASHBOARD' || view === 'EVENT_ADMIN';
+        
+        console.log(`Auto-polling cloud updates (${view})...`);
+        fetchCloudData(false).catch(err => console.error("Polling fetch error:", err));
+      }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : (view === 'LANDING' ? 30000 : 15000)); 
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);
@@ -892,7 +945,7 @@ export function App() {
       </div>
 
       <AnimatePresence>
-        {(isSplashVisible || isCheckingLink) && (
+        {(isSplashVisible || isCheckingLink || !appState.isDataLoaded) && (
           <motion.div 
             key="splash"
             exit={{ opacity: 0, scale: 1.1 }}

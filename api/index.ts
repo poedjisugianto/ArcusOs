@@ -374,40 +374,27 @@ app.post("/api/register-participant", async (req, res) => {
   }
 
   try {
-    // 1. Get current event data from Firestore
+    const { FieldValue } = require('firebase-admin/firestore');
     const eventRef = db.collection('events').doc(eventId);
-    const eventSnap = await eventRef.get();
-
-    if (!eventSnap.exists) {
-      throw new Error("Event not found");
+    
+    // Check if event exists first
+    const snap = await eventRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ success: false, message: "Event tidak ditemukan di database cloud. Pastikan penyelenggara sudah menyimpan event ke Cloud." });
     }
 
-    const eventRecord = eventSnap.data()!;
-    const eventData = eventRecord.data;
-    
-    // 2. Update registrations and archers arrays
-    const updatedRegistrations = [...(eventData.registrations || []), registration];
-    const updatedArchers = [...(eventData.archers || []), archer];
-
-    console.log(`[REGISTRATION] Event: ${eventId}, New Total Archers: ${updatedArchers.length}`);
-
-    const updatedData = {
-      ...eventData,
-      registrations: updatedRegistrations,
-      archers: updatedArchers
-    };
-
-    // 3. Save back to Firestore
-    await eventRef.update({ 
-      data: updatedData, 
-      status: eventData.status || 'ACTIVE',
-      updatedAt: new Date().toISOString() 
+    // Atomic update using arrayUnion
+    await eventRef.update({
+      "data.registrations": FieldValue.arrayUnion(registration),
+      "data.archers": FieldValue.arrayUnion(archer),
+      "updatedAt": new Date().toISOString()
     });
+
+    console.log(`[REGISTRATION] Atomic update success for event: ${eventId}`);
 
     res.json({ 
       success: true, 
       message: "Participant registered successfully",
-      count: updatedArchers.length
     });
   } catch (error: any) {
     console.error("Registration Error:", error);

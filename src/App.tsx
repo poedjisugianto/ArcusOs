@@ -312,7 +312,15 @@ export function App() {
           if (eventSnap.exists()) {
             console.log("Deep link data found in Firestore.");
             const eventRecord = eventSnap.data();
+            
+            // Safety: Ensure we have data structure
+            if (!eventRecord || !eventRecord.data) {
+                throw new Error("Struktur data event tidak valid");
+            }
+            
             const targetEvent = eventRecord.data as ArcheryEvent;
+            // Ensure ID matches
+            targetEvent.id = eventRecord.id || targetEvent.id;
             
             // Inject into state and activate
             setAppState(prev => {
@@ -662,6 +670,29 @@ export function App() {
       return () => clearInterval(interval);
     }
   }, [view, isOnline]);
+
+  // Safety rendering: If we are checking a deep link or initial cloud fetch hasn't finished,
+  // show a minimal splash to prevent component crashes from undefined data.
+  if (!appState.isDataLoaded || isCheckingLink) {
+    return (
+      <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center z-[9999]">
+        <div className="relative mb-8">
+          <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full"></div>
+          <ArcusLogo className="w-24 h-24 text-white relative animate-pulse" />
+        </div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex gap-1">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+          </div>
+          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">
+            {isCheckingLink ? 'Memvalidasi Link...' : 'Menghubungkan ke Arcus...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;

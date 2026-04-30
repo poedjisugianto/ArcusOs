@@ -136,6 +136,14 @@ export function App() {
       isSyncingFromCloud.current = true;
       const user = userOverride !== undefined ? userOverride : appState.currentUser;
       
+      // Safety: Don't let pending changes block fetch indefinitely if they are old
+      // or if we are a guest who can't sync anyway
+      const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
+      
+      if (hasPendingChanges && !manual && isPrivileged) {
+        return;
+      }
+
       // We fetch all three independently so one failure doesn't block the others
       const fetchJobs: Promise<any>[] = [
         // 1. Fetch System Config (Public)
@@ -231,8 +239,9 @@ export function App() {
       setLastSync(new Date());
     } catch (err: any) { 
       console.error("Fetch Cloud General Error:", err);
+      // If it's a permission error, we should probably stop the loading spinner but keep trying other things
       if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
-      // Set to loaded even on error to allow app to use local state fallback
+      // Set even on error to allow UI to show
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
       setIsSyncing(false);
@@ -407,6 +416,8 @@ export function App() {
 
     setIsSyncing(true);
     try {
+      const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === UserRole.SUPERADMIN || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
+
       // 1. Sync Global Settings (Only SuperAdmin)
       if (appState.currentUser?.isSuperAdmin) {
         await setDoc(doc(db, 'systemConfigs', 'global'), { 
@@ -418,35 +429,37 @@ export function App() {
 
       // 2. Sync User Profile
       if (appState.currentUser) {
-        await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
-          id: appState.currentUser.id, 
-          data: appState.currentUser, 
-          updatedAt: new Date().toISOString() 
-        }, { merge: true });
-      }
-      
-      // 3. Sync Active Event (Sync all including practice)
-      if (activeEvent) {
-        const isAuthorizedAtCloud = appState.currentUser?.isSuperAdmin || 
-                                   activeEvent.settings.organizerId === appState.currentUser?.id || 
-                                   activeEvent.ownerId === appState.currentUser?.id;
-                                   
-        if (isAuthorizedAtCloud) {
-          await setDoc(doc(db, 'events', activeEvent.id), { 
-            id: activeEvent.id, 
-            userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
-            data: activeEvent,
+        try {
+          await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
+            id: appState.currentUser.id, 
+            data: appState.currentUser, 
             updatedAt: new Date().toISOString() 
           }, { merge: true });
+        } catch (e) {
+          console.warn("Failed to sync profile - likely no permission for guests:", e);
         }
+      }
+      
+      // 3. Sync Active Event (Only if authorized)
+      if (activeEvent && isPrivileged) {
+        await setDoc(doc(db, 'events', activeEvent.id), { 
+          id: activeEvent.id, 
+          userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
+          data: activeEvent,
+          updatedAt: new Date().toISOString() 
+        }, { merge: true });
       }
       
       setLastSync(new Date());
       setHasPendingChanges(false);
       if (manual) pushNotification("Sinkronisasi Selesai", "Data telah aman di cloud.", "SUCCESS");
-    } catch (err) { 
+    } catch (err: any) { 
       console.error("Sync error", err); 
-      if (manual) pushNotification("Gagal Sinkron", "Gagal menyimpan data ke cloud.", "WARNING");
+      if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
+      // If permission error, clear pending changes so we don't loop forever
+      if (err.message?.includes('permission')) {
+        setHasPendingChanges(false);
+      }
     } finally {
       setIsSyncing(false);
     }

@@ -118,12 +118,19 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  const completeSimulation = (newReg: ParticipantRegistration) => {
+  const completeSimulation = async (newReg: ParticipantRegistration) => {
     setIsSimulatingPayment(false);
-    onRegister(newReg);
-    localStorage.removeItem(`reg_draft_${event.id}`);
-    localStorage.removeItem(`reg_step_${event.id}`);
-    setStep(3);
+    setIsSubmitting(true);
+    try {
+      await onRegister(newReg);
+      localStorage.removeItem(`reg_draft_${event.id}`);
+      localStorage.removeItem(`reg_step_${event.id}`);
+      setStep(3);
+    } catch (err) {
+      toast.error("Gagal simpan data");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetRegistration = () => {

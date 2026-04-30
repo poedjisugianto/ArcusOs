@@ -12,6 +12,7 @@ import { CATEGORY_LABELS } from '../constants';
 interface Props {
   state: AppState;
   onUpdateSettings: (gs: GlobalSettings) => void;
+  onResetSystemData?: () => void;
   onUpdateEvent: (eventId: string, updated: Partial<ArcheryEvent>) => void;
   onDeleteEvent: (eventId: string, reason?: string) => void;
   onDeleteUser: (userId: string) => void;
@@ -20,7 +21,7 @@ interface Props {
   onBack: () => void;
 }
 
-const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onUpdateEvent, onDeleteEvent, onDeleteUser, onUpdateUser, onSendNotif, onBack }) => {
+const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSystemData, onUpdateEvent, onDeleteEvent, onDeleteUser, onUpdateUser, onSendNotif, onBack }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'EVENTS' | 'USERS' | 'SETTINGS'>('OVERVIEW');
   const [searchTerm, setSearchTerm] = useState('');
   const [localSettings, setLocalSettings] = useState<GlobalSettings>(state.globalSettings);
@@ -448,6 +449,28 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onUpdateEve
                    <p className="text-[10px] font-bold uppercase tracking-tight">{testEmailResult.message}</p>
                 </div>
              )}
+          </div>
+
+          <div className="space-y-6 border-t pt-10">
+             <h4 className="font-black text-xs uppercase text-red-600">Zona Bahaya (Danger Zone)</h4>
+             <div className="p-8 bg-red-50 border border-red-100 rounded-3xl space-y-4">
+                <div className="flex items-center gap-4">
+                   <ShieldAlert className="w-8 h-8 text-red-600" />
+                   <div>
+                      <p className="text-sm font-black text-red-900 uppercase italic">Hard Reset Database</p>
+                      <p className="text-[10px] font-medium text-red-700/60 leading-none mt-1">HAPUS PERMANEN SEMUA DATA EVENT DAN PROFIL DARI CLOUD</p>
+                   </div>
+                </div>
+                <p className="text-[9px] font-bold text-red-700 leading-relaxed uppercase">
+                   Gunakan fitur ini hanya jika Anda ingin benar-benar memulai sistem dari nol. Semua turnamen, pendaftaran, dan skor akan dihapus. Akun Anda sendiri tidak akan dihapus.
+                </p>
+                <button 
+                  onClick={onResetSystemData}
+                  className="bg-red-600 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-black transition-all shadow-lg shadow-red-600/20"
+                >
+                  Ya, Reset Seluruh Sistem
+                </button>
+             </div>
           </div>
 
           <button 

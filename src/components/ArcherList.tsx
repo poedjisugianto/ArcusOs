@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import {
   Search,
   Trash2,
@@ -135,46 +136,72 @@ const ArcherList: React.FC<Props> = ({
   };
 
   const handleSmartRandomize = () => {
-    const categoryArchers = archers.filter(
+    const isAll = (activeCategory as any) === "ALL";
+    const categoryArchers = isAll ? [...archers] : archers.filter(
       (a) => a.category === activeCategory,
     );
-    if (categoryArchers.length === 0) return;
+    
+    if (categoryArchers.length === 0) {
+      alert("Tidak ada peserta yang bisa diacak.");
+      return;
+    }
 
-    const categoryLabel = CATEGORY_LABELS[activeCategory];
+    const effectiveArchersPerTarget = Number(archersPerTarget) || 4;
+    const effectiveTotalTargets = Number(totalTargets) || 20;
+
+    const categoryLabel = (activeCategory as any) === "ALL" ? "SEMUA KATEGORI" : CATEGORY_LABELS[activeCategory];
     if (
       !confirm(
-        `Sistem akan mengacak posisi pemanah KHUSUS KATEGORI ${categoryLabel} dan menyusun nomor bantalan secara otomatis mulai dari Sesi 1. Lanjutkan?`,
+        `Sistem akan mengacak posisi pemanah untuk ${categoryLabel} dan menyusun nomor bantalan secara otomatis (Kapasitas: ${effectiveTotalTargets} Bantalan x ${effectiveArchersPerTarget} Pemanah). Lanjutkan?`,
       )
     )
       return;
 
     setIsShuffling(true);
+    const shuffleToastId = toast.loading(`Mengacak ${categoryArchers.length} peserta...`);
 
     setTimeout(() => {
-      let updatedCategoryArchers: Archer[] = [];
-      const shuffled = [...categoryArchers].sort(() => Math.random() - 0.5);
+      try {
+        console.log(`Starting shuffle for: ${categoryLabel}. Archers to shuffle:`, categoryArchers.map(a => a.name));
+        
+        // Use a high-quality shuffle
+        const shuffled = [...categoryArchers];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
 
-      shuffled.forEach((a, index) => {
-        const archersPerWave = totalTargets * archersPerTarget;
-        const wave = Math.floor(index / archersPerWave) + 1;
+        const archersPerWave = effectiveTotalTargets * effectiveArchersPerTarget;
+        
+        const updatedCategoryArchers = shuffled.map((a, index) => {
+          const wave = Math.floor(index / archersPerWave) + 1;
+          const indexInWave = index % archersPerWave;
+          const targetNo = Math.floor(indexInWave / effectiveArchersPerTarget) + 1;
+          const posIndex = indexInWave % effectiveArchersPerTarget;
+          const position = ["A", "B", "C", "D"][posIndex] as "A" | "B" | "C" | "D";
 
-        const indexInWave = index % archersPerWave;
-        const targetNo = Math.floor(indexInWave / archersPerTarget) + 1;
-        const posIndex = indexInWave % archersPerTarget;
-        const position = ["A", "B", "C", "D"][posIndex] as
-          | "A"
-          | "B"
-          | "C"
-          | "D";
+          console.log(`Assigning ${a.name} to ${targetNo}${position}`);
+          return { ...a, targetNo, position, wave };
+        });
 
-        updatedCategoryArchers.push({ ...a, targetNo, position, wave });
-      });
-
-      // Merge with other categories
-      const otherArchers = archers.filter((a) => a.category !== activeCategory);
-      onBulkUpdate([...otherArchers, ...updatedCategoryArchers]);
-      setIsShuffling(false);
-    }, 1500);
+        if ((activeCategory as any) === "ALL") {
+          // If in "ALL" tab, we still need to preserve OFFICIALS if they were excluded from shuffle
+          const officials = archers.filter(a => a.category === CategoryType.OFFICIAL);
+          onBulkUpdate([...updatedCategoryArchers, ...officials]);
+        } else {
+          const otherArchers = archers.filter((a) => a.category !== activeCategory);
+          console.log(`Updating ${updatedCategoryArchers.length} archers. Keeping ${otherArchers.length} from other categories.`);
+          onBulkUpdate([...otherArchers, ...updatedCategoryArchers]);
+        }
+        
+        toast.success(`Berhasil mengacak ${updatedCategoryArchers.length} peserta!`, { id: shuffleToastId });
+      } catch (err: any) {
+        console.error("Shuffle Error:", err);
+        toast.error("Gagal mengacak bantalan: " + err.message, { id: shuffleToastId });
+      } finally {
+        setIsShuffling(false);
+      }
+    }, 500); // Reduced delay for better UX
   };
 
   const handlePrint = (all: boolean = false) => {
@@ -229,7 +256,7 @@ const ArcherList: React.FC<Props> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-[#FBFBFD] p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-[#FBFBFD] p-4 flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
@@ -527,7 +554,7 @@ const ArcherList: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 print:hidden">
         <button
           onClick={() => setActiveCategory("ALL" as any)}
           className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${
@@ -552,7 +579,7 @@ const ArcherList: React.FC<Props> = ({
       </div>
 
       {/* Printable Area (Hidden in UI, visible in Print) */}
-      <div className="hidden print:block absolute top-0 left-0 w-full bg-white p-4">
+      <div className="hidden print:block absolute top-0 left-0 w-full bg-white p-4 min-h-screen">
         {printAllCategories ? (
           (Object.keys(CategoryType) as CategoryType[]).map((cat, idx) => {
             const catArchers = archers
@@ -588,36 +615,48 @@ const ArcherList: React.FC<Props> = ({
 
                 <table className="w-full border-collapse border border-black">
                   <thead>
-                    <tr className="bg-slate-200">
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-20">
+                    <tr className="bg-slate-100">
+                      <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-8">
+                        No
+                      </th>
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-20">
                         Bantalan
                       </th>
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                         Nama Pemanah
                       </th>
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                         Klub / Kota
                       </th>
-                      <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-24">
+                      <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-16">
                         Sesi
+                      </th>
+                      <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-24">
+                        Tanda Tangan
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {catArchers.map((a: Archer) => (
+                    {catArchers.map((a: Archer, aIdx: number) => (
                       <tr key={a.id}>
-                        <td className="border border-black py-2 px-2 text-center font-bold text-lg">
+                        <td className="border border-black py-2 px-1 text-center text-[10px]">
+                          {aIdx + 1}
+                        </td>
+                        <td className="border border-black py-1 px-1 text-center font-bold text-base">
                           {a.targetNo}
                           {a.position}
                         </td>
-                        <td className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                        <td className="border border-black py-1 px-2 text-[11px] font-bold uppercase">
                           {a.name}
                         </td>
-                        <td className="border border-black py-2 px-2 text-sm uppercase">
+                        <td className="border border-black py-1 px-2 text-[10px] uppercase">
                           {a.club}
                         </td>
-                        <td className="border border-black py-2 px-2 text-center text-sm font-bold">
-                          Sesi {a.wave}
+                        <td className="border border-black py-1 px-1 text-center text-[10px] font-bold">
+                          {a.wave}
+                        </td>
+                        <td className="border border-black py-1 px-2 text-center text-[9px] text-slate-300 italic min-h-[30px]">
+                          ....................
                         </td>
                       </tr>
                     ))}
@@ -663,36 +702,48 @@ const ArcherList: React.FC<Props> = ({
 
             <table className="w-full border-collapse border border-black">
               <thead>
-                <tr className="bg-slate-200">
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-20">
+                <tr className="bg-slate-100">
+                  <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-8">
+                    No
+                  </th>
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-20">
                     Bantalan
                   </th>
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                     Nama Pemanah
                   </th>
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase">
                     Klub / Kota
                   </th>
-                  <th className="border border-black py-2 px-2 text-sm font-bold uppercase w-24">
+                  <th className="border border-black py-2 px-1 text-[10px] font-bold uppercase w-16">
                     Sesi
+                  </th>
+                  <th className="border border-black py-2 px-2 text-[10px] font-bold uppercase w-24">
+                    Tanda Tangan
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((a: Archer) => (
+                {filtered.map((a: Archer, aIdx: number) => (
                   <tr key={a.id}>
-                    <td className="border border-black py-2 px-2 text-center font-bold text-lg">
+                    <td className="border border-black py-2 px-1 text-center text-[10px]">
+                      {aIdx + 1}
+                    </td>
+                    <td className="border border-black py-1 px-1 text-center font-bold text-base">
                       {a.targetNo}
                       {a.position}
                     </td>
-                    <td className="border border-black py-2 px-2 text-sm font-bold uppercase">
+                    <td className="border border-black py-1 px-2 text-[11px] font-bold uppercase">
                       {a.name}
                     </td>
-                    <td className="border border-black py-2 px-2 text-sm uppercase">
+                    <td className="border border-black py-1 px-2 text-[10px] uppercase">
                       {a.club}
                     </td>
-                    <td className="border border-black py-2 px-2 text-center text-sm font-bold">
-                      Sesi {a.wave}
+                    <td className="border border-black py-1 px-1 text-center text-[10px] font-bold">
+                      {a.wave}
+                    </td>
+                    <td className="border border-black py-1 px-2 text-center text-[9px] text-slate-300 italic min-h-[30px]">
+                      ....................
                     </td>
                   </tr>
                 ))}
@@ -744,7 +795,7 @@ const ArcherList: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="bg-white border-y border-slate-100 overflow-hidden">
+      <div className="bg-white border-y border-slate-100 overflow-hidden print:hidden">
         <div className="p-4 bg-[#FBFBFD] flex flex-col md:flex-row md:items-center gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

@@ -202,6 +202,7 @@ export interface ArcheryEvent {
   scorerAccess?: any;
   disbursementRequests?: DisbursementRequest[];
   ownerId?: string;
+  localUpdatedAt?: string;
 }
 
 export interface AppState {
@@ -211,6 +212,7 @@ export interface AppState {
   activeEventId: string | null;
   globalSettings: GlobalSettings;
   notifications: AppNotification[];
+  isDataLoaded?: boolean;
   activeScorer?: any;
   drafts?: {
     scoring?: Record<string, (number | 'X')[]>; // key: archerId_endIndex

@@ -226,9 +226,8 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     const draftKey = `scoring_draft_${state.id}_${selectedArcherId}_${currentEnd}`;
     localStorage.removeItem(draftKey);
 
-    // Reset status dirty agar sinkronisasi bisa berjalan lagi setelah simpan
-    // Beri jeda 3 detik agar sinkronisasi cloud selesai dulu sebelum loading data dari state.scores
-    setTimeout(() => setIsDirty(false), 3000);
+    // Reset status dirty immediately
+    setIsDirty(false);
 
     if (isReset) {
       setShowToast(`Data Rambahan ${currentEnd + 1} Direset!`);

@@ -373,45 +373,53 @@ app.post("/api/register-participant", async (req, res) => {
     return res.status(500).json({ success: false, message: "Firestore not initialized on backend" });
   }
 
+  if (!eventId || !registration || !archer) {
+    return res.status(400).json({ success: false, message: "Missing required registration data" });
+  }
+
   try {
-    // 1. Get current event data from Firestore
     const eventRef = db.collection('events').doc(eventId);
-    const eventSnap = await eventRef.get();
-
-    if (!eventSnap.exists) {
-      throw new Error("Event not found");
-    }
-
-    const eventRecord = eventSnap.data()!;
-    const eventData = eventRecord.data;
     
-    // 2. Update registrations and archers arrays
-    const updatedRegistrations = [...(eventData.registrations || []), registration];
-    const updatedArchers = [...(eventData.archers || []), archer];
+    await db.runTransaction(async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      
+      if (!eventSnap.exists) {
+        throw new Error("Event not found");
+      }
 
-    console.log(`[REGISTRATION] Event: ${eventId}, New Total Archers: ${updatedArchers.length}`);
+      const eventRecord = eventSnap.data()!;
+      const eventData = eventRecord.data || {};
+      
+      // Update registrations and archers arrays
+      const updatedRegistrations = [...(eventData.registrations || []), registration];
+      const updatedArchers = [...(eventData.archers || []), archer];
 
-    const updatedData = {
-      ...eventData,
-      registrations: updatedRegistrations,
-      archers: updatedArchers
-    };
+      console.log(`[REGISTRATION-TX] Event: ${eventId}, New Total: ${updatedArchers.length}`);
 
-    // 3. Save back to Firestore
-    await eventRef.update({ 
-      data: updatedData, 
-      status: eventData.status || 'ACTIVE',
-      updatedAt: new Date().toISOString() 
+      const updatedData = {
+        ...eventData,
+        registrations: updatedRegistrations,
+        archers: updatedArchers
+      };
+
+      transaction.update(eventRef, { 
+        data: updatedData, 
+        updatedAt: new Date().toISOString() 
+      });
     });
 
     res.json({ 
       success: true, 
-      message: "Participant registered successfully",
-      count: updatedArchers.length
+      message: "Participant registered successfully via transaction",
+      id: registration.id
     });
   } catch (error: any) {
-    console.error("Registration Error:", error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Registration Transaction Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      message: "Gagal memproses pendaftaran. Silakan coba lagi sebentar lagi." 
+    });
   }
 });
 

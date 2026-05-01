@@ -69,6 +69,11 @@ service cloud.firestore {
         allow read, create: if true;
         allow update, delete: if isAdmin();
       }
+
+      match /shards/{shardId} {
+        allow read: if true;
+        allow write: if isAdmin() || (isSignedIn() && (get(/databases/$(database)/documents/events/$(eventId)).data.userId == request.auth.uid || get(/databases/$(database)/documents/events/$(eventId)).data.ownerId == request.auth.uid));
+      }
     }
 
     // --- System Configs ---

@@ -263,6 +263,16 @@ export default function LandingPage({
                     className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-700 relative overflow-hidden"
                   >
                     <div className="p-8">
+                      {event.settings.pamphletUrl && (
+                        <div className="mb-6 rounded-2xl overflow-hidden aspect-[4/5] bg-slate-100 border border-slate-100 shadow-inner group-hover:shadow-md transition-shadow">
+                          <img 
+                            src={event.settings.pamphletUrl} 
+                            alt="Event Pamphlet" 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      )}
                       <div className="flex justify-between items-start mb-6">
                         <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all duration-500 shadow-inner">
                           <Trophy className="w-7 h-7" />
@@ -332,7 +342,7 @@ export default function LandingPage({
                           onClick={() => onViewInfo(event.id)}
                           className="py-2.5 bg-slate-50 text-slate-500 border border-slate-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
                         >
-                          INFO
+                          SELENGKAPNYA
                         </button>
                         <button 
                           onClick={() => onViewLive(event.id)}
@@ -489,6 +499,68 @@ export default function LandingPage({
            </motion.div>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="py-20 md:py-32 bg-white border-t border-slate-50 px-6 lg:px-12">
+        <div className="max-w-[1400px] mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-24 items-start">
+            <div className="space-y-12">
+              <div className="flex items-center gap-5">
+                <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center p-3.5 shadow-xl">
+                  <ArcusLogo className="w-full h-full text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-4xl font-black font-oswald uppercase italic leading-none tracking-tighter text-slate-900">ARCUS DIGITAL</span>
+                  <span className="text-[10px] font-black text-arcus-red uppercase tracking-[0.4em] mt-1">Tournament Management System</span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <div className="tech-label opacity-40">PERUSAHAAN</div>
+                  <ul className="space-y-4">
+                    <li><button className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-all">Tentang Kami</button></li>
+                    <li><button className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-all">Hubungi Kami</button></li>
+                  </ul>
+                </div>
+                <div className="space-y-6">
+                  <div className="tech-label opacity-40">LEGAL</div>
+                  <ul className="space-y-4">
+                    <li><button className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-all">Kebijakan Privasi</button></li>
+                    <li><button className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-all">Syarat & Ketentuan</button></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:items-end gap-12 md:text-right">
+              <div className="space-y-4">
+                <div className="tech-label opacity-40">KONTAK SUPPORT</div>
+                <div className="flex flex-col md:items-end">
+                  <span className="text-3xl md:text-4xl font-black font-oswald uppercase italic tracking-wider text-slate-900">0878-3419-3339</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">Jam Operasional: 09:00 - 17:00 WIB</span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="tech-label opacity-40">ALAMAT PENGEMBANG</div>
+                <div className="flex flex-col md:items-end max-w-sm">
+                  <span className="text-sm font-black text-slate-900 leading-relaxed uppercase">
+                    Jl. Bengawan No. 45 Kutosari, Kebumen, Kebumen - Jawa Tengah 54317
+                  </span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">Indonesia</span>
+                </div>
+              </div>
+
+              <div className="pt-12 border-t border-slate-50 w-full flex flex-col md:items-end">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] leading-relaxed">
+                  Powered by Arcus Archery Core &copy; 2026. <br className="md:hidden" /> All Rights Reserved.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

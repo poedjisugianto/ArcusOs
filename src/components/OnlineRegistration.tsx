@@ -11,12 +11,13 @@ import {
 interface Props {
   event: ArcheryEvent;
   globalSettings: GlobalSettings;
-  onRegister: (r: ParticipantRegistration) => void;
+  onRegister: (r: ParticipantRegistration[]) => void;
   onBack: () => void;
   onViewParticipants: () => void;
 }
 
 export default function OnlineRegistration({ event, globalSettings, onRegister, onBack, onViewParticipants }: Props) {
+  const [regMode, setRegMode] = useState<'INDIVIDUAL' | 'COLLECTIVE'>('INDIVIDUAL');
   const [step, setStep] = useState(() => {
     const saved = localStorage.getItem(`reg_step_${event.id}`);
     const parsed = saved ? parseInt(saved) : 1;
@@ -26,6 +27,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   const isRegistrationClosed = (event.settings.registrationDeadline && !isNaN(new Date(event.settings.registrationDeadline).getTime())) 
     ? new Date() > new Date(event.settings.registrationDeadline) 
     : false;
+
+  const [collectiveMembers, setCollectiveMembers] = useState<{name: string, category: string}[]>([]);
+  const [newMember, setNewMember] = useState({ name: '', category: '' });
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -122,7 +126,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     setIsSimulatingPayment(false);
     setIsSubmitting(true);
     try {
-      await onRegister(newReg);
+      await onRegister([newReg]);
       localStorage.removeItem(`reg_draft_${event.id}`);
       localStorage.removeItem(`reg_step_${event.id}`);
       setStep(3);
@@ -157,46 +161,88 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       return;
     }
 
+    const registrations: ParticipantRegistration[] = [];
     const year = new Date().getFullYear();
-    const random = Math.floor(1000 + Math.random() * 9000);
-    const registrationNo = `ARC-${year}-${random}`;
 
-    let totalPaid = 0;
-    if (formData.regType === 'OFFICIAL') {
-      totalPaid = event.settings.officialFee || 0;
+    if (regMode === 'INDIVIDUAL') {
+      const random = Math.floor(1000 + Math.random() * 9000);
+      const registrationNo = `ARC-${year}-${random}`;
+      
+      let totalPaid = 0;
+      if (formData.regType === 'OFFICIAL') {
+        totalPaid = event.settings.officialFee || 0;
+      } else {
+        const config = event.settings.categoryConfigs?.[formData.category as CategoryType];
+        totalPaid = config?.registrationFee || 0;
+      }
+      
+      const isKids = [
+        CategoryType.U18_PUTRA, CategoryType.U18_PUTRI, CategoryType.U12_PUTRA,
+        CategoryType.U12_PUTRI, CategoryType.U9_PUTRA, CategoryType.U9_PUTRI,
+      ].includes(formData.category as CategoryType);
+
+      const platformFee = isKids ? globalSettings.feeKids : globalSettings.feeAdult;
+
+      registrations.push({
+        id: 'reg_' + Math.random().toString(36).substr(2, 9),
+        registrationNo,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        club: formData.club,
+        category: formData.regType === 'OFFICIAL' ? 'OFFICIAL' : formData.category,
+        paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
+        totalPaid,
+        platformFee,
+        status: 'PENDING',
+        paymentType: formData.paymentType,
+        timestamp: Date.now()
+      });
     } else {
-      const config = event.settings.categoryConfigs?.[formData.category as CategoryType];
-      totalPaid = config?.registrationFee || 0;
+      // Collective logic
+      if (collectiveMembers.length === 0) {
+        toast.error("Tambahkan minimal satu anggota");
+        return;
+      }
+
+      collectiveMembers.forEach((member, idx) => {
+        const random = Math.floor(1000 + Math.random() * 9000) + idx;
+        const registrationNo = `ARC-KOL-${year}-${random}`;
+        
+        let totalPaid = 0;
+        if (member.category === CategoryType.OFFICIAL) {
+          totalPaid = event.settings.officialFee || 0;
+        } else {
+          const config = event.settings.categoryConfigs?.[member.category as CategoryType];
+          totalPaid = config?.registrationFee || 0;
+        }
+        
+        const isKids = [
+          CategoryType.U18_PUTRA, CategoryType.U18_PUTRI, CategoryType.U12_PUTRA,
+          CategoryType.U12_PUTRI, CategoryType.U9_PUTRA, CategoryType.U9_PUTRI,
+        ].includes(member.category as CategoryType);
+
+        const platformFee = isKids ? globalSettings.feeKids : globalSettings.feeAdult;
+
+        registrations.push({
+          id: 'reg_' + Math.random().toString(36).substr(2, 9),
+          registrationNo,
+          name: member.name,
+          email: formData.email, // Use club contact email
+          phone: formData.phone, // Use club contact phone
+          club: formData.club,
+          category: member.category,
+          paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
+          totalPaid,
+          platformFee,
+          status: 'PENDING',
+          paymentType: formData.paymentType,
+          timestamp: Date.now()
+        });
+      });
     }
-    
-    const isKids = [
-      CategoryType.U18_PUTRA,
-      CategoryType.U18_PUTRI,
-      CategoryType.U12_PUTRA,
-      CategoryType.U12_PUTRI,
-      CategoryType.U9_PUTRA,
-      CategoryType.U9_PUTRI,
-    ].includes(formData.category as CategoryType);
 
-    const platformFee = isKids
-      ? globalSettings.feeKids
-      : globalSettings.feeAdult;
-
-    const newReg: ParticipantRegistration = {
-      id: 'reg_' + Math.random().toString(36).substr(2, 9),
-      registrationNo,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      club: formData.club,
-      category: formData.regType === 'OFFICIAL' ? 'OFFICIAL' : formData.category,
-      paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
-      totalPaid,
-      platformFee,
-      status: 'PENDING',
-      paymentType: formData.paymentType,
-      timestamp: Date.now()
-    };
+    const totalAmount = registrations.reduce((sum, r) => sum + r.totalPaid, 0);
 
     if (formData.paymentType === 'GATEWAY') {
       setIsSubmitting(true);
@@ -205,11 +251,11 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            amount: totalPaid,
+            amount: totalAmount,
             method: 'GATEWAY',
             provider: globalSettings.paymentGatewayProvider || 'MIDTRANS',
-            customerDetails: { name: formData.name, email: formData.email },
-            itemDetails: [{ id: newReg.category, price: totalPaid, quantity: 1, name: `Registration ${newReg.category}` }]
+            customerDetails: { name: formData.name || formData.club, email: formData.email },
+            itemDetails: registrations.map(r => ({ id: r.category, price: r.totalPaid, quantity: 1, name: `Reg ${r.name} - ${r.category}` }))
           })
         });
         const data = await res.json();
@@ -217,13 +263,13 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         if (data.success && data.token && window.snap) {
           // @ts-ignore
           window.snap.pay(data.token, {
-            onSuccess: () => { onRegister({ ...newReg, status: 'PAID' }); setStep(3); },
-            onPending: () => { onRegister(newReg); setStep(3); },
+            onSuccess: () => { onRegister(registrations.map(r => ({ ...r, status: 'PAID' }))); setStep(3); },
+            onPending: () => { onRegister(registrations); setStep(3); },
             onError: () => toast.error("Pembayaran Gagal"),
           });
         } else {
-          toast.info("Gunakan simulasi pembayaran");
-          setSimulatedQR("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=SIMULASI");
+          toast.info("Gunakan simulasi pendaftaran massal");
+          setSimulatedQR("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=COLLECTIVE");
           setIsSimulatingPayment(true);
         }
       } catch (err) {
@@ -234,11 +280,10 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     } else {
       setIsSubmitting(true);
       try {
-        await onRegister(newReg);
-        // Don't fully clear yet, so they see their name, but we will have a button to register another
+        await onRegister(registrations);
         setStep(3);
       } catch (err) {
-        toast.error("Gagal mengirim pendaftaran ke cloud. Mencoba simpan lokal.");
+        toast.error("Gagal sinkron cloud. Data tersimpan lokal.");
       } finally {
         setIsSubmitting(false);
       }
@@ -348,67 +393,111 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             {step === 1 && (
               <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="bg-white p-4 md:p-6 rounded-[2rem] shadow-xl space-y-4">
                 <div className="flex gap-3 bg-slate-50 p-1 rounded-xl">
-                  <button type="button" onClick={() => setFormData({...formData, regType: 'ARCHER'})} className={`flex-1 py-2.5 rounded-lg font-black text-[10px] transition-all ${formData.regType === 'ARCHER' ? 'bg-arcus-red text-white shadow-md' : 'text-slate-400'}`}>ATLET</button>
-                  <button type="button" onClick={() => setFormData({...formData, regType: 'OFFICIAL', category: 'OFFICIAL'})} className={`flex-1 py-2.5 rounded-lg font-black text-[10px] transition-all ${formData.regType === 'OFFICIAL' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>OFFICIAL</button>
+                  <button type="button" onClick={() => setRegMode('INDIVIDUAL')} className={`flex-1 py-2.5 rounded-lg font-black text-[10px] transition-all ${regMode === 'INDIVIDUAL' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>INDIVIDU</button>
+                  <button type="button" onClick={() => setRegMode('COLLECTIVE')} className={`flex-1 py-2.5 rounded-lg font-black text-[10px] transition-all ${regMode === 'COLLECTIVE' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>KOLEKTIF (KLUB)</button>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-0.5">
-                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nama Lengkap</span>
+                  <div className="md:col-span-2 space-y-0.5">
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nama Klub</span>
                     <input 
                       required 
                       type="text"
-                      placeholder="NAMA LENGKAP" 
-                      value={formData.name} 
-                      onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} 
-                      onKeyDown={(e) => {
-                        if (e.key === ' ') e.stopPropagation();
-                      }}
+                      placeholder="NAMA KLUB" 
+                      value={formData.club} 
+                      onChange={e => setFormData({...formData, club: e.target.value.toUpperCase()})} 
                       className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" 
                     />
                   </div>
                   <div className="space-y-0.5">
-                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Email</span>
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Email Kontak</span>
                     <input required type="email" placeholder="EMAIL" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
                   </div>
                   <div className="space-y-0.5">
-                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nomor WA</span>
+                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nomor WA Pengurus</span>
                     <input 
                       required 
                       type="text"
                       placeholder="NOMOR TELEPON (WA)" 
                       value={formData.phone} 
                       onChange={e => setFormData({...formData, phone: e.target.value})} 
-                      onKeyDown={(e) => {
-                        if (e.key === ' ') e.stopPropagation();
-                      }}
                       className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" 
                     />
                   </div>
-                  <div className="space-y-0.5">
-                    <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Klub</span>
-                    <input 
-                      required 
-                      type="text"
-                      placeholder="KLUB" 
-                      value={formData.club} 
-                      onChange={e => setFormData({...formData, club: e.target.value.toUpperCase()})} 
-                      onKeyDown={(e) => {
-                        if (e.key === ' ') e.stopPropagation();
-                      }}
-                      className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" 
-                    />
-                  </div>
-                  {formData.regType === 'ARCHER' && (
-                    <div className="md:col-span-2 space-y-0.5">
-                      <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Kategori Pertandingan</span>
-                      <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none appearance-none text-[11px]">
-                        <option value="">PILIH KATEGORI</option>
-                        {categories.map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat as CategoryType] || cat}</option>)}
-                      </select>
+                  
+                  {regMode === 'INDIVIDUAL' ? (
+                    <>
+                      <div className="md:col-span-2 bg-slate-50 p-1 rounded-xl flex gap-1">
+                        <button type="button" onClick={() => setFormData({...formData, regType: 'ARCHER'})} className={`flex-1 py-2 rounded-lg font-black text-[9px] transition-all ${formData.regType === 'ARCHER' ? 'bg-arcus-red text-white' : 'text-slate-400'}`}>ATLET</button>
+                        <button type="button" onClick={() => setFormData({...formData, regType: 'OFFICIAL', category: 'OFFICIAL'})} className={`flex-1 py-2 rounded-lg font-black text-[9px] transition-all ${formData.regType === 'OFFICIAL' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>OFFICIAL</button>
+                      </div>
+                      <div className="md:col-span-2 space-y-0.5">
+                        <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Nama Peserta</span>
+                        <input required type="text" placeholder="NAMA LENGKAP" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none focus:border-arcus-red text-[11px]" />
+                      </div>
+                      {formData.regType === 'ARCHER' && (
+                        <div className="md:col-span-2 space-y-0.5">
+                          <span className="text-[7.5px] font-black text-slate-400 uppercase ml-2 italic">Kategori</span>
+                          <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-2.5 bg-slate-50 rounded-xl font-black italic border border-slate-100 outline-none appearance-none text-[11px]">
+                            <option value="">PILIH KATEGORI</option>
+                            {categories.map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat as CategoryType] || cat}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="md:col-span-2 space-y-4 pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-[10px] font-black text-slate-900 uppercase">Daftar Anggota Klub ({collectiveMembers.length})</h4>
+                      </div>
+                      
+                      {collectiveMembers.length > 0 && (
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                          {collectiveMembers.map((m, i) => (
+                            <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div>
+                                <p className="text-[10px] font-black text-slate-900 uppercase italic">{m.name}</p>
+                                <p className="text-[8px] font-bold text-slate-400 uppercase">{CATEGORY_LABELS[m.category as CategoryType] || m.category}</p>
+                              </div>
+                              <button onClick={() => setCollectiveMembers(prev => prev.filter((_, idx) => idx !== i))} className="p-1.5 text-slate-300 hover:text-arcus-red transition-colors">
+                                <AlertCircle className="w-4 h-4 rotate-45" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic text-center">Tambah Anggota Baru</p>
+                        <div className="grid grid-cols-1 gap-2">
+                          <input type="text" placeholder="NAMA ANGGOTA" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value.toUpperCase()})} className="w-full p-2.5 bg-white rounded-xl font-black italic border border-slate-200 text-[10px]" />
+                          <select value={newMember.category} onChange={e => setNewMember({...newMember, category: e.target.value})} className="w-full p-2.5 bg-white rounded-xl font-black italic border border-slate-200 text-[10px]">
+                            <option value="">PILIH KATEGORI</option>
+                            {categories.map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat as CategoryType] || cat}</option>)}
+                            {!categories.includes(CategoryType.OFFICIAL as any) && (
+                              <option value={CategoryType.OFFICIAL}>{CATEGORY_LABELS[CategoryType.OFFICIAL]}</option>
+                            )}
+                          </select>
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              if (!newMember.name || !newMember.category) {
+                                toast.error("Isi nama dan kategori");
+                                return;
+                              }
+                              setCollectiveMembers([...collectiveMembers, newMember]);
+                              setNewMember({ name: '', category: '' });
+                            }}
+                            className="w-full py-2.5 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px]"
+                          >
+                            TAMBAH KE DAFTAR
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
-                <button type="submit" className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-lg active:scale-95 text-[10px]">Lanjut ke Pembayaran</button>
+                <button type="submit" disabled={regMode === 'COLLECTIVE' && collectiveMembers.length === 0} className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-lg active:scale-95 text-[10px] disabled:opacity-50">Lanjut ke Pembayaran</button>
               </form>
             )}
 

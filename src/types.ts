@@ -8,6 +8,24 @@ export enum UserRole {
   MASTER_ADMIN = 'MASTER_ADMIN'
 }
 
+export enum CategoryType {
+  ADULT_PUTRA = 'ADULT_PUTRA',
+  ADULT_PUTRI = 'ADULT_PUTRI',
+  U18_PUTRA = 'U18_PUTRA',
+  U18_PUTRI = 'U18_PUTRI',
+  U12_PUTRA = 'U12_PUTRA',
+  U12_PUTRI = 'U12_PUTRI',
+  U9_PUTRA = 'U9_PUTRA',
+  U9_PUTRI = 'U9_PUTRI',
+  OFFICIAL = 'OFFICIAL'
+}
+
+export enum PaymentType {
+  CASH = 'CASH',
+  TRANSFER = 'TRANSFER',
+  GATEWAY = 'GATEWAY'
+}
+
 export enum TargetType {
   FACE_122 = 'FACE_122',
   FACE_80 = 'FACE_80',
@@ -195,6 +213,7 @@ export interface ArcheryEvent {
   status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ONGOING' | 'UPCOMING';
   settings: TournamentSettings;
   archers: Archer[];
+  officials?: ParticipantRegistration[];
   registrations: ParticipantRegistration[];
   scores: ScoreEntry[];
   scoreLogs: ScoreLog[];
@@ -203,6 +222,7 @@ export interface ArcheryEvent {
   disbursementRequests?: DisbursementRequest[];
   ownerId?: string;
   localUpdatedAt?: string;
+  isSharded?: boolean;
 }
 
 export interface AppState {
@@ -219,24 +239,6 @@ export interface AppState {
     adminSettings?: Record<string, TournamentSettings>; // key: eventId
     activeCategory?: Record<string, CategoryType>; // key: viewName
   };
-}
-
-export enum CategoryType {
-  ADULT_PUTRA = 'ADULT_PUTRA',
-  ADULT_PUTRI = 'ADULT_PUTRI',
-  U18_PUTRA = 'U18_PUTRA',
-  U18_PUTRI = 'U18_PUTRI',
-  U12_PUTRA = 'U12_PUTRA',
-  U12_PUTRI = 'U12_PUTRI',
-  U9_PUTRA = 'U9_PUTRA',
-  U9_PUTRI = 'U9_PUTRI',
-  OFFICIAL = 'OFFICIAL'
-}
-
-export enum PaymentType {
-  CASH = 'CASH',
-  TRANSFER = 'TRANSFER',
-  GATEWAY = 'GATEWAY'
 }
 
 export interface PaymentMethod {

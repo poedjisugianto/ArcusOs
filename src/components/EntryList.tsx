@@ -25,8 +25,12 @@ export default function EntryList({ event, onBack, onRefresh, isSyncing }: Props
   }, [event.archers]);
 
   const officials = useMemo(() => {
-    return (event.archers || []).filter(a => a.category === CategoryType.OFFICIAL);
-  }, [event.archers]);
+    const fromArchers = (event.archers || []).filter(a => a.category === CategoryType.OFFICIAL);
+    const fromOfficials = event.officials || [];
+    const combined = [...fromArchers, ...fromOfficials];
+    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+    return unique;
+  }, [event.archers, event.officials]);
 
   const currentList = viewMode === 'ARCHERS' ? archers : officials;
 
@@ -195,7 +199,7 @@ export default function EntryList({ event, onBack, onRefresh, isSyncing }: Props
                     {viewMode === 'ARCHERS' && (
                       <td className="px-4 md:px-10 py-3 md:py-6 text-center">
                         <span className="text-lg md:text-2xl font-black font-oswald text-arcus-red italic">
-                          {item.targetNo > 0 ? `${item.targetNo}${item.position}` : '-'}
+                          {(item as any).targetNo > 0 ? `${(item as any).targetNo}${(item as any).position}` : '-'}
                         </span>
                       </td>
                     )}

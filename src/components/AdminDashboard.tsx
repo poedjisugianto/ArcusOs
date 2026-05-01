@@ -9,7 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
-import { ArcheryEvent, User } from '../types';
+import { ArcheryEvent, User, CategoryType } from '../types';
 import ArcusLogo from './ArcusLogo';
 
 interface Props {
@@ -21,10 +21,21 @@ interface Props {
 const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
   const stats = useMemo(() => {
     const totalEvents = events.length;
-    const totalArchers = events.reduce((acc, e) => acc + (e.archers || []).length, 0);
-    const totalRevenue = events.reduce((acc, e) => 
-      acc + (e.archers || []).reduce((a, arc) => a + (arc.totalPaid || 0), 0), 0
+    const totalArchers = events.reduce((acc, e) => 
+      acc + (e.archers || []).filter(a => a.category !== CategoryType.OFFICIAL).length, 0
     );
+    const totalOfficials = events.reduce((acc, e) => {
+      const fromArchers = (e.archers || []).filter(a => a.category === CategoryType.OFFICIAL).length;
+      const fromOfficials = (e.officials || []).length;
+      return acc + fromArchers + fromOfficials;
+    }, 0);
+    const totalPeople = totalArchers + totalOfficials;
+
+    const totalRevenue = events.reduce((acc, e) => {
+      const archerRevenue = (e.archers || []).reduce((a, arc) => a + (arc.totalPaid || 0), 0);
+      const officialRevenue = (e.officials || []).reduce((a, off) => a + (off.totalPaid || 0), 0);
+      return acc + archerRevenue + officialRevenue;
+    }, 0);
     const activeEvents = events.filter(e => e.status === 'ONGOING').length;
     const upcomingEvents = events.filter(e => e.status === 'UPCOMING').length;
     const completedEvents = events.filter(e => e.status === 'COMPLETED').length;
@@ -45,7 +56,7 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
     ].filter(s => s.value > 0);
 
     return { 
-      totalEvents, totalArchers, totalRevenue, 
+      totalEvents, totalArchers, totalRevenue, totalPeople, totalOfficials,
       activeEvents, upcomingEvents, completedEvents,
       archerData, statusData
     };
@@ -63,11 +74,11 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
           trendUp={true}
         />
         <DashboardCard 
-          title="Total Archer" 
-          value={stats.totalArchers} 
+          title="Total Peserta" 
+          value={stats.totalPeople} 
           icon={<Users className="w-6 h-6 text-purple-600" />}
-          trend="+15% vs bln lalu"
-          trendUp={true}
+          trend={`${stats.totalArchers} Atlet / ${stats.totalOfficials} Official`}
+          trendUp={null}
         />
         <DashboardCard 
           title="Estimasi Omzet" 

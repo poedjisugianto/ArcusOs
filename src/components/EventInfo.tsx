@@ -67,6 +67,18 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-12">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6 md:space-y-12">
+            {/* Pamphlet Display */}
+            {event.settings.pamphletUrl && (
+              <div className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm group">
+                <img 
+                  src={event.settings.pamphletUrl} 
+                  alt="Event Pamphlet" 
+                  className="w-full h-auto object-contain bg-slate-50"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            )}
+            
             {/* Hero Card */}
             <div className="bg-white rounded-3xl p-6 md:p-10 border border-slate-100 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-arcus-red/5 -mr-32 -mt-32 rounded-full" />

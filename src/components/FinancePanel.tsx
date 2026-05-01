@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ArcheryEvent, ParticipantRegistration, Archer, GlobalSettings } from '../types';
+import { ArcheryEvent, ParticipantRegistration, Archer, GlobalSettings, CategoryType } from '../types';
 import { 
   DollarSign, X, Check, Copy, Landmark, Clock, 
   TrendingUp, CreditCard, ArrowUpRight, AlertCircle, 
@@ -34,7 +34,11 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
 
   // Use unique participants to avoid double counting revenue/fees
   const uniqueParticipants = Array.from(
-    new Map([...(event.registrations || []), ...(event.archers || [])].map(p => [p.id, p])).values()
+    new Map([
+      ...(event.registrations || []), 
+      ...(event.archers || []),
+      ...(event.officials || [])
+    ].map(p => [p.id, p])).values()
   );
   
   const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);

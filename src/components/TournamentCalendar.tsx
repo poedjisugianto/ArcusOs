@@ -142,7 +142,7 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
                       onClick={() => onViewInfo(event.id)}
                       className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all"
                     >
-                      Detail
+                      SELENGKAPNYA
                     </button>
                     <a 
                       href={generateGoogleCalendarLink({

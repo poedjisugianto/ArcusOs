@@ -123,45 +123,55 @@ app.post("/api/send-email-otp", async (req, res) => {
   }
 
   const startTime = Date.now();
-  try {
-    console.log(`[EMAIL START] Attempting to send email to ${email}...`);
-    await cachedTransporter.sendMail({
-      from: `"ARCUS Archery System" <${(process.env.SMTP_USER || "").trim()}>`,
-      to: email,
-      subject: subject || "Kode OTP Anda",
-      text: message,
-      html: `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; background-color: #f8fafc; color: #1e293b;">
-          <div style="background-color: #0f172a; padding: 20px; border-radius: 20px 20px 0 0; text-align: center;">
-            <h1 style="color: white; margin: 0; font-style: italic; letter-spacing: -0.05em;">ARCUS DIGITAL</h1>
-          </div>
-          <div style="background-color: white; padding: 40px; border-radius: 0 0 20px 20px; border: 1px solid #e2e8f0; border-top: none;">
-            <h2 style="color: #0f172a; margin-top: 0;">Keamanan Akun</h2>
-            <p style="font-size: 16px; line-height: 1.6; color: #475569;">${message.replace(/\n/g, '<br>')}</p>
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center;">
-              &copy; ${new Date().getFullYear()} Arcus Digital Archery System. Pesan ini dikirim secara otomatis, harap jangan membalas.
+  let attempts = 0;
+  const maxAttempts = 2;
+  
+  while (attempts < maxAttempts) {
+    try {
+      attempts++;
+      console.log(`[EMAIL ATTEMPT ${attempts}] Sending to ${email}...`);
+      await cachedTransporter.sendMail({
+        from: `"ARCUS Archery System" <${(process.env.SMTP_USER || "").trim()}>`,
+        to: email,
+        subject: subject || "Kode OTP Anda",
+        text: message,
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; background-color: #f8fafc; color: #1e293b;">
+            <div style="background-color: #0f172a; padding: 20px; border-radius: 20px 20px 0 0; text-align: center;">
+              <h1 style="color: white; margin: 0; font-style: italic; letter-spacing: -0.05em;">ARCUS DIGITAL</h1>
+            </div>
+            <div style="background-color: white; padding: 40px; border-radius: 0 0 20px 20px; border: 1px solid #e2e8f0; border-top: none;">
+              <h2 style="color: #0f172a; margin-top: 0;">Keamanan Akun</h2>
+              <p style="font-size: 16px; line-height: 1.6; color: #475569;">${message.replace(/\n/g, '<br>')}</p>
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center;">
+                &copy; ${new Date().getFullYear()} Arcus Digital Archery System. Pesan ini dikirim secara otomatis, harap jangan membalas.
+              </div>
             </div>
           </div>
-        </div>
-      `,
-    });
+        `,
+      });
 
-    const duration = Date.now() - startTime;
-    console.log(`[EMAIL SUCCESS] OTP sent to ${email} in ${duration}ms`);
-    res.json({ success: true, message: "OTP sent to email", duration });
-  } catch (error: any) {
-    const duration = Date.now() - startTime;
-    console.error(`[EMAIL API ERROR] Failed after ${duration}ms:`, {
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      message: error.message
-    });
-    res.status(500).json({ 
-      success: false, 
-      error: error.message,
-      message: "Gagal mengirim email. Silakan cek kredensial SMTP di dashboard Vercel." 
-    });
+      const duration = Date.now() - startTime;
+      console.log(`[EMAIL SUCCESS] OTP sent to ${email} in ${duration}ms (Attempt ${attempts})`);
+      return res.json({ success: true, message: "OTP sent to email", duration, attempts });
+    } catch (error: any) {
+      if (attempts >= maxAttempts) {
+        const duration = Date.now() - startTime;
+        console.error(`[EMAIL API ERROR] Failed after ${duration}ms (${attempts} attempts):`, {
+          code: error.code,
+          command: error.command,
+          response: error.response,
+          message: error.message
+        });
+        return res.status(500).json({ 
+          success: false, 
+          error: error.message,
+          message: "Gagal mengirim email setelah beberapa kali mencoba. Silakan cek kredensial SMTP." 
+        });
+      }
+      console.warn(`[EMAIL RETRY] Attempt ${attempts} failed: ${error.message}. Retrying in 1s...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
 });
 
@@ -365,16 +375,16 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "ARCUS API is running" });
 });
 
-// API Route for registering a participant (Online Registration)
+// API Route for registering participants (Online Registration - Supports Multi-register/Collective)
 app.post("/api/register-participant", async (req, res) => {
-  const { eventId, registration, archer } = req.body;
+  const { eventId, registrations, archers, officials = [] } = req.body;
 
   if (!db) {
     return res.status(500).json({ success: false, message: "Firestore not initialized on backend" });
   }
 
-  if (!eventId || !registration || !archer) {
-    return res.status(400).json({ success: false, message: "Missing required registration data" });
+  if (!eventId || !registrations || !archers || !Array.isArray(registrations) || !Array.isArray(archers)) {
+    return res.status(400).json({ success: false, message: "Missing required registration data or invalid format" });
   }
 
   try {
@@ -390,16 +400,18 @@ app.post("/api/register-participant", async (req, res) => {
       const eventRecord = eventSnap.data()!;
       const eventData = eventRecord.data || {};
       
-      // Update registrations and archers arrays
-      const updatedRegistrations = [...(eventData.registrations || []), registration];
-      const updatedArchers = [...(eventData.archers || []), archer];
+      // Update registrations, archers, and officials arrays
+      const updatedRegistrations = [...(eventData.registrations || []), ...registrations];
+      const updatedArchers = [...(eventData.archers || []), ...archers];
+      const updatedOfficials = [...(eventData.officials || []), ...officials];
 
-      console.log(`[REGISTRATION-TX] Event: ${eventId}, New Total: ${updatedArchers.length}`);
+      console.log(`[REGISTRATION-BATCH] Event: ${eventId}, Added: ${registrations.length}, Archers: ${archers.length}, Officials: ${officials.length}`);
 
       const updatedData = {
         ...eventData,
         registrations: updatedRegistrations,
-        archers: updatedArchers
+        archers: updatedArchers,
+        officials: updatedOfficials
       };
 
       transaction.update(eventRef, { 
@@ -410,15 +422,15 @@ app.post("/api/register-participant", async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: "Participant registered successfully via transaction",
-      id: registration.id
+      message: `${registrations.length} participant(s) registered successfully`,
+      count: registrations.length
     });
   } catch (error: any) {
-    console.error("Registration Transaction Error:", error);
+    console.error("Batch Registration Error:", error);
     res.status(500).json({ 
       success: false, 
       error: error.message,
-      message: "Gagal memproses pendaftaran. Silakan coba lagi sebentar lagi." 
+      message: "Gagal memproses pendaftaran masal. Silahkan coba lagi." 
     });
   }
 });

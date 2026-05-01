@@ -185,13 +185,27 @@ const ProfilePanel: React.FC<Props> = ({ user, eventsManaged, onUpdate, onBack, 
               )}
 
               {!isEditing && (
-                <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 flex items-start gap-4">
-                  <Info className="w-5 h-5 text-blue-500 mt-1 shrink-0" />
-                  <div>
-                    <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1">Pusat Bantuan Profil</p>
-                    <p className="text-[11px] text-blue-600 leading-relaxed italic">
-                      Jika Anda ingin mengubah email institusi atau status verifikasi, silakan hubungi tim support ARCUS (WA: {contactSupport}) melalui pusat bantuan.
-                    </p>
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 flex items-start gap-4">
+                    <Info className="w-5 h-5 text-blue-500 mt-1 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1">Pusat Bantuan Profil</p>
+                      <p className="text-[11px] text-blue-600 leading-relaxed italic">
+                        Jika Anda ingin mengubah email institusi atau status verifikasi, silakan hubungi tim support ARCUS melalui pusat bantuan.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-start gap-4">
+                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center shrink-0">
+                      <Phone className="w-5 h-5 text-arcus-red" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Informasi Pengembang</p>
+                      <p className="text-[11px] font-black text-slate-900 uppercase italic font-oswald tracking-tight">ARCUS ARCHERY ID</p>
+                      <p className="text-[10px] text-slate-500 font-bold">WA: {contactSupport}</p>
+                      <p className="text-[10px] text-slate-400 italic">Jl. Bengawan No. 45 Kutosari, Kebumen, Kebumen - Jawa Tengah 54317</p>
+                    </div>
                   </div>
                 </div>
               )}

@@ -46,3 +46,22 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+export const SHARD_MAX_SIZE = 800000; // 800KB
+
+export function shardData(data: any): string[] {
+  const json = JSON.stringify(data);
+  const shards = [];
+  let i = 0;
+  while (i < json.length) {
+    shards.push(json.slice(i, i + SHARD_MAX_SIZE));
+    i += SHARD_MAX_SIZE;
+  }
+  return shards;
+}
+
+export function mergeShards(shards: string[]): any {
+  if (!shards.length) return null;
+  const merged = shards.join('');
+  return JSON.parse(merged);
+}

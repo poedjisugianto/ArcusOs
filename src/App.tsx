@@ -69,7 +69,7 @@ export function App() {
       feeAdult: 0, 
       feeKids: 0, 
       maintenanceMode: false,
-      contactSupport: '087834193339', 
+      contactSupport: '', 
       bankProvider: '',
       bankAccountNumber: '', 
       bankAccountName: '',
@@ -106,12 +106,6 @@ export function App() {
       drafts: { scoring: {}, adminSettings: {}, activeCategory: {} }
     };
   });
-
-  const appStateRef = React.useRef(appState);
-
-  useEffect(() => {
-    appStateRef.current = appState;
-  }, [appState]);
 
   const pushNotification = (title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' = 'INFO') => {
     const newNotif: AppNotification = {
@@ -303,27 +297,14 @@ export function App() {
       const registerId = params.get('register');
       const viewParam = params.get('view');
 
-      if (eventId || registerId) {
-        setIsCheckingLink(true);
-      } else {
-        return;
-      }
-
-      // Navigate based on view - IMPORTANT: set activeEventId BEFORE changing view to avoid blank screen
-      if (registerId) {
-        setAppState(prev => ({ ...prev, activeEventId: registerId }));
-        setView('REGISTER_PARTICIPANT');
-      } else if (eventId) {
-        setAppState(prev => ({ ...prev, activeEventId: eventId }));
-        if (viewParam === 'live') setView('PUBLIC_LIVE');
-        else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
-        else setView('PUBLIC_EVENT_INFO');
-      }
+      if (!eventId && !registerId) return;
 
       if (!db) {
-        console.log("Deep link validation pending: Database not yet ready.");
+        console.log("Deep link validation skipped: Database not ready.");
         return;
       }
+
+      setIsCheckingLink(true);
 
       // Safety timeout to prevent infinite loading if something goes wrong
       const safetyTimeout = setTimeout(() => {
@@ -339,14 +320,8 @@ export function App() {
           if (eventSnap.exists()) {
             console.log("Deep link data found in Firestore.");
             const eventRecord = eventSnap.data();
-            const targetEvent = eventRecord?.data as ArcheryEvent;
+            const targetEvent = eventRecord.data as ArcheryEvent;
             
-            if (!targetEvent || !targetEvent.id) {
-              console.error("Corrupted event data in deep link:", eventRecord);
-              pushNotification("Data Rusak", "Data turnamen tidak valid.", "WARNING");
-              return;
-            }
-
             // Inject into state and activate
             setAppState(prev => {
               const exists = prev.events.some(e => e.id === targetEvent.id);
@@ -368,10 +343,9 @@ export function App() {
             pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
           }
         }
-    } catch (err: any) {
-      console.error("Deep link fetch error:", err);
-      pushNotification("Gagal Validasi Link", "Gagal menghubungi awan. Pastikan koneksi internet stabil.", "WARNING");
-    } finally {
+      } catch (err) {
+        console.error("Deep link fetch error:", err);
+      } finally {
         setIsCheckingLink(false);
         clearTimeout(safetyTimeout);
       }
@@ -462,37 +436,31 @@ export function App() {
     }
   }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
 
-  const syncCloudData = async (manual = false, overrideState?: AppState) => {
+  const syncCloudData = async (manual = false) => {
     if (!db || !isOnline) return;
     
-    // Use overrideState if provided (for immediate syncs), otherwise use latest state from ref
-    const state = overrideState || appStateRef.current;
-    if (!state) return;
-    
-    const activeEvent = state.activeEventId ? state.events.find(e => e.id === state.activeEventId) : null;
-    
     // Safety check: Don't sync if data hasn't been loaded from cloud yet
-    if (!state.isDataLoaded && !manual) return;
+    if (!appState.isDataLoaded && !manual) return;
 
     setIsSyncing(true);
     try {
-      const isPrivileged = !!(state.currentUser?.isSuperAdmin || state.currentUser?.role === 'SUPERADMIN' || state.currentUser?.email === 'poedji.sugianto@gmail.com');
+      const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === UserRole.SUPERADMIN || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
 
       // 1. Sync Global Settings (Only SuperAdmin)
-      if (state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com') {
+      if (appState.currentUser?.isSuperAdmin) {
         await setDoc(doc(db, 'systemConfigs', 'global'), { 
           id: 'global', 
-          data: state.globalSettings, 
+          data: appState.globalSettings, 
           updatedAt: new Date().toISOString() 
         }, { merge: true });
       }
 
       // 2. Sync User Profile
-      if (state.currentUser) {
+      if (appState.currentUser) {
         try {
-          await setDoc(doc(db, 'profiles', state.currentUser.id), { 
-            id: state.currentUser.id, 
-            data: state.currentUser, 
+          await setDoc(doc(db, 'profiles', appState.currentUser.id), { 
+            id: appState.currentUser.id, 
+            data: appState.currentUser, 
             updatedAt: new Date().toISOString() 
           }, { merge: true });
         } catch (e) {
@@ -504,7 +472,7 @@ export function App() {
       if (activeEvent && isPrivileged) {
         await setDoc(doc(db, 'events', activeEvent.id), { 
           id: activeEvent.id, 
-          userId: activeEvent.settings.organizerId || state.currentUser?.id || null, 
+          userId: activeEvent.settings.organizerId || appState.currentUser?.id || null, 
           data: activeEvent,
           updatedAt: new Date().toISOString() 
         }, { merge: true });
@@ -932,22 +900,21 @@ export function App() {
         }
       }
 
-        {/* Reset System Data (CRITICAL) */}
-        // 3. Reset Global Settings to null/defaults
-        const initialSettings: GlobalSettings = {
-          feeAdult: 0, 
-          feeKids: 0, 
-          maintenanceMode: false,
-          contactSupport: '087834193339', 
-          bankProvider: '',
-          bankAccountNumber: '', 
-          bankAccountName: '',
-          dataRetentionDays: 90, 
-          practiceRetentionDays: 7,
-          paymentGatewayProvider: 'NONE',
-          paymentGatewayIsProduction: false,
-          platformFeePercentage: 0
-        };
+      // 3. Reset Global Settings to null/defaults
+      const initialSettings: GlobalSettings = {
+        feeAdult: 0, 
+        feeKids: 0, 
+        maintenanceMode: false,
+        contactSupport: '', 
+        bankProvider: '',
+        bankAccountNumber: '', 
+        bankAccountName: '',
+        dataRetentionDays: 90, 
+        practiceRetentionDays: 7,
+        paymentGatewayProvider: 'NONE',
+        paymentGatewayIsProduction: false,
+        platformFeePercentage: 0
+      };
       
       await setDoc(doc(db, 'systemConfigs', 'global'), { 
         id: 'global', 
@@ -981,12 +948,14 @@ export function App() {
   };
 
   const handleUpdateGlobalSettings = (newSettings: GlobalSettings) => {
-    const newState = { ...appState, globalSettings: newSettings };
-    setAppState(newState);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+    setAppState(prev => {
+      const newState = { ...prev, globalSettings: newSettings };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      return newState;
+    });
     setHasPendingChanges(true);
-    // Trigger immediate sync for global settings with the NEW state
-    syncCloudData(true, newState);
+    // Trigger immediate sync for global settings
+    setTimeout(() => syncCloudData(true), 500);
   };
 
   return (
@@ -1109,7 +1078,7 @@ export function App() {
       <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (
           <LandingPage 
-            events={appState.events.filter(e => e.settings && !e.settings.isPractice && e.status !== 'DRAFT')} 
+            events={appState.events.filter(e => !e.settings.isPractice && e.status !== 'DRAFT')} 
             onViewLive={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_LIVE'); }} 
             onViewParticipants={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_ENTRY_LIST'); }} 
             onViewInfo={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_EVENT_INFO'); }} 
@@ -1271,7 +1240,7 @@ export function App() {
             onMarkNotifRead={() => setAppState(prev => ({ ...prev, notifications: prev.notifications.map(n => ({ ...n, read: true })) }))} 
             globalSettings={appState.globalSettings} 
             onLogout={handleLogout}
-            events={appState.events.filter(e => e.settings && (e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin))} 
+            events={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin)} 
             onCreateEvent={async (n, isFree, desc) => { 
               const activationCode = Math.floor(1000 + Math.random() * 9000).toString();
               const e: ArcheryEvent = { 
@@ -1401,7 +1370,7 @@ export function App() {
             onBack={() => setView('MEMBER_DASHBOARD')} 
           />
         )}
-        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings && e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
+        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
         {view === 'EVENT_ADMIN' && activeEvent && (
           <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-24 animate-in fade-in duration-700 px-4 md:px-0">
             {/* Console Header */}
@@ -1777,23 +1746,6 @@ export function App() {
             pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
           }
         }} onBack={() => setView('LANDING')} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
-        {(view === 'PUBLIC_LIVE' || view === 'PUBLIC_ENTRY_LIST' || view === 'PUBLIC_EVENT_INFO' || view === 'REGISTER_PARTICIPANT') && !activeEvent && !isCheckingLink && appState.isDataLoaded && (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center space-y-6">
-            <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-300">
-              <Trophy className="w-10 h-10" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black font-oswald uppercase italic text-slate-900">Event Tidak Ditemukan</h2>
-              <p className="text-slate-500 text-sm max-w-xs mx-auto">Tautan yang Anda ikuti tidak valid atau turnamen telah dihapus oleh penyelenggara.</p>
-            </div>
-            <button 
-              onClick={() => setView('LANDING')}
-              className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all"
-            >
-              Kembali ke Beranda
-            </button>
-          </div>
-        )}
         {view === 'PUBLIC_LIVE' && activeEvent && (
           <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
         )}
@@ -1828,11 +1780,6 @@ export function App() {
                 <div className="flex flex-col">
                   <h3 className="text-xl font-black font-oswald uppercase italic tracking-tighter leading-none text-slate-900">ARCUS DIGITAL</h3>
                   <span className="text-[7px] font-black text-arcus-red uppercase tracking-[0.2em]">Tournament OS</span>
-                  <div className="mt-2 space-y-0.5">
-                    <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tight">Jl. Bengawan No. 45 Kutosari, Kebumen</p>
-                    <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tight">Kebumen - Jawa Tengah 54317</p>
-                    <p className="text-[7px] font-black text-slate-900 uppercase tracking-widest mt-1">WA: 0878-3419-3339</p>
-                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap justify-center md:justify-start gap-8">
@@ -1841,18 +1788,10 @@ export function App() {
                 <button onClick={() => setView('DOCUMENTATION')} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-colors">Dokumentasi</button>
               </div>
             </div>
-            <div className="text-center md:text-right flex flex-col gap-4">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Kontak Support</p>
-                <p className="text-xl font-black font-oswald uppercase italic tracking-wider text-slate-900">WA: {appState.globalSettings.contactSupport || '087834193339'}</p>
-              </div>
-              <div className="text-slate-500 max-w-xs ml-auto">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1">Kantor Pengembang</p>
-                <p className="text-[9px] font-bold leading-relaxed uppercase opacity-80">
-                  Jl. Bengawan No. 45 Kutosari, Kebumen, Kebumen - Jawa Tengah 54317
-                </p>
-              </div>
-              <div className="mt-2 pt-6 border-t border-slate-50">
+            <div className="text-center md:text-right">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Kontak Support</p>
+              <p className="text-xl font-black font-oswald uppercase italic tracking-wider text-slate-900">WA: {appState.globalSettings.contactSupport}</p>
+              <div className="mt-6 pt-6 border-t border-slate-50">
                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Tournament OS v{APP_VERSION} &copy; 2026</p>
               </div>
             </div>

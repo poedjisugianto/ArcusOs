@@ -1222,7 +1222,6 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                           <div>
                              <p className="font-black text-sm uppercase">Transfer Manual</p>
                              <p className="text-[10px] font-bold text-slate-400 uppercase">WA Support: {globalSettings.contactSupport}</p>
-                              <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Jl. Bengawan No. 45 Kutosari, Kebumen</p>
                           </div>
                        </div>
                        <ChevronRight className="w-5 h-5 text-slate-300" />

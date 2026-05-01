@@ -303,14 +303,27 @@ export function App() {
       const registerId = params.get('register');
       const viewParam = params.get('view');
 
-      if (!eventId && !registerId) return;
-
-      if (!db) {
-        console.log("Deep link validation skipped: Database not ready.");
+      if (eventId || registerId) {
+        setIsCheckingLink(true);
+      } else {
         return;
       }
 
-      setIsCheckingLink(true);
+      // Navigate based on view - IMPORTANT: set activeEventId BEFORE changing view to avoid blank screen
+      if (registerId) {
+        setAppState(prev => ({ ...prev, activeEventId: registerId }));
+        setView('REGISTER_PARTICIPANT');
+      } else if (eventId) {
+        setAppState(prev => ({ ...prev, activeEventId: eventId }));
+        if (viewParam === 'live') setView('PUBLIC_LIVE');
+        else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
+        else setView('PUBLIC_EVENT_INFO');
+      }
+
+      if (!db) {
+        console.log("Deep link validation pending: Database not yet ready.");
+        return;
+      }
 
       // Safety timeout to prevent infinite loading if something goes wrong
       const safetyTimeout = setTimeout(() => {
@@ -326,8 +339,14 @@ export function App() {
           if (eventSnap.exists()) {
             console.log("Deep link data found in Firestore.");
             const eventRecord = eventSnap.data();
-            const targetEvent = eventRecord.data as ArcheryEvent;
+            const targetEvent = eventRecord?.data as ArcheryEvent;
             
+            if (!targetEvent || !targetEvent.id) {
+              console.error("Corrupted event data in deep link:", eventRecord);
+              pushNotification("Data Rusak", "Data turnamen tidak valid.", "WARNING");
+              return;
+            }
+
             // Inject into state and activate
             setAppState(prev => {
               const exists = prev.events.some(e => e.id === targetEvent.id);
@@ -349,9 +368,10 @@ export function App() {
             pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
           }
         }
-      } catch (err) {
-        console.error("Deep link fetch error:", err);
-      } finally {
+    } catch (err: any) {
+      console.error("Deep link fetch error:", err);
+      pushNotification("Gagal Validasi Link", "Gagal menghubungi awan. Pastikan koneksi internet stabil.", "WARNING");
+    } finally {
         setIsCheckingLink(false);
         clearTimeout(safetyTimeout);
       }
@@ -1089,7 +1109,7 @@ export function App() {
       <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (
           <LandingPage 
-            events={appState.events.filter(e => !e.settings.isPractice && e.status !== 'DRAFT')} 
+            events={appState.events.filter(e => e.settings && !e.settings.isPractice && e.status !== 'DRAFT')} 
             onViewLive={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_LIVE'); }} 
             onViewParticipants={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_ENTRY_LIST'); }} 
             onViewInfo={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_EVENT_INFO'); }} 
@@ -1251,7 +1271,7 @@ export function App() {
             onMarkNotifRead={() => setAppState(prev => ({ ...prev, notifications: prev.notifications.map(n => ({ ...n, read: true })) }))} 
             globalSettings={appState.globalSettings} 
             onLogout={handleLogout}
-            events={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin)} 
+            events={appState.events.filter(e => e.settings && (e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin))} 
             onCreateEvent={async (n, isFree, desc) => { 
               const activationCode = Math.floor(1000 + Math.random() * 9000).toString();
               const e: ArcheryEvent = { 
@@ -1381,7 +1401,7 @@ export function App() {
             onBack={() => setView('MEMBER_DASHBOARD')} 
           />
         )}
-        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
+        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings && e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
         {view === 'EVENT_ADMIN' && activeEvent && (
           <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-24 animate-in fade-in duration-700 px-4 md:px-0">
             {/* Console Header */}
@@ -1757,6 +1777,23 @@ export function App() {
             pushNotification("Cloud Error", "Gagal mengirim ke cloud, data disimpan secara lokal sementara.", "WARNING");
           }
         }} onBack={() => setView('LANDING')} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
+        {(view === 'PUBLIC_LIVE' || view === 'PUBLIC_ENTRY_LIST' || view === 'PUBLIC_EVENT_INFO' || view === 'REGISTER_PARTICIPANT') && !activeEvent && !isCheckingLink && appState.isDataLoaded && (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center space-y-6">
+            <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-300">
+              <Trophy className="w-10 h-10" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-black font-oswald uppercase italic text-slate-900">Event Tidak Ditemukan</h2>
+              <p className="text-slate-500 text-sm max-w-xs mx-auto">Tautan yang Anda ikuti tidak valid atau turnamen telah dihapus oleh penyelenggara.</p>
+            </div>
+            <button 
+              onClick={() => setView('LANDING')}
+              className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all"
+            >
+              Kembali ke Beranda
+            </button>
+          </div>
+        )}
         {view === 'PUBLIC_LIVE' && activeEvent && (
           <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
         )}
@@ -1791,6 +1828,11 @@ export function App() {
                 <div className="flex flex-col">
                   <h3 className="text-xl font-black font-oswald uppercase italic tracking-tighter leading-none text-slate-900">ARCUS DIGITAL</h3>
                   <span className="text-[7px] font-black text-arcus-red uppercase tracking-[0.2em]">Tournament OS</span>
+                  <div className="mt-2 space-y-0.5">
+                    <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tight">Jl. Bengawan No. 45 Kutosari, Kebumen</p>
+                    <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tight">Kebumen - Jawa Tengah 54317</p>
+                    <p className="text-[7px] font-black text-slate-900 uppercase tracking-widest mt-1">WA: 0878-3419-3339</p>
+                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap justify-center md:justify-start gap-8">

@@ -34,6 +34,7 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
 
   const getEventsForDay = (day: number) => {
     return events.filter(event => {
+      if (!event.settings) return false;
       const eventDate = new Date(event.settings.eventDate || '');
       return eventDate.getFullYear() === year && 
              eventDate.getMonth() === month && 
@@ -111,10 +112,12 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
         <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6 boder-l-2 border-arcus-red pl-3">Turnamen Bulan Ini</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {events.filter(e => {
+            if (!e.settings) return false;
             const d = new Date(e.settings.eventDate || '');
             return d.getMonth() === month && d.getFullYear() === year;
           }).length > 0 ? (
             events.filter(e => {
+                if (!e.settings) return false;
                 const d = new Date(e.settings.eventDate || '');
                 return d.getMonth() === month && d.getFullYear() === year;
             }).map(event => (

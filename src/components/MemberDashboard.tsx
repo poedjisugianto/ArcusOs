@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import ArcusLogo from './ArcusLogo';
 import AdminDashboard from './AdminDashboard';
+import { safeFormatDateTime, safeFormatDate, safeFormatTime } from '../lib/dateUtils';
 
 interface Props {
   userName?: string;
@@ -132,7 +133,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
   const handleStartPractice = () => {
     setStep('PRACTICE_INPUT');
-    setName(`Latihan Bersama ${new Date().toLocaleDateString('id-ID')}`);
+    setName(`Latihan Bersama ${safeFormatDate(new Date())}`);
   };
 
   const handleCancel = () => {
@@ -379,7 +380,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
              </div>
              {lastSync && (
                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">
-                 Terakhir: {lastSync.toLocaleTimeString('id-ID')}
+                 Terakhir: {safeFormatTime(lastSync)}
                </span>
              )}
           </div>
@@ -483,7 +484,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                       <div key={notif.id} className={`p-6 rounded-[2rem] border-2 shadow-sm transition-all ${notif.type === 'WARNING' ? 'bg-red-50 border-red-100' : 'bg-white border-white'}`}>
                          <div className="flex justify-between items-start mb-3">
                             <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${notif.type === 'WARNING' ? 'bg-red-600 text-white' : 'bg-slate-900 text-white'}`}>MASTER ADMIN</span>
-                            <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(notif.timestamp).toLocaleString('id-ID')}</span>
+                            <span className="text-[9px] font-black text-slate-300 uppercase">{safeFormatDateTime(notif.timestamp)}</span>
                          </div>
                          <h4 className="font-black text-slate-900 uppercase font-oswald italic text-lg leading-tight mb-2">{notif.title}</h4>
                          <p className="text-slate-600 text-sm font-medium leading-relaxed italic">"{notif.message}"</p>
@@ -503,7 +504,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                       <div key={notif.id} className="p-6 rounded-[2rem] bg-white border-2 border-slate-100 shadow-sm opacity-80">
                          <div className="flex justify-between items-start mb-3">
                             <span className="px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-100">Kirim Ke Master</span>
-                            <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(notif.timestamp).toLocaleString('id-ID')}</span>
+                            <span className="text-[9px] font-black text-slate-300 uppercase">{safeFormatDateTime(notif.timestamp)}</span>
                          </div>
                          <h4 className="font-black text-slate-900 uppercase font-oswald italic text-lg leading-tight mb-2">{notif.title}</h4>
                          <p className="text-slate-500 text-sm font-medium leading-relaxed">"{notif.message}"</p>
@@ -826,7 +827,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                           {event.settings.eventDate && (
                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                               <Calendar className="w-4 h-4 text-emerald-500" />
-                              <span>{new Date(event.settings.eventDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                              <span>{safeFormatDate(event.settings.eventDate, { day: 'numeric', month: 'short' })}</span>
                             </div>
                           )}
                           {!event.settings.isPractice && (

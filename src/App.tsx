@@ -16,6 +16,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType, shardData, mergeShards } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
+import { safeFormatTime } from './lib/dateUtils';
 import AdminPanel from './components/AdminPanel';
 import ScoringPanel from './components/ScoringPanel';
 import LiveScoreboard from './components/LiveScoreboard';
@@ -781,13 +782,14 @@ export function App() {
   useEffect(() => {
     if (!appState.isDataLoaded || isCheckingLink) return;
 
-    const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE', 'PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'];
-    if (eventRequiredViews.includes(view) && !activeEvent) {
-      if (['PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'].includes(view as any)) {
-        setView('LANDING');
-      } else {
-        setView('MEMBER_DASHBOARD');
-      }
+    const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE'];
+    if (eventRequiredViews.includes(view) && !activeEvent && appState.isDataLoaded) {
+      setView('MEMBER_DASHBOARD');
+    }
+
+    const publicEventRequiredViews = ['PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'];
+    if (publicEventRequiredViews.includes(view) && !activeEvent && appState.isDataLoaded && !appState.activeEventId) {
+      setView('LANDING');
     }
     const authViews = ['MEMBER_DASHBOARD', 'PROFILE', 'SUPER_ADMIN', 'OPERATOR_CENTER'];
     if (authViews.includes(view) && !appState.currentUser) {
@@ -1162,6 +1164,13 @@ export function App() {
     syncCloudData(true, newState);
   };
 
+  // Robust navigation for public views to ensure state sync
+  const navigateToPublicEvent = (id: string, targetView: View) => {
+    // Ensuring activeEventId is set in appState before or at the same time as the view change
+    setAppState(prev => ({ ...prev, activeEventId: id }));
+    setView(targetView);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
       <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
@@ -1196,7 +1205,7 @@ export function App() {
           )}
           {lastSync && (
             <span className="hidden lg:inline text-[8px] font-bold opacity-50 uppercase tracking-tighter">
-              Update: {lastSync.toLocaleTimeString('id-ID')}
+              Update: {safeFormatTime(lastSync)}
             </span>
           )}
         </div>
@@ -1305,13 +1314,12 @@ export function App() {
         {view === 'LANDING' && (
           <LandingPage 
             events={appState.events.filter(e => !e.settings.isPractice && e.status !== 'DRAFT')} 
-            onViewLive={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_LIVE'); }} 
-            onViewParticipants={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_ENTRY_LIST'); }} 
-            onViewInfo={(id) => { setAppState(prev => ({ ...prev, activeEventId: id })); setView('PUBLIC_EVENT_INFO'); }} 
+            onViewLive={(id) => navigateToPublicEvent(id, 'PUBLIC_LIVE')} 
+            onViewParticipants={(id) => navigateToPublicEvent(id, 'PUBLIC_ENTRY_LIST')} 
+            onViewInfo={(id) => navigateToPublicEvent(id, 'PUBLIC_EVENT_INFO')} 
             onRegister={(id) => { 
               console.log("App: onRegister called for", id);
-              setAppState(prev => ({ ...prev, activeEventId: id })); 
-              setView('REGISTER_PARTICIPANT'); 
+              navigateToPublicEvent(id, 'REGISTER_PARTICIPANT');
               pushNotification("Membuka Pendaftaran", "Menyiapkan formulir pendaftaran...", "INFO");
             }}
             onScorerLogin={() => setView('SCORER_LOGIN')}
@@ -1872,7 +1880,9 @@ export function App() {
             }} 
           />
         )}
-        {view === 'REGISTER_PARTICIPANT' && activeEvent && <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (registrations: ParticipantRegistration[]) => {
+        {view === 'REGISTER_PARTICIPANT' && (
+          activeEvent ? (
+            <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (registrations: ParticipantRegistration[]) => {
           const regs = registrations;
           const officialRegs = regs.filter(r => r.category === 'OFFICIAL');
           const archerRegs = regs.filter(r => r.category !== 'OFFICIAL');
@@ -1991,26 +2001,54 @@ export function App() {
           }
         }} onBack={() => {
           setView('LANDING');
-        }} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />}
-        {view === 'PUBLIC_LIVE' && activeEvent && (
-          <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
+        }} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />
+          ) : (
+            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
+              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
+              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Menyiapkan Pendaftaran...</p>
+            </div>
+          )
         )}
-        {view === 'PUBLIC_ENTRY_LIST' && activeEvent && (
-          <EntryList 
-            event={activeEvent} 
-            onBack={() => setView('LANDING')} 
-            onRefresh={() => fetchCloudData(true)}
-            isSyncing={isSyncing}
-          />
+        {view === 'PUBLIC_LIVE' && (
+          activeEvent ? (
+            <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
+          ) : (
+            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
+              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
+              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Menghubungkan Live Score...</p>
+            </div>
+          )
         )}
-        {view === 'PUBLIC_EVENT_INFO' && activeEvent && (
-          <EventInfo 
-            event={activeEvent} 
-            onBack={() => setView('LANDING')} 
-            onRegister={() => setView('REGISTER_PARTICIPANT')} 
-            onShare={() => handleShare(appState.activeEventId!)} 
-            onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')}
-          />
+        {view === 'PUBLIC_ENTRY_LIST' && (
+          activeEvent ? (
+            <EntryList 
+              event={activeEvent} 
+              onBack={() => setView('LANDING')} 
+              onRefresh={() => fetchCloudData(true)}
+              isSyncing={isSyncing}
+            />
+          ) : (
+            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
+              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
+              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Memuat Daftar Peserta...</p>
+            </div>
+          )
+        )}
+        {view === 'PUBLIC_EVENT_INFO' && (
+          activeEvent ? (
+            <EventInfo 
+              event={activeEvent} 
+              onBack={() => setView('LANDING')} 
+              onRegister={() => setView('REGISTER_PARTICIPANT')} 
+              onShare={() => handleShare(appState.activeEventId!)} 
+              onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')}
+            />
+          ) : (
+            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
+              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
+              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Memuat Data Turnamen...</p>
+            </div>
+          )
         )}
         {(view === 'PRIVACY' || view === 'TERMS' || view === 'DOCUMENTATION') && (
           <LegalDoc type={view} onBack={() => setView('LANDING')} />

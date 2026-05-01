@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { ArcheryEvent, GlobalSettings, ParticipantRegistration, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
+import { isValidDate } from '../lib/dateUtils';
 import { 
   ArrowLeft, User, Mail, ShieldCheck, CreditCard, 
   Upload, Check, AlertCircle, Zap, Sparkles, 
@@ -24,7 +25,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     return isNaN(parsed) ? 1 : parsed;
   });
   
-  const isRegistrationClosed = (event.settings.registrationDeadline && !isNaN(new Date(event.settings.registrationDeadline).getTime())) 
+  const isRegistrationClosed = (event.settings.registrationDeadline && isValidDate(event.settings.registrationDeadline)) 
     ? new Date() > new Date(event.settings.registrationDeadline) 
     : false;
 

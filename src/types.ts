@@ -170,6 +170,14 @@ export interface CategoryConfig {
   eliminationStages: number[]; // Contoh: [32, 16] berarti ada penyaringan skor top 32 lalu top 16 baru masuk aduan
 }
 
+export interface Sponsorship {
+  id: string;
+  name: string;
+  title: string;
+  logoUrl?: string;
+  videoUrl?: string;
+}
+
 export interface TournamentSettings {
   tournamentName: string;
   organizerId: string;
@@ -198,6 +206,7 @@ export interface TournamentSettings {
   categoryConfigs?: Partial<Record<CategoryType, CategoryConfig>>;
   waGroupLink?: string;
   lastResetAt?: number;
+  sponsorships?: Sponsorship[];
 }
 
 export interface DisbursementRequest {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Trophy, Clock, X, Swords, Medal, LayoutList, Target, ChevronRight, Info, Activity, Monitor, Search, Check, Maximize2, Pause, Play, ChevronLeft } from 'lucide-react';
-import { ArcheryEvent, CategoryType, Match, TargetType } from '../types';
+import { Trophy, Clock, X, Swords, Medal, LayoutList, Target, ChevronRight, Info, Activity, Monitor, Search, Check, Maximize2, Pause, Play, ChevronLeft, Youtube, Heart } from 'lucide-react';
+import { ArcheryEvent, CategoryType, Match, TargetType, Sponsorship } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
 import { motion, AnimatePresence } from 'motion/react';
@@ -34,6 +34,118 @@ const SponsorMatras = () => {
        <div className="relative z-10 flex flex-col">
           <p className="text-[8px] font-black text-white/50 uppercase italic tracking-[0.2em]">{current.title}</p>
           <p className="text-white text-xs font-black uppercase italic tracking-tighter">{current.desc}</p>
+       </div>
+    </div>
+  );
+};
+
+const FooterSponsorshipSlider = ({ tournamentName, sponsorships, isTVMode }: { tournamentName: string, sponsorships?: Sponsorship[], isTVMode: boolean }) => {
+  const [index, setIndex] = useState(0);
+  const sponsors = useMemo(() => {
+    if (sponsorships && sponsorships.length > 0) {
+      return sponsorships.map(s => ({
+        title: s.title,
+        name: s.name,
+        icon: s.logoUrl ? <img src={s.logoUrl} className="w-5 h-5 rounded object-contain" alt="" referrerPolicy="no-referrer" /> : <Heart className="w-3 h-3 sm:w-4 sm:h-4 text-red-400" />
+      }));
+    }
+    return [
+      { title: "HOSTED BY", name: tournamentName, icon: <Trophy className="w-3 h-3 sm:w-4 sm:h-4" /> },
+      { title: "OFFICIAL PARTNER", name: "ARCUS DIGITAL ARCHERY", icon: <Activity className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" /> },
+      { title: "SUPPORTED BY", name: "TRADITIONAL ARCHERY ID", icon: <Medal className="w-3 h-3 sm:w-4 sm:h-4 text-amber-400" /> },
+      { title: "EQUIPMENT BY", name: "ARCUS PRO SHOP", icon: <Target className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400" /> }
+    ];
+  }, [tournamentName, sponsorships]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex(prev => (prev + 1) % sponsors.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [sponsors.length]);
+
+  return (
+    <div className={`px-4 sm:px-8 py-2 sm:py-3 rounded-xl sm:rounded-2xl border flex items-center gap-2 sm:gap-4 min-w-0 transition-colors duration-700 ${isTVMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={index}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.5 }}
+          className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1"
+        >
+          <div className="w-6 h-6 sm:w-10 sm:h-10 bg-slate-900 rounded-lg sm:rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg">
+             {sponsors[index].icon}
+          </div>
+          <div className="min-w-0 overflow-hidden">
+            <p className={`text-[7px] sm:text-[9px] font-black uppercase tracking-[0.2em] leading-none mb-0.5 sm:mb-1.5 ${isTVMode ? 'text-white/40' : 'text-slate-400'}`}>
+              {sponsors[index].title}
+            </p>
+            <p className={`text-[10px] sm:text-lg font-black font-oswald uppercase italic tracking-wider truncate leading-tight ${isTVMode ? 'text-white' : 'text-slate-900'}`}>
+              {sponsors[index].name}
+            </p>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const TVVideoSponsor = ({ sponsorships }: { sponsorships?: Sponsorship[] }) => {
+  const [index, setIndex] = useState(0);
+  const sponsorsWithVideo = useMemo(() => 
+    (sponsorships || []).filter(s => s.videoUrl), 
+    [sponsorships]
+  );
+
+  useEffect(() => {
+    if (sponsorsWithVideo.length <= 1) return;
+    const timer = setInterval(() => {
+      setIndex(prev => (prev + 1) % sponsorsWithVideo.length);
+    }, 60000); 
+    return () => clearInterval(timer);
+  }, [sponsorsWithVideo.length]);
+
+  if (sponsorsWithVideo.length === 0) return null;
+
+  const current = sponsorsWithVideo[index];
+  
+  const getEmbedUrl = (url: string) => {
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+      const match = url.match(regExp);
+      const id = (match && match[2].length === 11) ? match[2] : null;
+      if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}`;
+    }
+    return url;
+  };
+
+  return (
+    <div className="w-full h-full bg-black rounded-[3rem] overflow-hidden shadow-2xl border-4 border-white/5 relative group">
+       <iframe 
+         src={getEmbedUrl(current.videoUrl!)} 
+         className="w-full h-full border-0" 
+         allow="autoplay; encrypted-media" 
+         allowFullScreen
+         title={`Sponsor Video: ${current.name}`}
+       />
+       <div className="absolute top-8 left-8 flex items-center gap-3">
+          <div className="bg-slate-950/80 backdrop-blur-md px-4 py-2 rounded-xl flex items-center gap-3 border border-white/10">
+             <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+             <span className="text-[10px] font-black text-white uppercase tracking-widest">ARCUS BROADCAST</span>
+          </div>
+       </div>
+       <div className="absolute bottom-8 left-8 right-8">
+          <div className="bg-slate-950/80 backdrop-blur-md p-6 rounded-2xl flex items-center justify-between border border-white/10">
+             <div className="flex items-center gap-4">
+                {current.logoUrl && <img src={current.logoUrl} className="w-12 h-12 rounded-xl object-contain bg-white p-2" alt="" referrerPolicy="no-referrer" />}
+                <div>
+                  <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">{current.title}</p>
+                  <p className="text-xl font-black text-white uppercase font-oswald italic tracking-wider">{current.name}</p>
+                </div>
+             </div>
+          </div>
        </div>
     </div>
   );
@@ -221,6 +333,11 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
     );
   }, [leaderBoard, searchTerm]);
 
+  const hasVideoSponsors = useMemo(() => 
+    (state.settings.sponsorships || []).some(s => s.videoUrl), 
+    [state.settings.sponsorships]
+  );
+
   return (
     <div className={`fixed inset-0 z-[100] flex flex-col font-sans transition-colors duration-1000 ${isTVMode ? 'bg-[#0F172A]' : 'bg-[#F8F9FB] text-slate-900'}`}>
       {/* Header */}
@@ -337,7 +454,10 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
         className={`flex-1 overflow-auto custom-scrollbar ${isTVMode ? 'bg-[#0F172A] p-0' : 'bg-white'}`}
       >
         <div className={`${isTVMode ? 'w-full' : 'w-full max-w-[1600px] mx-auto'}`}>
-           {activeTab === 'KUALIFIKASI' ? (
+           <div className={isTVMode && hasVideoSponsors ? "grid grid-cols-1 lg:grid-cols-2 h-full" : ""}>
+              {/* Score Side */}
+              <div className={isTVMode && hasVideoSponsors ? "h-full border-r border-white/5 overflow-auto custom-scrollbar" : ""}>
+                 {activeTab === 'KUALIFIKASI' ? (
              <div className={`${isTVMode ? 'bg-transparent' : 'bg-white overflow-x-auto sm:overflow-visible'} transition-all duration-700`}>
                 <table className="w-full text-left border-collapse table-fixed sm:table-auto">
                     <thead>
@@ -513,9 +633,20 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
                   })
                 )}
              </div>
-           )}
+          )}
         </div>
+        
+        {/* Video Side - Only TV Mode with Video Sponsors */}
+        {isTVMode && hasVideoSponsors && (
+          <div className="h-full p-10 flex flex-col">
+             <div className="flex-1">
+                <TVVideoSponsor sponsorships={state.settings.sponsorships} />
+             </div>
+          </div>
+        )}
       </div>
+    </div>
+  </div>
       
       {/* Footer Info */}
       <div className={`shrink-0 flex items-center justify-between transition-all duration-700 ${isTVMode ? 'bg-slate-950/80 backdrop-blur-xl border-t border-white/5 p-8' : 'bg-white border-t p-4 px-6 sm:px-10'}`}>
@@ -539,13 +670,8 @@ const LiveScoreboard: React.FC<Props> = ({ state, onBack, startInTVMode = false 
                 </div>
             </div>
           )}
-          <div className="flex items-center gap-6 w-full sm:w-auto justify-center sm:justify-end">
-              <div className={`px-4 sm:px-8 py-2 sm:py-3 rounded-xl sm:rounded-2xl border flex items-center gap-2 sm:gap-4 ${isTVMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
-                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
-                    <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
-                  </div>
-                  <p className={`text-[10px] sm:text-sm font-black font-oswald uppercase italic tracking-widest truncate max-w-[200px] ${isTVMode ? 'text-white' : 'text-slate-900'}`}>{state.settings.tournamentName}</p>
-              </div>
+          <div className="flex items-center gap-6 w-full sm:w-auto justify-center sm:justify-end min-w-0">
+              <FooterSponsorshipSlider tournamentName={state.settings.tournamentName} sponsorships={state.settings.sponsorships} isTVMode={isTVMode} />
           </div>
       </div>
     </div>

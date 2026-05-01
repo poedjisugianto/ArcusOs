@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Trophy, Cl
 import { motion, AnimatePresence } from 'motion/react';
 import { ArcheryEvent } from '../types';
 import { generateGoogleCalendarLink, generateICalFile } from '../lib/calendarUtils';
+import { isValidDate } from '../lib/dateUtils';
 
 interface Props {
   events: ArcheryEvent[];
@@ -34,12 +35,21 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
 
   const getEventsForDay = (day: number) => {
     return events.filter(event => {
-      const eventDate = new Date(event.settings.eventDate || '');
+      const dateStr = event.settings.eventDate;
+      if (!dateStr || !isValidDate(dateStr)) return false;
+      const eventDate = new Date(dateStr);
       return eventDate.getFullYear() === year && 
              eventDate.getMonth() === month && 
              eventDate.getDate() === day;
     });
   };
+
+  const monthlyEvents = events.filter(e => {
+    const dStr = e.settings.eventDate;
+    if (!dStr || !isValidDate(dStr)) return false;
+    const d = new Date(dStr);
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
 
   return (
     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -110,14 +120,8 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
       <div className="p-8 bg-slate-50/50">
         <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-6 boder-l-2 border-arcus-red pl-3">Turnamen Bulan Ini</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {events.filter(e => {
-            const d = new Date(e.settings.eventDate || '');
-            return d.getMonth() === month && d.getFullYear() === year;
-          }).length > 0 ? (
-            events.filter(e => {
-                const d = new Date(e.settings.eventDate || '');
-                return d.getMonth() === month && d.getFullYear() === year;
-            }).map(event => (
+          {monthlyEvents.length > 0 ? (
+            monthlyEvents.map(event => (
               <div key={event.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-4 hover:border-arcus-red transition-all group">
                 <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white group-hover:bg-arcus-red transition-colors shrink-0">
                   <Trophy className="w-5 h-5" />

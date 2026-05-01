@@ -7,6 +7,8 @@ import {
 import { Archer, TournamentSettings, CategoryType } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 
+import { safeFormatDate } from '../lib/dateUtils';
+
 interface Props {
   archers: Archer[];
   settings: TournamentSettings;
@@ -29,7 +31,7 @@ const IdCardEditor: React.FC<Props> = ({ archers, settings, onBack }) => {
   const [logos, setLogos] = useState<Logo[]>([]);
   const [cardTitle, setCardTitle] = useState(settings.tournamentName || 'KARTU PESERTA');
   const [cardSubtitle, setCardSubtitle] = useState(settings.location || 'ARCUS ARCHERY TOURNAMENT');
-  const [cardDate, setCardDate] = useState(settings.eventDate ? new Date(settings.eventDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+  const [cardDate, setCardDate] = useState(safeFormatDate(settings.eventDate, { day: 'numeric', month: 'long', year: 'numeric' }));
   const [accentColor, setAccentColor] = useState('#ef4444'); // Default red
   const [bgPattern, setBgPattern] = useState<BgPattern>('SPORTY_MESH');
   const [cardTheme, setCardTheme] = useState<CardTheme>('SPORTY_MODERN');

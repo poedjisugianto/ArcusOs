@@ -9,6 +9,7 @@ import { ArcheryEvent, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 import ArcusLogo from './ArcusLogo';
 import { generateGoogleCalendarLink, generateICalFile } from '../lib/calendarUtils';
+import { safeFormatDateTime } from '../lib/dateUtils';
 
 interface Props {
   event: ArcheryEvent;
@@ -218,7 +219,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                     </button>
                     {event.settings.registrationDeadline && (
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
-                        Batas Akhir: {new Date(event.settings.registrationDeadline).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}
+                        Batas Akhir: {safeFormatDateTime(event.settings.registrationDeadline)}
                       </p>
                     )}
                   </>
@@ -260,10 +261,17 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                     Apple / iCal
                   </button>
                 </div>
-                <button className="w-full py-5 bg-white text-slate-900 border-2 border-slate-100 rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:border-slate-900 transition-all flex items-center justify-center gap-3">
-                  <Download className="w-5 h-5" />
-                  Download THB
-                </button>
+                {event.settings.thbUrl && (
+                  <a 
+                    href={event.settings.thbUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-5 bg-white text-slate-900 border-2 border-slate-100 rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:border-slate-900 transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"
+                  >
+                    <Download className="w-5 h-5" />
+                    Download THB
+                  </a>
+                )}
               </div>
             </div>
 

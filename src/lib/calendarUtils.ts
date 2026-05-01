@@ -9,8 +9,15 @@ export const generateGoogleCalendarLink = (event: { title: string; description: 
     return d.toISOString().replace(/-|:|\.\d\d\d/g, '');
   };
 
+  const calculateEnd = (startStr: string, endStr?: string) => {
+    if (endStr) return formatDate(endStr);
+    const d = new Date(startStr);
+    if (isNaN(d.getTime())) return '';
+    return formatDate(new Date(d.getTime() + 8 * 60 * 60 * 1000).toISOString());
+  };
+
   const start = formatDate(event.startDate);
-  const end = event.endDate ? formatDate(event.endDate) : formatDate(new Date(new Date(event.startDate).getTime() + 8 * 60 * 60 * 1000).toISOString()); // Default 8 hours
+  const end = calculateEnd(event.startDate, event.endDate);
 
   const params = new URLSearchParams({
     text: event.title,
@@ -29,8 +36,15 @@ export const generateICalFile = (event: { title: string; description: string; lo
     return d.toISOString().replace(/-|:|\.\d\d\d/g, '');
   };
 
+  const calculateEnd = (startStr: string, endStr?: string) => {
+    if (endStr) return formatDate(endStr);
+    const d = new Date(startStr);
+    if (isNaN(d.getTime())) return '';
+    return formatDate(new Date(d.getTime() + 8 * 60 * 60 * 1000).toISOString());
+  };
+
   const start = formatDate(event.startDate);
-  const end = event.endDate ? formatDate(event.endDate) : formatDate(new Date(new Date(event.startDate).getTime() + 8 * 60 * 60 * 1000).toISOString());
+  const end = calculateEnd(event.startDate, event.endDate);
 
   const iCalContent = [
     'BEGIN:VCALENDAR',

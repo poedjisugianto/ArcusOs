@@ -6,9 +6,10 @@ import {
   Upload, Trash2, Plus, Landmark, CreditCard, X, MapPin, 
   Link as LinkIcon, Info, Hash, Repeat, Compass, Layers, 
   Users as UsersIcon, AlertTriangle, AlertCircle, ShieldCheck, Zap, ToggleRight, ToggleLeft,
-  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords, Monitor
+  FileDown, ExternalLink, HelpCircle, Check, ChevronLeft, Smartphone, Clock, Swords, Monitor,
+  Heart, Youtube, Video
 } from 'lucide-react';
-import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig } from '../types';
+import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig, Sponsorship } from '../types';
 import { CATEGORY_LABELS, TARGET_LABELS } from '../constants';
 
 interface Props {
@@ -48,7 +49,7 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
     }
   }, [localSettings, eventId, isDirty]);
 
-  const [activeTab, setActiveTab] = useState<'GENERAL' | 'PAYMENT' | 'SCORERS'>('GENERAL');
+  const [activeTab, setActiveTab] = useState<'GENERAL' | 'PAYMENT' | 'SCORERS' | 'SPONSORSHIP'>('GENERAL');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUploadGuide, setShowUploadGuide] = useState(false);
@@ -202,6 +203,36 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
     setIsDirty(true);
   };
 
+  const addSponsorship = () => {
+    const newSponsor: Sponsorship = {
+      id: 'spn_' + Math.random().toString(36).substr(2, 9),
+      name: '',
+      title: 'OFFICIAL PARTNER',
+      videoUrl: ''
+    };
+    setLocalSettings(prev => ({ 
+      ...prev, 
+      sponsorships: [...(prev.sponsorships || []), newSponsor] 
+    }));
+    setIsDirty(true);
+  };
+
+  const removeSponsorship = (id: string) => {
+    setLocalSettings(prev => ({ 
+      ...prev, 
+      sponsorships: (prev.sponsorships || []).filter(s => s.id !== id) 
+    }));
+    setIsDirty(true);
+  };
+
+  const updateSponsorship = (id: string, field: keyof Sponsorship, value: string) => {
+    setLocalSettings(prev => ({
+      ...prev,
+      sponsorships: (prev.sponsorships || []).map(s => s.id === id ? { ...s, [field]: value } : s)
+    }));
+    setIsDirty(true);
+  };
+
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -315,6 +346,16 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
               <Smartphone className={`w-3.5 h-3.5 ${activeTab === 'SCORERS' ? 'text-arcus-red' : ''}`} /> AKSES PANITIA
               {activeTab === 'SCORERS' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
             </button>
+            {!isPractice && (
+              <button 
+                type="button"
+                onClick={() => setActiveTab('SPONSORSHIP')}
+                className={`px-4 md:px-6 py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === 'SPONSORSHIP' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-800'}`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${activeTab === 'SPONSORSHIP' ? 'text-arcus-red' : ''}`} /> SPONSORSHIP
+                {activeTab === 'SPONSORSHIP' && <motion.div layoutId="admTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-arcus-red" />}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -922,6 +963,94 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'SPONSORSHIP' && !isPractice && (
+            <div className="space-y-16 animate-in fade-in duration-500">
+               <div className="space-y-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+                  <div className="flex items-center gap-4">
+                      <div className="p-3 bg-red-50 rounded-2xl">
+                        <Heart className="w-6 h-6 text-arcus-red" />
+                      </div>
+                      <h3 className="text-2xl font-black font-oswald uppercase text-slate-800 italic">Sponsorship & Liputan</h3>
+                  </div>
+                  <button type="button" onClick={addSponsorship} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                    <Plus className="w-3.5 h-3.5" /> Tambah Sponsor
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {(localSettings.sponsorships || []).map((sponsor) => (
+                    <div key={sponsor.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 relative group transition-all shadow-sm space-y-6">
+                      <button type="button" onClick={() => removeSponsorship(sponsor.id)} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-red-500 rounded-xl transition-all"><X className="w-5 h-5" /></button>
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Tipe / Judul Sponsor</span>
+                          <input 
+                            type="text" 
+                            value={sponsor.title} 
+                            onChange={e => updateSponsorship(sponsor.id, 'title', e.target.value)} 
+                            className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-black italic uppercase" 
+                            placeholder="Contoh: OFFICIAL PARTNER"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Nama Sponsor</span>
+                          <input 
+                            type="text" 
+                            value={sponsor.name} 
+                            onChange={e => updateSponsorship(sponsor.id, 'name', e.target.value)} 
+                            className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" 
+                            placeholder="Contoh: PT. Maju Jaya"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
+                           <Youtube className="w-3.5 h-3.5 text-red-600" /> Link Video Sponsor (Youtube URL)
+                        </span>
+                        <input 
+                          type="url" 
+                          value={sponsor.videoUrl || ''} 
+                          onChange={e => updateSponsorship(sponsor.id, 'videoUrl', e.target.value)} 
+                          className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" 
+                          placeholder="https://www.youtube.com/watch?v=..."
+                        />
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-2 italic">* Video ini akan ditampilkan pada mode TV/LCD.</p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
+                           <ImageIcon className="w-3.5 h-3.5 text-blue-600" /> Link Logo Sponsor (URL)
+                        </span>
+                        <input 
+                          type="url" 
+                          value={sponsor.logoUrl || ''} 
+                          onChange={e => updateSponsorship(sponsor.id, 'logoUrl', e.target.value)} 
+                          className="w-full rounded-xl border-slate-100 bg-slate-50 p-4 border text-sm font-bold" 
+                          placeholder="https://i.imgur.com/logo.png"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {(localSettings.sponsorships || []).length === 0 && (
+                    <div className="md:col-span-2 py-20 text-center space-y-4 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
+                      <Heart className="w-12 h-12 mx-auto text-slate-300 opacity-30" />
+                      <div>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Belum ada sponsor yang ditambahkan</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 italic">Tambahkan sponsor untuk ditampilkan di slideshow livescore & mode TV.</p>
+                      </div>
+                      <button type="button" onClick={addSponsorship} className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest mt-4">
+                        Tambah Sponsor Pertama
+                      </button>
+                    </div>
+                  )}
+                </div>
+               </div>
             </div>
           )}
 

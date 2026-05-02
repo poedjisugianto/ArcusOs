@@ -20,10 +20,10 @@ interface Props {
 }
 
 export default function EventInfo({ event, onBack, onRegister, onShare, onViewParticipants }: Props) {
-  const isExpired = event.settings.registrationDeadline && new Date() > new Date(event.settings.registrationDeadline);
+  const isExpired = event.settings?.registrationDeadline && new Date() > new Date(event.settings?.registrationDeadline);
   const isRegistrationOpen = event.status !== 'DRAFT' && event.status !== 'COMPLETED';
-  const verifiedArchers = event.archers.filter(a => (a.status === 'APPROVED' || a.status === 'PAID' || a.status === 'CONFIRMED' || a.status === 'PENDING') && a.category !== CategoryType.OFFICIAL);
-  const totalParticipants = event.archers.filter(a => a.category !== CategoryType.OFFICIAL).length;
+  const verifiedArchers = (event.archers || []).filter(a => (a.status === 'APPROVED' || a.status === 'PAID' || a.status === 'CONFIRMED' || a.status === 'PENDING') && a.category !== CategoryType.OFFICIAL);
+  const totalParticipants = (event.archers || []).filter(a => a.category !== CategoryType.OFFICIAL).length;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-arcus-red selection:text-white">
@@ -69,10 +69,10 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6 md:space-y-12">
             {/* Pamphlet Display */}
-            {event.settings.pamphletUrl && (
+            {event.settings?.pamphletUrl && (
               <div className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm group">
                 <img 
-                  src={event.settings.pamphletUrl} 
+                  src={event.settings?.pamphletUrl} 
                   alt="Event Pamphlet" 
                   className="w-full h-auto object-contain bg-slate-50"
                   referrerPolicy="no-referrer"
@@ -89,7 +89,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                   {event.status === 'ACTIVE' ? 'Live Now' : 'Upcoming Event'}
                 </div>
                 <h1 className="text-2xl md:text-5xl font-black font-oswald uppercase italic leading-tight mb-6 md:mb-8 tracking-tight text-slate-900">
-                  {event.settings.tournamentName}
+                  {event.settings?.tournamentName || 'Untitled Event'}
                 </h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex items-center gap-4">
@@ -121,8 +121,8 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                 Kategori Lomba
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-1.5 md:gap-4">
-                {event.settings.categoryConfigs && Object.keys(event.settings.categoryConfigs).filter(c => c !== CategoryType.OFFICIAL).length > 0 ? (
-                  Object.keys(event.settings.categoryConfigs)
+                {event?.settings?.categoryConfigs && Object.keys(event.settings.categoryConfigs || {}).filter(c => c !== CategoryType.OFFICIAL).length > 0 ? (
+                  Object.keys(event.settings.categoryConfigs || {})
                     .filter(cat => cat !== CategoryType.OFFICIAL)
                     .map((cat) => (
                       <div key={cat} className="flex items-center justify-between p-2 md:p-4 bg-slate-50 rounded-lg md:rounded-2xl border border-slate-100 group hover:border-arcus-red transition-all">
@@ -217,9 +217,9 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                     >
                       Daftar Sekarang
                     </button>
-                    {event.settings.registrationDeadline && (
+                    {event.settings?.registrationDeadline && (
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
-                        Batas Akhir: {safeFormatDateTime(event.settings.registrationDeadline)}
+                        Batas Akhir: {safeFormatDateTime(event.settings?.registrationDeadline)}
                       </p>
                     )}
                   </>
@@ -238,10 +238,10 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                 <div className="grid grid-cols-2 gap-3 pb-4">
                   <a 
                     href={generateGoogleCalendarLink({
-                      title: event.settings.tournamentName,
-                      description: event.settings.description || '',
-                      location: event.settings.location || '',
-                      startDate: event.settings.eventDate || ''
+                      title: event.settings?.tournamentName || 'Event',
+                      description: event.settings?.description || '',
+                      location: event.settings?.location || '',
+                      startDate: event.settings?.eventDate || ''
                     })}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -251,19 +251,19 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                   </a>
                   <button 
                     onClick={() => generateICalFile({
-                      title: event.settings.tournamentName,
-                      description: event.settings.description || '',
-                      location: event.settings.location || '',
-                      startDate: event.settings.eventDate || ''
+                      title: event.settings?.tournamentName || 'Event',
+                      description: event.settings?.description || '',
+                      location: event.settings?.location || '',
+                      startDate: event.settings?.eventDate || ''
                     })}
                     className="flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-sm"
                   >
                     Apple / iCal
                   </button>
                 </div>
-                {event.settings.thbUrl && (
+                {event.settings?.thbUrl && (
                   <a 
-                    href={event.settings.thbUrl}
+                    href={event.settings?.thbUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-5 bg-white text-slate-900 border-2 border-slate-100 rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:border-slate-900 transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md"

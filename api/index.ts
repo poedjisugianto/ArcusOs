@@ -26,28 +26,124 @@ try {
 }
 
 // Initialize Firebase Admin lazily
+let adminApp: any = null;
 if (!getApps().length && firebaseConfig.projectId) {
-  initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
+  try {
+    adminApp = initializeApp({
+      projectId: firebaseConfig.projectId,
+    }, "admin-app"); // Use a named app to avoid collisions
+    console.log("[FIREBASE-ADMIN] App initialized for project:", firebaseConfig.projectId);
+  } catch (err) {
+    console.error("[FIREBASE-ADMIN] Initialization error:", err);
+  }
+} else {
+  adminApp = getApps().find(a => a.name === "admin-app") || getApps()[0];
 }
-// Note: databaseId needs to be specified for non-default databases
-const db = firebaseConfig.projectId ? getFirestore(firebaseConfig.firestoreDatabaseId as any) : null;
+
+// Note: databaseId needs to be specified correctly
+// Using the correct pattern for secondary databases in admin SDK
+const db = (adminApp && firebaseConfig.projectId) 
+  ? getFirestore(adminApp, firebaseConfig.firestoreDatabaseId || "(default)") 
+  : (firebaseConfig.projectId ? getFirestore() : null);
+
+if (db) {
+  console.log("[FIREBASE-ADMIN] Firestore connected to database:", firebaseConfig.firestoreDatabaseId || "(default)");
+}
+
+// Transformation helper for Firestore REST API
+function transformRestFields(fields: any) {
+  const result: any = {};
+  if (!fields) return result;
+  
+  for (const [key, val] of Object.entries(fields)) {
+    const value = val as any;
+    if (value.stringValue !== undefined) result[key] = value.stringValue;
+    else if (value.integerValue !== undefined) result[key] = parseInt(value.integerValue);
+    else if (value.doubleValue !== undefined) result[key] = parseFloat(value.doubleValue);
+    else if (value.booleanValue !== undefined) result[key] = value.booleanValue;
+    else if (value.timestampValue !== undefined) result[key] = value.timestampValue;
+    else if (value.mapValue !== undefined) result[key] = transformRestFields(value.mapValue.fields);
+    else if (value.arrayValue !== undefined) {
+      result[key] = (value.arrayValue.values || []).map((v: any) => {
+        if (v.stringValue !== undefined) return v.stringValue;
+        if (v.integerValue !== undefined) return parseInt(v.integerValue);
+        if (v.mapValue !== undefined) return transformRestFields(v.mapValue.fields);
+        return v;
+      });
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+// Hard Fallback Data for extreme quota cases
+const HARD_FALLBACK_EVENTS = [
+  {
+    id: "fallback-event-1",
+    status: "ACTIVE",
+    createdAt: new Date().toISOString(),
+    // Data property is what's processed by the frontend's transformRestFields or Admin SDK data()
+    settings: {
+      tournamentName: "ARCUS Series - Indoor Championship",
+      location: "Jakarta, Indonesia",
+      eventDate: "Stay Tuned",
+      description: "Kami sedang menyiapkan event panahan seru berikutnya. Silakan cek kembali nanti atau Hubungi Admin.",
+      pamphletUrl: "https://images.unsplash.com/photo-1511044491714-802870c1fc94?auto=format&fit=crop&q=80&w=800",
+      registrationDeadline: "",
+      isPractice: false,
+      isFreeEvent: true,
+      categoryConfigs: {}
+    },
+    archers: [],
+    registrations: [],
+    officials: []
+  }
+];
+
+// In the API, we need to decide if we return the "data" object or the flattened object
+// Our LandingPage expects the API to return something that has a .data property 
+// OR we flatten it before sending. 
+// Looking at App.tsx line 251: eventObj = { ...e.data, id, ownerId, status }
+// So our API should return objects where the content is in a "data" property if it's imitating a Firestore doc.
+
+const HARD_FALLBACK_API_RESPONSE = HARD_FALLBACK_EVENTS.map(e => ({
+  id: e.id,
+  status: e.status,
+  createdAt: e.createdAt,
+  data: {
+    settings: e.settings,
+    archers: e.archers,
+    registrations: e.registrations,
+    officials: e.officials
+  }
+}));
 
 // Helper to get global settings from Firestore
 const getGlobalSettings = async () => {
-  if (!db) return null;
   try {
-    const docSnap = await db.collection('systemConfigs').doc('global').get();
-    if (!docSnap.exists) {
-      console.warn("Global settings not found in Firestore");
-      return null;
+    // Try REST first as it's often more reliable in these sandboxed environments for settings
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/systemConfigs/global?key=${firebaseConfig.apiKey}`;
+    try {
+      const response = await axios.get(url, { timeout: 4000 });
+      if (response.data && response.data.fields) {
+        const transformed = transformRestFields(response.data.fields);
+        return transformed.data;
+      }
+    } catch (restErr) {
+       // fallback silently to admin
     }
-    return docSnap.data()?.data;
+
+    if (db) {
+       const docSnap = await db.collection('systemConfigs').doc('global').get();
+       if (docSnap.exists) {
+         return docSnap.data()?.data;
+       }
+    }
   } catch (err) {
-    console.error("Failed to fetch global settings:", err);
-    return null;
+    console.warn("Global Settings fetch failed:", (err as Error).message);
   }
+  return null;
 };
 
 // Initialize Midtrans Snap with dynamic keys
@@ -373,6 +469,126 @@ app.post("/api/payment/webhook", async (req, res) => {
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "ARCUS API is running" });
+});
+
+// Global Cache for Public Events with High Resiliency
+const EVENT_CACHE_FILE = path.join(process.cwd(), 'cached_public_events.json');
+let cachedPublicEvents: any[] | null = null;
+let lastPublicEventsUpdate = 0;
+const PUBLIC_EVENTS_CACHE_TTL = 60 * 60 * 1000; // 1 Hour cache for high stability
+
+// Initialize cache from disk on startup
+try {
+  if (fs.existsSync(EVENT_CACHE_FILE)) {
+    const savedData = JSON.parse(fs.readFileSync(EVENT_CACHE_FILE, 'utf8'));
+    cachedPublicEvents = savedData.events;
+    lastPublicEventsUpdate = savedData.timestamp;
+    console.log("[CACHE] Initialized from disk: " + (cachedPublicEvents?.length || 0) + " events.");
+  }
+} catch (err) {
+  console.warn("Failed to load cached events from disk:", (err as Error).message);
+}
+
+app.get("/api/public-events", async (req, res) => {
+  const now = Date.now();
+  
+  // Return cache if it is fresh OR if we recently failed a fetch
+  if (cachedPublicEvents && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
+    return res.json({ 
+      success: true, 
+      events: cachedPublicEvents,
+      source: 'cache'
+    });
+  }
+
+  try {
+    let events: any[] = [];
+    let fetchSuccessful = false;
+    
+    // Primary: REST API (Often faster/cleaner for public read-only)
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}`;
+    try {
+      const response = await axios.get(url, { timeout: 6000 });
+      if (response.data && response.data.documents) {
+        response.data.documents.forEach((doc: any) => {
+          const data = transformRestFields(doc.fields);
+          if (data && (data.status === 'ACTIVE' || data.status === 'COMPLETED')) {
+            events.push({ id: doc.name.split('/').pop(), ...data });
+          }
+        });
+        fetchSuccessful = true;
+      }
+    } catch (err: any) {
+      // If we got 429 or 403, it's a known quota limit. Log it simply and pause fetch attempts.
+      if (err.response?.status === 429 || err.response?.status === 403) {
+        console.log(`[QUOTA] Firestore Limit Hit (${err.response.status}). Using Resilient Cache.`);
+        lastPublicEventsUpdate = now - (PUBLIC_EVENTS_CACHE_TTL - 600000); // Try again in 10 mins
+      } else {
+        console.warn("REST API Fetch failed:", err.message);
+      }
+    }
+
+    // Secondary: Admin SDK Fallback ONLY if REST failed
+    if (!fetchSuccessful && db) {
+      try {
+        const snapshot = await db.collection('events').where('status', 'in', ['ACTIVE', 'COMPLETED']).limit(20).get();
+        snapshot.forEach((doc: any) => {
+          events.push({ id: doc.id, ...doc.data() });
+        });
+        fetchSuccessful = events.length > 0;
+      } catch (err: any) {
+        // Silently fail as we might not have Admin SDK permissions in this specific environment.
+        // The frontend will handle missing data gracefully via optional chaining and fallbacks.
+      }
+    }
+
+    if (fetchSuccessful && events.length > 0) {
+      // Sort and update memory cache
+      events.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      cachedPublicEvents = events;
+      lastPublicEventsUpdate = now;
+
+      // Persistence: Save to disk so it survives server restarts during quota outages
+      try {
+        fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify({
+          events: cachedPublicEvents,
+          timestamp: now
+        }));
+      } catch (e) {
+        console.warn("Failed to save cache to disk:", (e as Error).message);
+      }
+
+      return res.json({ 
+        success: true, 
+        events: cachedPublicEvents,
+        source: 'live'
+      });
+    }
+
+    // CRITICAL EMERGENCY: If both fetches failed, use STALE cache
+    if (cachedPublicEvents && cachedPublicEvents.length > 0) {
+      return res.json({ 
+        success: true, 
+        events: cachedPublicEvents, 
+        source: 'emergency-cache'
+      });
+    }
+
+    // ULTIMATE FALLBACK: If no cache and no DB, return a hardcoded "Promotional" event so the site isn't broken
+    console.log("[EMERGENCY] Returning hard fallback events list.");
+    return res.json({
+      success: true,
+      events: HARD_FALLBACK_API_RESPONSE,
+      source: 'hard-fallback',
+      note: 'Database currently busy. Showing upcoming schedule.'
+    });
+  } catch (error: any) {
+    console.error("Public Events Loop Error:", error.message);
+    if (cachedPublicEvents) {
+      return res.json({ success: true, events: cachedPublicEvents, source: 'emergency-cache' });
+    }
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // API Route for registering participants (Online Registration - Supports Multi-register/Collective)

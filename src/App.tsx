@@ -13,7 +13,7 @@ import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, App
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache, limit } from 'firebase/firestore';
 import { handleFirestoreError, OperationType, shardData, mergeShards } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import { safeFormatTime } from './lib/dateUtils';
@@ -64,6 +64,7 @@ export function App() {
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [liveBoardTVMode, setLiveBoardTVMode] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ source: string, time: string } | null>(null);
   const isSyncingFromCloud = React.useRef(false);
   const isCurrentlySyncing = React.useRef(false);
   const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -143,50 +144,70 @@ export function App() {
       return;
     }
 
+    const user = userOverride !== undefined ? userOverride : appState.currentUser;
+    const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
+    const isPublicView = !user || (!isPrivileged && view === 'LANDING');
+
     try {
       isSyncingFromCloud.current = true;
-      const user = userOverride !== undefined ? userOverride : appState.currentUser;
       
-      const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
-      const isPublicView = !user || (!isPrivileged && view === 'LANDING');
-
-      // Helper to fetch either from server or cache depending on quota state
+      // Helper to fetch documents with timeout and silent failure for guests
       const safeGetDocs = async (collRef: any, queryRef?: any) => {
         try {
-          // If quota exceeded, try cache first
-          if (quotaExceeded) {
-             return await getDocsFromCache(queryRef || collRef);
-          }
+          if (quotaExceeded && !isPrivileged) return await getDocsFromCache(queryRef || collRef).catch(() => null);
           return await getDocs(queryRef || collRef);
         } catch (err: any) {
-          if (err.code === 'resource-exhausted' || err.message?.includes('quota')) {
+          if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
             setQuotaExceeded(true);
             return await getDocsFromCache(queryRef || collRef).catch(() => null);
           }
-          throw err;
+          console.warn("Fetch failed:", err.message);
+          return null;
         }
       };
 
       const safeGetDoc = async (docRef: any) => {
         try {
-          if (quotaExceeded) return await getDocFromCache(docRef);
+          if (quotaExceeded && !isPrivileged) return await getDocFromCache(docRef).catch(() => null);
           return await getDoc(docRef);
         } catch (err: any) {
-          if (err.code === 'resource-exhausted' || err.message?.includes('quota')) {
+          if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
             setQuotaExceeded(true);
             return await getDocFromCache(docRef).catch(() => null);
           }
-          throw err;
+          return null;
         }
       };
 
       const fetchJobs: Promise<any>[] = [
-        // 1. Fetch System Config (Public)
+        // 1. Fetch System Config
         safeGetDoc(doc(db, 'systemConfigs', 'global')).catch(() => null),
         
-        // 2. Optimized Event Fetch: Only fetch 10 most recent active/completed tournaments for public
+      // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         (isPublicView 
-          ? safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED'])))
+          ? fetch('/api/public-events')
+              .then(res => res.json())
+              .then(data => {
+                if (data.success && data.events) {
+                   setSyncStatus({ 
+                     source: data.source || 'live', 
+                     time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) 
+                   });
+                   return { 
+                     docs: (data.events || []).map((e: any) => ({ 
+                        id: e.id, 
+                        data: () => e, // This is outer document
+                        exists: true 
+                     })), 
+                     __type: 'custom_array' 
+                   };
+                }
+                return null;
+              })
+              .catch(err => {
+                console.warn("API Public fetch failed, falling back to silent Firestore safeGet:", err);
+                return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED']), limit(3)));
+              })
           : safeGetDocs(collection(db, 'events'))
         ).catch(() => null),
         
@@ -222,10 +243,15 @@ export function App() {
       if (eventsSnap?.docs) {
         cloudEvents = eventsSnap.docs.map((doc: any) => {
           const e = doc.data();
-          let eventObj = { ...e.data, id: e.id, ownerId: e.userId, status: e.status || e.data?.status || 'DRAFT' };
+          // Support both API cache objects and real Firestore docs
+          const eventId = e.id || doc.id;
+          const ownerId = e.userId || e.ownerId;
+          const status = e.status || e.data?.status || 'DRAFT';
+          
+          let eventObj = { ...e.data, id: eventId, ownerId: ownerId, status: status };
           
           // Reconstruct shards if this is the sharded active event
-          if (shardsSnap?.docs && e.id === appState.activeEventId && e.isSharded) {
+          if (shardsSnap?.docs && eventId === appState.activeEventId && e.isSharded) {
             const shardsByArray: Record<string, string[]> = {};
             shardsSnap.docs.forEach((sd: any) => {
               const s = sd.data();
@@ -338,9 +364,13 @@ export function App() {
       console.error("Fetch Cloud General Error:", err);
       if (err.message?.toLowerCase().includes('quota') || err.message?.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
         setQuotaExceeded(true);
-        // If quota is exhausted, we still mark data as loaded so UI can show cached versions
+        // Silent fallback for public users - don't notify if not admin
+        if (isPrivileged && manual) {
+           pushNotification("Quota Note", "Daftar turnamen diambil dari cache lokal karena batas server tercapai.", "WARNING");
+        }
+      } else {
+        if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke server. Periksa koneksi internet.", "WARNING");
       }
-      if (manual) pushNotification("Sinkronisasi Gagal", "Server mencapai batas penggunaan harian (Quota).", "WARNING");
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
       setIsSyncing(false);
@@ -350,14 +380,9 @@ export function App() {
 
   useEffect(() => {
     fetchCloudData().catch(err => {
-      console.error("Initial fetch error:", err);
-      if (err.message?.includes('quota') || err.message?.includes('exhausted')) {
-        setQuotaExceeded(true);
-        toast.error("Kuota Firebase harian tercapai", {
-          description: "Daftar turnamen mungkin tidak muncul karena batasan penggunaan server harian Google telah tercapai.",
-          duration: 10000
-        });
-      }
+      console.warn("Initial fetch silent failure:", err.message);
+      // We don't notify the user here to keep the experience smooth
+      // fetchCloudData already sets quotaExceeded if needed
     });
   }, [appState.currentUser?.id, appState.activeEventId]);
 
@@ -674,63 +699,77 @@ export function App() {
 
   // Real-time Subscriptions - Granular control to save quota
   useEffect(() => {
-    if (!db || !appState.activeEventId || quotaExceeded) return;
+    if (!db || !appState.activeEventId || quotaExceeded || !appState.isDataLoaded) return;
     
     // High Priority: Admin, Scorers, Operator, and TV Mode Scoreboard
-    const isAdminView = ['EVENT_ADMIN', 'ARCHERS', 'FINANCE', 'OPERATOR_CENTER'].includes(view);
+    const isAdminView = ['EVENT_ADMIN', 'ARCHERS', 'ID_CARD_EDITOR', 'FINANCE', 'OPERATOR_CENTER'].includes(view);
     const isScoringView = ['SCORING', 'QUICK_SCORING'].includes(view);
-    const isTVMode = view === 'LIVE' || (view === 'PUBLIC_LIVE' && window.innerWidth >= 1024); // Assume desktop/large screen is TV Mode
+    const isTVMode = view === 'LIVE' || (view === 'PUBLIC_LIVE' && window.innerWidth >= 1024);
     
     // Only subscribe for these high-priority roles/modes
     if (!isAdminView && !isScoringView && !isTVMode) return;
     
-    const unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
-      if (docSnap.exists()) {
-        const isRemoteChange = !docSnap.metadata.hasPendingWrites;
-        const isLiveView = view === 'LIVE' || view === 'PUBLIC_LIVE';
-        
-        if (isRemoteChange && (!hasPendingChanges || isLiveView)) {
-          console.log("Cloud update received for active event:", appState.activeEventId);
-          const cloudEventRaw = docSnap.data();
-          const cloudEventData = cloudEventRaw.data as ArcheryEvent;
-          const cloudStatus = cloudEventRaw.status;
-          
-          isSyncingFromCloud.current = true;
-          setAppState(prev => ({
-            ...prev,
-            events: prev.events.map(e => {
-              if (e.id === appState.activeEventId) {
-                const merged = { ...e, ...cloudEventData, id: e.id, status: cloudStatus, isSharded: !!cloudEventRaw.isSharded };
-                // If sharded, preserve arrays if they are missing in cloudEventData
-                if (cloudEventRaw.isSharded) {
-                  const arrays = ['archers', 'registrations', 'scores', 'scoreLogs', 'matches'];
-                  arrays.forEach(key => {
-                    if (!(cloudEventData as any)[key] && (e as any)[key]) {
-                      (merged as any)[key] = (e as any)[key];
-                    }
-                  });
-                }
-                return merged as ArcheryEvent;
-              }
-              return e;
-            })
-          }));
-          setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
-        }
-      }
-    }, (error) => {
-      console.error("Event Snapshot Error:", error);
-      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
-        setQuotaExceeded(true);
-      }
-    });
+    let isMounted = true;
+    let unsub: () => void = () => {};
 
-    return () => unsub();
-  }, [db, appState.activeEventId, view, hasPendingChanges]);
+    // Small delay to prevent hammer-subscribing during navigation transitions
+    const subTimeout = setTimeout(() => {
+      if (!isMounted) return;
+      
+      unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
+        if (!isMounted) return;
+        if (docSnap.exists()) {
+          const isRemoteChange = !docSnap.metadata.hasPendingWrites;
+          const isLiveView = ['LIVE', 'PUBLIC_LIVE'].includes(view);
+          
+          if (isRemoteChange && (!hasPendingChanges || isLiveView)) {
+            console.log("Cloud update received for active event:", appState.activeEventId);
+            const cloudEventRaw = docSnap.data();
+            const cloudEventData = cloudEventRaw.data as ArcheryEvent;
+            const cloudStatus = cloudEventRaw.status;
+            
+            isSyncingFromCloud.current = true;
+            setAppState(prev => ({
+              ...prev,
+              events: prev.events.map(e => {
+                if (e.id === appState.activeEventId) {
+                  const merged = { ...e, ...cloudEventData, id: e.id, status: cloudStatus, isSharded: !!cloudEventRaw.isSharded };
+                  // If sharded, preserve arrays if they are missing in cloudEventData
+                  if (cloudEventRaw.isSharded) {
+                    const arrays = ['archers', 'registrations', 'scores', 'scoreLogs', 'matches'];
+                    arrays.forEach(key => {
+                      if (!(cloudEventData as any)[key] && (e as any)[key]) {
+                        (merged as any)[key] = (e as any)[key];
+                      }
+                    });
+                  }
+                  return merged as ArcheryEvent;
+                }
+                return e;
+              })
+            }));
+            setTimeout(() => { if (isMounted) isSyncingFromCloud.current = false; }, 100);
+          }
+        }
+      }, (error) => {
+        if (!isMounted) return;
+        console.warn("Event Snapshot Muted Error:", error.message);
+        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+          setQuotaExceeded(true);
+        }
+      });
+    }, 500);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(subTimeout);
+      unsub();
+    };
+  }, [db, appState.activeEventId, view, hasPendingChanges, appState.isDataLoaded]);
 
   // Shard Subscription for Active Event
   useEffect(() => {
-    if (!db || !appState.activeEventId) return;
+    if (!db || !appState.activeEventId || quotaExceeded || !appState.isDataLoaded) return;
     
     // Only subscribe in views that need live updates
     const liveViews = ['LIVE', 'PUBLIC_LIVE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'ARCHERS', 'FINANCE'];
@@ -739,50 +778,61 @@ export function App() {
     const event = appState.events.find(e => e.id === appState.activeEventId);
     if (!event || !event.isSharded) return;
 
-    const unsubShards = onSnapshot(collection(db, 'events', appState.activeEventId, 'shards'), (shardsSnap) => {
-      const isRemoteChange = !shardsSnap.metadata.hasPendingWrites;
-      if (isRemoteChange && !hasPendingChanges) {
-        const shardsByArray: Record<string, string[]> = {};
-        shardsSnap.docs.forEach(d => {
-          const s = d.data();
-          if (s.key && s.content) {
-            if (!shardsByArray[s.key]) shardsByArray[s.key] = [];
-            shardsByArray[s.key][s.index] = s.content;
-          }
-        });
+    let isMounted = true;
+    let unsubShards: () => void = () => {};
 
-        if (Object.keys(shardsByArray).length === 0) return;
+    const subTimeout = setTimeout(() => {
+      if (!isMounted) return;
 
-        isSyncingFromCloud.current = true;
-        setAppState(prev => ({
-          ...prev,
-          events: prev.events.map(e => {
-            if (e.id === appState.activeEventId) {
-              const updatedEvent = { ...e };
-              Object.entries(shardsByArray).forEach(([key, shards]) => {
-                try {
-                  const merged = mergeShards(shards);
-                  if (merged) (updatedEvent as any)[key] = merged;
-                } catch (err) {
-                  console.error(`Failed to merge shards for ${key}:`, err);
-                }
-              });
-              return updatedEvent;
+      unsubShards = onSnapshot(collection(db, 'events', appState.activeEventId, 'shards'), (shardsSnap) => {
+        if (!isMounted) return;
+        const isRemoteChange = !shardsSnap.metadata.hasPendingWrites;
+        if (isRemoteChange && !hasPendingChanges) {
+          const shardsByArray: Record<string, string[]> = {};
+          shardsSnap.docs.forEach(d => {
+            const s = d.data();
+            if (s.key && s.content) {
+              if (!shardsByArray[s.key]) shardsByArray[s.key] = [];
+              shardsByArray[s.key][s.index] = s.content;
             }
-            return e;
-          })
-        }));
-        setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
-      }
-    }, (error) => {
-      console.warn("Shards snapshot error:", error.message);
-      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
-        setQuotaExceeded(true);
-      }
-    });
+          });
 
-    return () => unsubShards();
-  }, [db, appState.activeEventId, view, hasPendingChanges, appState.events.find(e => e.id === appState.activeEventId)?.isSharded]);
+          if (Object.keys(shardsByArray).length === 0) return;
+
+          isSyncingFromCloud.current = true;
+          setAppState(prev => ({
+            ...prev,
+            events: prev.events.map(e => {
+              if (e.id === appState.activeEventId) {
+                const updatedEvent = { ...e };
+                Object.entries(shardsByArray).forEach(([key, shards]) => {
+                  try {
+                    const merged = mergeShards(shards);
+                    if (merged) (updatedEvent as any)[key] = merged;
+                  } catch (err) {
+                    console.error(`Failed to merge shards for ${key}:`, err);
+                  }
+                });
+                return updatedEvent;
+              }
+              return e;
+            })
+          }));
+          setTimeout(() => { if (isMounted) isSyncingFromCloud.current = false; }, 100);
+        }
+      }, (error) => {
+        if (!isMounted) return;
+        console.warn("Shard Snapshot Muted Error:", error.message);
+        if (error.code === 'resource-exhausted') setQuotaExceeded(true);
+      });
+    }, 800);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(subTimeout);
+      unsubShards();
+    };
+  }, [db, appState.activeEventId, view, hasPendingChanges, appState.isDataLoaded]);
 
   // Global Config Subscription
   useEffect(() => {
@@ -1345,16 +1395,16 @@ export function App() {
         </div>
       )}
 
-      {quotaExceeded && (appState.currentUser?.email === 'poedji.sugianto@gmail.com' || appState.currentUser?.isSuperAdmin) && (
+      {quotaExceeded && (appState.currentUser?.email === 'poedji.sugianto@gmail.com') && (
         <div className="fixed top-2 z-[60] left-1/2 -translate-x-1/2 w-[95%] max-w-lg">
           <div className="bg-slate-900 border-2 border-arcus-red/30 rounded-2xl p-4 shadow-2xl flex items-center gap-4">
             <div className="bg-arcus-red text-white p-2 rounded-xl animate-pulse">
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div className="flex-1">
-              <p className="text-[10px] font-black uppercase text-white leading-tight tracking-widest italic">Admin Note: Cloud Quota Limited</p>
+              <p className="text-[10px] font-black uppercase text-white leading-tight tracking-widest italic">Admin: Firestore Quota Limit</p>
               <p className="text-[9px] font-bold text-white/70 leading-tight mt-1">
-                Batas harian Google Cloud (50.000 reads) tercapai. Data tetap aman & tersimpan <span className="text-white">Lokal</span>.
+                Firestore Quota Tercapai. Landing Page dilayani dari <span className="text-arcus-red font-bold underline">Resilient Server Cache</span>.
               </p>
             </div>
             <button 
@@ -1370,7 +1420,7 @@ export function App() {
       <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (
           <LandingPage 
-            events={appState.events.filter(e => !e.settings.isPractice && e.status !== 'DRAFT')} 
+            events={appState.events.filter(e => !e.settings?.isPractice && e.status !== 'DRAFT')} 
             onViewLive={(id) => navigateToPublicEvent(id, 'PUBLIC_LIVE')} 
             onViewParticipants={(id) => navigateToPublicEvent(id, 'PUBLIC_ENTRY_LIST')} 
             onViewInfo={(id) => navigateToPublicEvent(id, 'PUBLIC_EVENT_INFO')} 
@@ -1382,6 +1432,7 @@ export function App() {
             onScorerLogin={() => setView('SCORER_LOGIN')}
             onRefresh={() => fetchCloudData(true)}
             isSyncing={isSyncing}
+            syncStatus={syncStatus}
             quotaExceeded={quotaExceeded}
             onShare={handleShare} 
             currentUser={appState.currentUser}

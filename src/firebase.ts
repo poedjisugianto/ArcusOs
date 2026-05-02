@@ -57,6 +57,9 @@ export const db = app ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : 
 export const auth = app ? getAuth(app) : null as any;
 
 // Enable Offline Persistence to save quota reads
+// Persistence is disabled as it often causes "Internal Assertion Failed" crashes 
+// within the AI Studio sandboxed iframe environment due to storage restrictions.
+/*
 if (db) {
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
@@ -66,20 +69,7 @@ if (db) {
     }
   });
 }
+*/
 
-async function testConnection() {
-  if (!db) return;
-  try {
-    console.log("Testing cloud connection...");
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Cloud connection successful.");
-  } catch (error: any) {
-    if (error?.message?.includes('the client is offline')) {
-      console.warn("Firebase client is offline. Working in local mode.");
-    } else {
-      console.error("Firebase connection test failed:", error);
-    }
-  }
-}
-
-if (app) testConnection();
+// Connection test removed to save daily Firestore read quota.
+// App logic now handles connectivity state during actual data fetches.

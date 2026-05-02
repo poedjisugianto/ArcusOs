@@ -54,28 +54,34 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
     };
 
     // Helper to get total platform fee for an event (archers + unique registrations)
-    const getEventFee = (e: ArcheryEvent) => {
-      if (e.settings.isFreeEvent || e.settings.isPractice) return 0;
-      const participants = Array.from(
-        new Map([...e.registrations, ...e.archers].map(p => [p.id, p])).values()
-      );
+    const getEventFee = (e: ArcheryEvent): number => {
+      if (e.settings?.isFreeEvent || e.settings?.isPractice) return 0;
+      const participantsMap = new Map<string, any>();
+      e.registrations?.forEach(p => participantsMap.set(p.id, p));
+      e.archers?.forEach(p => participantsMap.set(p.id, p));
+      
+      const participants = Array.from(participantsMap.values());
       return participants.reduce((a, p) => {
+        if (!p) return a;
         const fee = p.platformFee && p.platformFee > 0 
           ? p.platformFee 
-          : (isKidsCategory(p.category) ? state.globalSettings.feeKids : state.globalSettings.feeAdult);
-        return a + fee;
+          : (isKidsCategory(p.category || '') ? (state.globalSettings?.feeKids || 0) : (state.globalSettings?.feeAdult || 0));
+        return a + (Number(fee) || 0);
       }, 0);
     };
 
     const totalArchers = state.events.reduce((acc, e) => {
-      const uniqueIds = new Set([...e.archers.map(a => a.id), ...e.registrations.map(r => r.id)]);
+      const uniqueIds = new Set([
+        ...(e.archers || []).map(a => a.id), 
+        ...(e.registrations || []).map(r => r.id)
+      ]);
       return acc + uniqueIds.size;
     }, 0);
 
     const potentialFee = state.events.reduce((acc, e) => acc + getEventFee(e), 0);
     
     const collectedFee = state.events
-      .filter(e => e.settings.platformFeePaidToOwner)
+      .filter(e => e.settings?.platformFeePaidToOwner)
       .reduce((acc, e) => acc + getEventFee(e), 0);
     
     return { totalEvents, totalUsers, totalArchers, potentialFee, collectedFee, pendingFee: potentialFee - collectedFee };
@@ -177,56 +183,56 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
                   const organizer = state.users.find(u => u.id === (event.settings.organizerId || ''));
                   const activeCategories = Object.keys(event.settings.categoryConfigs || {}).map(cat => CATEGORY_LABELS[cat as CategoryType]);
                   
-                  return (
-                    <tr key={event.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-6">
-                        <p className="font-black uppercase text-slate-900">{event.settings.tournamentName}</p>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1 mt-1">
-                          <Calendar className="w-3 h-3" /> {event.settings.eventDate || 'TBA'}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-medium uppercase flex items-center gap-1 mt-0.5">
-                          <Landmark className="w-3 h-3" /> {event.settings.location || 'No Location'}
-                        </p>
-                      </td>
-                      <td className="p-6">
-                        <p className="font-black uppercase text-xs text-slate-700">{organizer?.name || 'Unknown'}</p>
-                        <p className="text-[10px] text-slate-500 font-bold">{organizer?.email || '-'}</p>
-                        <p className="text-[10px] text-slate-500 font-bold">{organizer?.phone || '-'}</p>
-                      </td>
-                      <td className="p-6">
-                        <div className="flex flex-wrap gap-1 max-w-[200px]">
-                          {activeCategories.map((cat, i) => (
-                            <span key={i} className="text-[8px] font-black bg-slate-100 px-1.5 py-0.5 rounded uppercase text-slate-500">{cat}</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="p-6 text-center">
-                        <div className="flex flex-col items-center">
-                          <span className="font-black text-lg text-slate-900">{event.archers.length}</span>
-                          <span className="text-[8px] font-black uppercase text-slate-400">Archers</span>
-                        </div>
-                      </td>
-                      <td className="p-6 text-center">
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${event.settings.platformFeePaidToOwner ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                          {event.settings.platformFeePaidToOwner ? 'Lunas' : 'Tertagih'}
-                        </span>
-                      </td>
-                      <td className="p-6 text-center space-y-2">
-                        <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${event.settings.isActivated !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
-                          {event.settings.isActivated !== false ? 'Email OK' : 'No Email'}
-                        </div>
-                        <button
-                          onClick={() => onUpdateEvent(event.id, { 
-                            settings: { ...event.settings, isConfirmed: !event.settings.isConfirmed } 
-                          })}
-                          className={`w-full px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all ${event.settings.isConfirmed !== false ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                        >
-                          {event.settings.isConfirmed !== false ? 'Terkonfirmasi' : 'Belum Konfirmasi'}
-                        </button>
-                      </td>
-                      <td className="p-6 text-right space-x-2">
-                         <button 
-                          onClick={() => setConfirmDeleteEvent({ id: event.id, name: event.settings.tournamentName })} 
+                    return (
+                      <tr key={event.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-6">
+                          <p className="font-black uppercase text-slate-900">{event.settings?.tournamentName || 'Untitled'}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1 mt-1">
+                            <Calendar className="w-3 h-3" /> {event.settings?.eventDate || 'TBA'}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-medium uppercase flex items-center gap-1 mt-0.5">
+                            <Landmark className="w-3 h-3" /> {event.settings?.location || 'No Location'}
+                          </p>
+                        </td>
+                        <td className="p-6">
+                          <p className="font-black uppercase text-xs text-slate-700">{organizer?.name || 'Unknown'}</p>
+                          <p className="text-[10px] text-slate-500 font-bold">{organizer?.email || '-'}</p>
+                          <p className="text-[10px] text-slate-500 font-bold">{organizer?.phone || '-'}</p>
+                        </td>
+                        <td className="p-6">
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {activeCategories.map((cat, i) => (
+                              <span key={i} className="text-[8px] font-black bg-slate-100 px-1.5 py-0.5 rounded uppercase text-slate-500">{cat}</span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="p-6 text-center">
+                          <div className="flex flex-col items-center">
+                            <span className="font-black text-lg text-slate-900">{event.archers.length}</span>
+                            <span className="text-[8px] font-black uppercase text-slate-400">Archers</span>
+                          </div>
+                        </td>
+                        <td className="p-6 text-center">
+                          <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${event.settings?.platformFeePaidToOwner ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {event.settings?.platformFeePaidToOwner ? 'Lunas' : 'Tertagih'}
+                          </span>
+                        </td>
+                        <td className="p-6 text-center space-y-2">
+                          <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${event.settings?.isActivated !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {event.settings?.isActivated !== false ? 'Email OK' : 'No Email'}
+                          </div>
+                          <button
+                            onClick={() => onUpdateEvent(event.id, { 
+                              settings: { ...event.settings, isConfirmed: !event.settings?.isConfirmed } 
+                            })}
+                            className={`w-full px-3 py-1 rounded-full text-[9px] font-black uppercase transition-all ${event.settings?.isConfirmed !== false ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                          >
+                            {event.settings?.isConfirmed !== false ? 'Terkonfirmasi' : 'Belum Konfirmasi'}
+                          </button>
+                        </td>
+                        <td className="p-6 text-right space-x-2">
+                           <button 
+                            onClick={() => setConfirmDeleteEvent({ id: event.id, name: event.settings?.tournamentName || event.id })} 
                           className="p-2 hover:text-red-600 transition-colors"
                           title="Hapus Event"
                          >

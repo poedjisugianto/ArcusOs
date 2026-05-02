@@ -33,6 +33,7 @@ interface Props {
   onRefresh?: () => void;
   isSyncing?: boolean;
   quotaExceeded?: boolean;
+  syncStatus?: { source: string, time: string } | null;
 }
 
 export default function LandingPage({ 
@@ -49,7 +50,8 @@ export default function LandingPage({
   onLogout,
   onRefresh,
   isSyncing,
-  quotaExceeded
+  quotaExceeded,
+  syncStatus
 }: Props) {
   // Polling for updates if quota was exceeded
   React.useEffect(() => {
@@ -231,13 +233,25 @@ export default function LandingPage({
               <div className="flex items-center gap-4">
                 <h2 className="text-4xl md:text-5xl font-black font-oswald uppercase italic text-slate-900 leading-none">EVENT AKTIF</h2>
                 {onRefresh && (
-                  <button 
-                    onClick={onRefresh}
-                    disabled={isSyncing}
-                    className={`p-2 rounded-lg border border-slate-100 hover:border-arcus-red hover:text-arcus-red transition-all ${isSyncing ? 'animate-spin text-arcus-red' : 'text-slate-400'}`}
-                  >
-                    <Activity className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={onRefresh}
+                      disabled={isSyncing}
+                      className={`p-2 rounded-lg border border-slate-100 hover:border-arcus-red hover:text-arcus-red transition-all ${isSyncing ? 'animate-spin text-arcus-red' : 'text-slate-400'}`}
+                    >
+                      <Activity className="w-5 h-5" />
+                    </button>
+                    {syncStatus && (
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest leading-none">
+                          {syncStatus.source === 'live' ? 'ONLINE SYNC' : 'ARCHIVE MODE'}
+                        </span>
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-1">
+                          LATEST: {syncStatus.time}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -278,10 +292,10 @@ export default function LandingPage({
                     className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-700 relative overflow-hidden"
                   >
                     <div className="p-8">
-                      {event.settings.pamphletUrl && (
+                      {event.settings?.pamphletUrl && (
                         <div className="mb-6 rounded-2xl overflow-hidden aspect-[4/5] bg-slate-100 border border-slate-100 shadow-inner group-hover:shadow-md transition-shadow">
                           <img 
-                            src={event.settings.pamphletUrl} 
+                            src={event.settings?.pamphletUrl} 
                             alt="Event Pamphlet" 
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                             referrerPolicy="no-referrer"
@@ -311,11 +325,11 @@ export default function LandingPage({
                       </div>
 
                       <h3 className="text-2xl font-black font-oswald uppercase italic tracking-tighter text-slate-900 mb-2 leading-none group-hover:text-arcus-red transition-colors duration-300 min-h-[3rem] line-clamp-2">
-                        {event.settings.tournamentName}
+                        {event.settings?.tournamentName || 'Untitled Event'}
                       </h3>
                       
                       <p className="text-slate-500 text-xs font-medium mb-8 line-clamp-2 italic leading-relaxed opacity-70">
-                        {event.settings.description || 'Turnamen panahan prestasi yang dikelola oleh ekosistem ARCUS DIGITAL.'}
+                        {event.settings?.description || 'Turnamen panahan prestasi yang dikelola oleh ekosistem ARCUS DIGITAL.'}
                       </p>
 
                       <div className="space-y-4 mb-10 pb-6 border-b border-slate-50">
@@ -323,13 +337,13 @@ export default function LandingPage({
                           <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
                             <MapPin className="w-4 h-4" />
                           </div>
-                          <span className="text-[10px] font-black uppercase tracking-widest truncate">{event.settings.location || 'Lokasi Menunggu Update'}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest truncate">{event.settings?.location || 'Lokasi Menunggu Update'}</span>
                         </div>
                         <div className="flex items-center gap-4 text-slate-600">
                           <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
                             <Clock className="w-4 h-4" />
                           </div>
-                          <span className="text-[10px] font-black uppercase tracking-widest">{event.settings.eventDate || 'Tanggal Pending'}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest">{event.settings?.eventDate || 'Tanggal Pending'}</span>
                         </div>
                       </div>
 
@@ -396,7 +410,10 @@ export default function LandingPage({
                     Tidak ada Turnamen Publik
                   </h3>
                   <p className="max-w-xl mx-auto text-sm text-slate-500 font-medium leading-relaxed mb-10">
-                    Saat ini belum ada turnamen yang berstatus <span className="font-bold text-blue-600">Publik</span>. Turnamen yang baru dibuat tetap bersifat <span className="font-bold text-amber-600">Draf</span> sampai diaktivasi oleh penyelenggara melalui Dashboard.
+                    {syncStatus?.source === 'hard-fallback' 
+                      ? 'Kami sedang menyiapkan jadwal turnamen berikutnya. Pantau terus halaman ini untuk update terbaru.'
+                      : 'Saat ini belum ada turnamen yang berstatus Publik. Turnamen yang baru dibuat tetap bersifat Draf sampai diaktivasi oleh penyelenggara melalui Dashboard.'
+                    }
                   </p>
                   
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

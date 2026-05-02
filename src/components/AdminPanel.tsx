@@ -33,10 +33,11 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
         return JSON.parse(savedDraft);
       } catch (e) { console.error("Draft parse failed", e); }
     }
+    const baseSettings = (settings || {}) as TournamentSettings;
     return {
-      ...settings,
-      categoryConfigs: settings.categoryConfigs || {}
-    };
+      ...baseSettings,
+      categoryConfigs: baseSettings.categoryConfigs || {}
+    } as TournamentSettings;
   });
   const isPractice = localSettings.isPractice;
   const [isDirty, setIsDirty] = useState(false);
@@ -62,8 +63,8 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
   // or if we're not currently editing (not dirty)
   useEffect(() => {
     if (!isDirty) {
-      setLocalSettings(settings);
-      setLocalScorers(scorerAccess);
+      setLocalSettings(settings || { ...localSettings });
+      setLocalScorers(scorerAccess || []);
     }
   }, [settings, scorerAccess, isDirty]);
 
@@ -146,15 +147,15 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
 
   const handleFinalSave = () => {
     // Validation for Tournament (not practice)
-    if (!localSettings.isPractice) {
+    if (!localSettings?.isPractice) {
       const missingFields = [];
-      if (!localSettings.tournamentName) missingFields.push('Nama Turnamen');
-      if (!localSettings.description) missingFields.push('Keterangan');
-      if (!localSettings.location) missingFields.push('Lokasi');
-      if (!localSettings.eventDate) missingFields.push('Tanggal');
-      if (!localSettings.pamphletUrl) missingFields.push('Link Pamflet');
-      if (!localSettings.thbUrl) missingFields.push('Link THB');
-      if ((localSettings.paymentMethods || []).length === 0) missingFields.push('Metode Pembayaran');
+      if (!localSettings?.tournamentName) missingFields.push('Nama Turnamen');
+      if (!localSettings?.description) missingFields.push('Keterangan');
+      if (!localSettings?.location) missingFields.push('Lokasi');
+      if (!localSettings?.eventDate) missingFields.push('Tanggal');
+      if (!localSettings?.pamphletUrl) missingFields.push('Link Pamflet');
+      if (!localSettings?.thbUrl) missingFields.push('Link THB');
+      if ((localSettings?.paymentMethods || []).length === 0) missingFields.push('Metode Pembayaran');
 
       if (missingFields.length > 0) {
         setShowDraftConfirm(true);
@@ -588,8 +589,8 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                    </label>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 p-4 flex flex-col items-center justify-center gap-4 min-h-[300px] overflow-hidden relative group">
-                   {localSettings.pamphletUrl ? (
+                 <div className="bg-slate-900 border border-slate-800 p-4 flex flex-col items-center justify-center gap-4 min-h-[300px] overflow-hidden relative group">
+                   {localSettings?.pamphletUrl ? (
                      <div className="relative w-full h-full flex items-center justify-center">
                         <img 
                           src={localSettings.pamphletUrl} 

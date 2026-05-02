@@ -80,28 +80,28 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
   const filteredEvents = useMemo(() => {
     let result = events.filter(e => {
-      const matchesSearch = (e.settings.tournamentName || '').toLowerCase().includes((eventSearch || '').toLowerCase()) ||
-        (e.settings.location || '').toLowerCase().includes((eventSearch || '').toLowerCase());
+      const matchesSearch = (e.settings?.tournamentName || '').toLowerCase().includes((eventSearch || '').toLowerCase()) ||
+        (e.settings?.location || '').toLowerCase().includes((eventSearch || '').toLowerCase());
       
       const matchesStatus = statusFilter === 'ALL' || e.status === statusFilter;
       
-      const isPractice = e.settings.isPractice;
+      const isPractice = e.settings?.isPractice;
       const matchesType = typeFilter === 'ALL' || 
         (typeFilter === 'PRACTICE' && isPractice) || 
         (typeFilter === 'TOURNAMENT' && !isPractice);
 
       const matchesPayment = paymentStatusFilter === 'ALL' || 
-        (paymentStatusFilter === 'PAID' && e.settings.platformFeePaidToOwner) || 
-        (paymentStatusFilter === 'UNPAID' && !e.settings.platformFeePaidToOwner && !e.settings.isPractice);
+        (paymentStatusFilter === 'PAID' && e.settings?.platformFeePaidToOwner) || 
+        (paymentStatusFilter === 'UNPAID' && !e.settings?.platformFeePaidToOwner && !e.settings?.isPractice);
         
       return matchesSearch && matchesStatus && matchesType && matchesPayment;
     });
 
     // Sorting
     return result.sort((a, b) => {
-      if (sortBy === 'NEWEST') return (b.settings.createdAt || 0) - (a.settings.createdAt || 0);
-      if (sortBy === 'OLDEST') return (a.settings.createdAt || 0) - (b.settings.createdAt || 0);
-      if (sortBy === 'NAME_ASC') return a.settings.tournamentName.localeCompare(b.settings.tournamentName);
+      if (sortBy === 'NEWEST') return (b.settings?.createdAt || 0) - (a.settings?.createdAt || 0);
+      if (sortBy === 'OLDEST') return (a.settings?.createdAt || 0) - (b.settings?.createdAt || 0);
+      if (sortBy === 'NAME_ASC') return (a.settings?.tournamentName || '').localeCompare(b.settings?.tournamentName || '');
       return 0;
     });
   }, [events, eventSearch, statusFilter, typeFilter, sortBy]);
@@ -115,15 +115,16 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   };
 
   const calculateEventFees = (event: ArcheryEvent) => {
-    if (event.settings.isFreeEvent || event.settings.isPractice) return 0;
+    if (event.settings?.isFreeEvent || event.settings?.isPractice) return 0;
     const participants = Array.from(
-      new Map([...event.registrations, ...event.archers].map(p => [p.id, p])).values()
+      new Map([...(event.registrations || []), ...(event.archers || [])].map(p => [p.id, p])).values()
     );
     return participants.reduce((acc, curr) => {
+      if (!curr) return acc;
       const fee = curr.platformFee && curr.platformFee > 0 
         ? curr.platformFee 
-        : (isKidsCategory(curr.category) ? globalSettings.feeKids : globalSettings.feeAdult);
-      return acc + fee;
+        : (isKidsCategory(curr.category || '') ? (globalSettings?.feeKids || 0) : (globalSettings?.feeAdult || 0));
+      return acc + (Number(fee) || 0);
     }, 0);
   };
 
@@ -231,7 +232,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
             id: selectedInvoiceEvent?.id,
             price: totalFee,
             quantity: 1,
-            name: `Platform Fee: ${selectedInvoiceEvent?.settings.tournamentName}`
+            name: `Platform Fee: ${selectedInvoiceEvent?.settings?.tournamentName || 'Tournament'}`
           }]
         })
       });
@@ -595,7 +596,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                 return (
                   <div key={event.id} className="bg-white p-6 rounded-[2rem] border border-orange-200 shadow-sm flex flex-col justify-between gap-4 group hover:border-orange-500 transition-all">
                      <div>
-                       <h4 className="font-black text-slate-900 uppercase font-oswald italic truncate leading-none mb-2">{event.settings.tournamentName}</h4>
+                       <h4 className="font-black text-slate-900 uppercase font-oswald italic truncate leading-none mb-2">{event.settings?.tournamentName || 'Untitled'}</h4>
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{participantCount} Pendaftar Terdeteksi</p>
                      </div>
                      <div className="flex items-center justify-between border-t border-slate-50 pt-4">
@@ -795,14 +796,14 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                 return (
                   <div key={event.id} className={`p-4 md:px-8 md:py-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 md:gap-8 hover:bg-slate-50 transition-all group relative overflow-hidden ${deletingId === event.id ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
                     <div className="flex items-center gap-4 md:gap-8 relative z-10 min-w-0">
-                      <div className={`w-10 h-10 md:w-14 md:h-14 shrink-0 rounded-lg flex items-center justify-center font-black font-oswald text-base md:text-xl transition-all duration-500 ${event.settings.isPractice ? 'bg-teal-50 text-teal-600' : 'bg-slate-50 text-slate-300 group-hover:bg-red-50 group-hover:text-arcus-red'}`}>
-                        {event.settings.isPractice ? <Target className="w-5 h-5 md:w-7 md:h-7" /> : event.settings.tournamentName.charAt(0)}
+                      <div className={`w-10 h-10 md:w-14 md:h-14 shrink-0 rounded-lg flex items-center justify-center font-black font-oswald text-base md:text-xl transition-all duration-500 ${event.settings?.isPractice ? 'bg-teal-50 text-teal-600' : 'bg-slate-50 text-slate-300 group-hover:bg-red-50 group-hover:text-arcus-red'}`}>
+                        {event.settings?.isPractice ? <Target className="w-5 h-5 md:w-7 md:h-7" /> : (event.settings?.tournamentName?.charAt(0) || '?')}
                       </div>
                       <div className="min-w-0 flex-1 space-y-1 md:space-y-2">
                         <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
-                          <h4 className="text-lg md:text-2xl font-black text-slate-900 uppercase font-oswald truncate italic leading-none tracking-tighter">{event.settings.tournamentName}</h4>
+                          <h4 className="text-lg md:text-2xl font-black text-slate-900 uppercase font-oswald truncate italic leading-none tracking-tighter">{event.settings?.tournamentName || 'Untitled'}</h4>
                           <div className="flex flex-wrap gap-1.5 md:gap-2">
-                             {event.settings.isPractice && (
+                             {event.settings?.isPractice && (
                                <span className="bg-teal-50 text-teal-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-teal-100">Latihan</span>
                              )}
                              {event.status === 'DRAFT' && (
@@ -815,25 +816,25 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                         </div>
                         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                            <Users className={`w-4 h-4 ${event.settings.isPractice ? 'text-teal-500' : 'text-arcus-red'}`} />
+                            <Users className={`w-4 h-4 ${event.settings?.isPractice ? 'text-teal-500' : 'text-arcus-red'}`} />
                             {event.archers.length} Archer <span className="hidden sm:inline">Terdaftar</span>
                           </div>
-                          {event.settings.location && (
+                          {event.settings?.location && (
                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                               <MapPin className="w-4 h-4 text-blue-500" />
-                              <span className="truncate max-w-[120px]">{event.settings.location}</span>
+                              <span className="truncate max-w-[120px]">{event.settings?.location}</span>
                             </div>
                           )}
-                          {event.settings.eventDate && (
+                          {event.settings?.eventDate && (
                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                               <Calendar className="w-4 h-4 text-emerald-500" />
-                              <span>{safeFormatDate(event.settings.eventDate, { day: 'numeric', month: 'short' })}</span>
+                              <span>{safeFormatDate(event.settings?.eventDate, { day: 'numeric', month: 'short' })}</span>
                             </div>
                           )}
-                          {!event.settings.isPractice && (
-                            <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-wider ${event.settings.platformFeePaidToOwner ? 'text-emerald-500' : 'text-orange-500'}`}>
-                              {event.settings.platformFeePaidToOwner ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                              Admin: {event.settings.platformFeePaidToOwner ? 'CLEAR' : 'WAITING'}
+                          {!event.settings?.isPractice && event.settings && (
+                            <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-wider ${event.settings?.platformFeePaidToOwner ? 'text-emerald-500' : 'text-orange-500'}`}>
+                              {event.settings?.platformFeePaidToOwner ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                              Admin: {event.settings?.platformFeePaidToOwner ? 'CLEAR' : 'WAITING'}
                             </div>
                           )}
                           {expiration?.isUrgent && (
@@ -848,14 +849,14 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                     <div className="flex flex-wrap sm:flex-nowrap gap-4 w-full md:w-auto relative z-10">
                       <div className="grid grid-cols-2 sm:flex gap-3 w-full">
                         <button 
-                          onClick={(e) => handleDelete(e, event.id, event.settings.tournamentName, event.settings.isPractice)}
+                          onClick={(e) => handleDelete(e, event.id, event.settings?.tournamentName || 'Untitled', event.settings?.isPractice)}
                           className="p-4 sm:p-5 rounded-2xl bg-slate-50 text-slate-300 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95"
                           title="Hapus"
                         >
                           <Trash2 className="w-6 h-6" />
                         </button>
                         <button 
-                          onClick={() => onShare(event.id, event.settings.tournamentName)} 
+                          onClick={() => onShare(event.id, event.settings?.tournamentName || 'Untitled')} 
                           className="flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95"
                           title="Share"
                         >
@@ -874,9 +875,9 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                             <ShieldCheck className="w-5 h-5" /> AKTIVASI
                           </button>
                         ) : (
-                          <button onClick={() => onManageEvent(event.id)} className={`col-span-2 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 ${event.settings.isPractice ? 'bg-teal-900 text-white hover:bg-black' : 'bg-slate-900 text-white hover:bg-arcus-red'}`}>
-                            <Settings className={`w-5 h-5 ${event.settings.isPractice ? 'text-teal-400' : 'text-arcus-red'}`} /> 
-                            {event.settings.isPractice ? 'KONTROL' : 'KELOLA'}
+                          <button onClick={() => onManageEvent(event.id)} className={`col-span-2 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 ${event.settings?.isPractice ? 'bg-teal-900 text-white hover:bg-black' : 'bg-slate-900 text-white hover:bg-arcus-red'}`}>
+                            <Settings className={`w-5 h-5 ${event.settings?.isPractice ? 'text-teal-400' : 'text-arcus-red'}`} /> 
+                            {event.settings?.isPractice ? 'KONTROL' : 'KELOLA'}
                           </button>
                         )}
                       </div>

@@ -184,7 +184,7 @@ export function App() {
         // 1. Fetch System Config (Public)
         safeGetDoc(doc(db, 'systemConfigs', 'global')).catch(() => null),
         
-        // 2. Optimized Event Fetch: Only fetch active/completed tournaments for public viewers
+        // 2. Optimized Event Fetch: Only fetch 10 most recent active/completed tournaments for public
         (isPublicView 
           ? safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED'])))
           : safeGetDocs(collection(db, 'events'))
@@ -1345,19 +1345,16 @@ export function App() {
         </div>
       )}
 
-      {quotaExceeded && (
+      {quotaExceeded && (appState.currentUser?.email === 'poedji.sugianto@gmail.com' || appState.currentUser?.isSuperAdmin) && (
         <div className="fixed top-2 z-[60] left-1/2 -translate-x-1/2 w-[95%] max-w-lg">
           <div className="bg-slate-900 border-2 border-arcus-red/30 rounded-2xl p-4 shadow-2xl flex items-center gap-4">
             <div className="bg-arcus-red text-white p-2 rounded-xl animate-pulse">
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div className="flex-1">
-              <p className="text-[10px] font-black uppercase text-white leading-tight tracking-widest italic">Koneksi Cloud Terbatas</p>
+              <p className="text-[10px] font-black uppercase text-white leading-tight tracking-widest italic">Admin Note: Cloud Quota Limited</p>
               <p className="text-[9px] font-bold text-white/70 leading-tight mt-1">
-                Batas harian Google Cloud (50.000 reads) tercapai. Skor tetap aman & tersimpan <span className="text-white">Lokal</span> di browser ini.
-              </p>
-              <p className="text-[8px] font-medium text-white/40 mt-1 uppercase tracking-tighter">
-                Catatan: Turnamen besar (500+ peserta) membutuhkan <span className="text-white font-bold">Paket Blaze</span> di Firebase Console agar fitur real-time tidak terhenti.
+                Batas harian Google Cloud (50.000 reads) tercapai. Data tetap aman & tersimpan <span className="text-white">Lokal</span>.
               </p>
             </div>
             <button 

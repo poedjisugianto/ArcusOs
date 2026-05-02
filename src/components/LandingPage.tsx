@@ -389,16 +389,14 @@ export default function LandingPage({
           ) : (
             <div className="bg-white rounded-[2.5rem] p-16 md:p-24 text-center border-2 border-dashed border-slate-200 shadow-sm relative overflow-hidden group">
                <div className="relative z-10">
-                  <div className={`w-24 h-24 ${quotaExceeded ? 'bg-amber-50' : 'bg-slate-50'} rounded-full flex items-center justify-center mx-auto mb-8 ${quotaExceeded ? 'text-amber-400' : 'text-slate-200'} group-hover:scale-110 transition-transform duration-700`}>
-                    {quotaExceeded ? <AlertTriangle className="w-12 h-12" /> : <Trophy className="w-12 h-12" />}
+                  <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-8 text-slate-200 group-hover:scale-110 transition-transform duration-700">
+                    <Trophy className="w-12 h-12" />
                   </div>
                   <h3 className="text-3xl font-black font-oswald uppercase italic text-slate-900 tracking-tighter mb-4">
-                    {quotaExceeded ? 'Koneksi Server Tertunda' : 'Tidak ada Turnamen Publik'}
+                    Tidak ada Turnamen Publik
                   </h3>
                   <p className="max-w-xl mx-auto text-sm text-slate-500 font-medium leading-relaxed mb-10">
-                    {quotaExceeded 
-                      ? 'Mohon maaf, saat ini server kami mencapai batas penggunaan harian Google Cloud. Daftar turnamen akan muncul kembali secara otomatis dalam beberapa jam.' 
-                      : 'Saat ini belum ada turnamen yang berstatus Publik. Turnamen yang baru dibuat tetap bersifat Draf sampai diaktivasi oleh penyelenggara melalui Dashboard.'}
+                    Saat ini belum ada turnamen yang berstatus <span className="font-bold text-blue-600">Publik</span>. Turnamen yang baru dibuat tetap bersifat <span className="font-bold text-amber-600">Draf</span> sampai diaktivasi oleh penyelenggara melalui Dashboard.
                   </p>
                   
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -409,18 +407,16 @@ export default function LandingPage({
                         className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl active:scale-95 shadow-red-200"
                       >
                         <Activity className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Menghubungkan...' : 'Coba Hubungkan Lagi'}
+                        {isSyncing ? 'Sinkronisasi...' : 'Refresh Daftar'}
                       </button>
                     )}
-                    {!quotaExceeded && (
-                      <button 
-                        onClick={onLogin}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-white text-slate-900 border-2 border-slate-100 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-slate-900 transition-all active:scale-95"
-                      >
-                        <Plus className="w-4 h-4 text-arcus-red" />
-                        Buat Turnamen
-                      </button>
-                    )}
+                    <button 
+                      onClick={onLogin}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-white text-slate-900 border-2 border-slate-100 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-slate-900 transition-all active:scale-95"
+                    >
+                      <Plus className="w-4 h-4 text-arcus-red" />
+                      Buat Turnamen
+                    </button>
                   </div>
 
                   {!currentUser && (

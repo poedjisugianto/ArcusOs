@@ -335,15 +335,15 @@ export function App() {
     fetchCloudData().catch(err => console.error("Initial fetch error:", err));
   }, [appState.currentUser?.id, appState.activeEventId]);
 
-  // AUTO-SYNC PENDING CHANGES: Every 30 seconds if anything is pending
+  // AUTO-SYNC PENDING CHANGES: Every 15 seconds if anything is pending
   useEffect(() => {
-    if (!hasPendingChanges || isSyncing) return;
+    if (!hasPendingChanges || isSyncing || quotaExceeded) return;
     const interval = setInterval(() => {
       console.log("Auto-syncing pending changes...");
       syncCloudData(false);
-    }, 30000);
+    }, 15000); 
     return () => clearInterval(interval);
-  }, [hasPendingChanges, isSyncing]);
+  }, [hasPendingChanges, isSyncing, quotaExceeded]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
 
@@ -646,14 +646,18 @@ export function App() {
     }
   };
 
-  // Real-time Subscriptions - Only for active event when necessary
+  // Real-time Subscriptions - Granular control to save quota
   useEffect(() => {
-    if (!db || !appState.activeEventId) return;
+    if (!db || !appState.activeEventId || quotaExceeded) return;
     
-    // Only subscribe in views that need live updates
-    const liveViews = ['LIVE', 'PUBLIC_LIVE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'ARCHERS', 'FINANCE'];
-    if (!liveViews.includes(view)) return;
-
+    // High Priority: Admin, Scorers, Operator, and TV Mode Scoreboard
+    const isAdminView = ['EVENT_ADMIN', 'ARCHERS', 'FINANCE', 'OPERATOR_CENTER'].includes(view);
+    const isScoringView = ['SCORING', 'QUICK_SCORING'].includes(view);
+    const isTVMode = view === 'LIVE' || (view === 'PUBLIC_LIVE' && window.innerWidth >= 1024); // Assume desktop/large screen is TV Mode
+    
+    // Only subscribe for these high-priority roles/modes
+    if (!isAdminView && !isScoringView && !isTVMode) return;
+    
     const unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
       if (docSnap.exists()) {
         const isRemoteChange = !docSnap.metadata.hasPendingWrites;
@@ -846,20 +850,30 @@ export function App() {
     };
   }, []);
 
-  // Polling for registration updates when in admin screens
+  // Polling for updates - Used for lower priority views (Public Mobile Scoreboard, etc)
   useEffect(() => {
-    if (!db || !isOnline) return;
-    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE', 'PUBLIC_LIVE'];
-    if (adminViews.includes(view)) {
+    if (!db || !isOnline || quotaExceeded) return;
+    
+    const isPublicMobileLive = view === 'PUBLIC_LIVE' && window.innerWidth < 1024;
+    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
+    
+    if (isPublicMobileLive || adminViews.includes(view)) {
+      const pollInterval = isPublicMobileLive ? 60000 : 30000;
       const interval = setInterval(() => {
-        // Polling faster for live views, slower for admin views
-        const isLive = view === 'LIVE' || view === 'PUBLIC_LIVE';
-        console.log(`Auto-polling cloud updates (${isLive ? 'RAID' : 'STANDARD'})...`);
-        fetchCloudData().catch(err => console.error("Polling fetch error:", err));
-      }, view === 'LIVE' || view === 'PUBLIC_LIVE' ? 8000 : 15000); 
+        if (document.visibilityState === 'visible') {
+           // Extra check to see if we really need to poll (e.g. if we don't have onSnapshot active)
+           const isHighPriority = view === 'LIVE' || view === 'OPERATOR_CENTER' || view === 'EVENT_ADMIN';
+           const needsPolling = isPublicMobileLive || view === 'OFFICIALS' || (isHighPriority && window.innerWidth < 1024);
+           
+           if (needsPolling) {
+             console.log(`Auto-polling cloud updates (${view})...`);
+             fetchCloudData().catch(err => console.error("Polling fetch error:", err));
+           }
+        }
+      }, pollInterval); 
       return () => clearInterval(interval);
     }
-  }, [view, isOnline]);
+  }, [view, isOnline, quotaExceeded]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -1031,9 +1045,9 @@ export function App() {
     setHasPendingChanges(true);
 
     // Direct Sync to Cloud (Parking Lot to Highway)
-    if (updatedEvent) {
-      await saveEventToCloud(updatedEvent);
-      setHasPendingChanges(false);
+    if (updatedEvent && !isSyncing && !quotaExceeded) {
+       saveEventToCloud(updatedEvent);
+       setHasPendingChanges(false);
     }
   };
 
@@ -1923,29 +1937,7 @@ export function App() {
           }
 
           try {
-            if (db) {
-              const mirrorPromises = regs.map(r => 
-                setDoc(doc(db, 'events', activeEvent.id, 'submissions', r.id), {
-                  ...r,
-                  submittedAt: new Date().toISOString()
-                })
-              );
-              await Promise.all(mirrorPromises);
-
-              try {
-                const updateFields: any = {
-                  "data.registrations": arrayUnion(...regs),
-                  updatedAt: new Date().toISOString()
-                };
-                if (newArchers.length > 0) updateFields["data.archers"] = arrayUnion(...newArchers);
-                if (officialRegs.length > 0) updateFields["data.officials"] = arrayUnion(...officialRegs);
-                
-                await updateDoc(doc(db, 'events', activeEvent.id), updateFields);
-              } catch (ue) {
-                console.warn("Direct update failed, using API:", ue);
-              }
-            }
-
+            // Use ONLY API for registration to ensure atomic transactions and save client-side complexity
             const response = await fetch('/api/register-participant', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

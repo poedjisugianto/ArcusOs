@@ -13,7 +13,7 @@ import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, App
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache } from 'firebase/firestore';
 import { handleFirestoreError, OperationType, shardData, mergeShards } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import { safeFormatTime } from './lib/dateUtils';
@@ -147,36 +147,54 @@ export function App() {
       isSyncingFromCloud.current = true;
       const user = userOverride !== undefined ? userOverride : appState.currentUser;
       
-      // Safety: Don't let pending changes block fetch indefinitely if they are old
-      // or if we are a guest who can't sync anyway
       const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
-      
-      if (hasPendingChanges && !manual && isPrivileged) {
-        return;
-      }
+      const isPublicView = !user || (!isPrivileged && view === 'LANDING');
 
-      // We fetch all three independently so one failure doesn't block the others
+      // Helper to fetch either from server or cache depending on quota state
+      const safeGetDocs = async (collRef: any, queryRef?: any) => {
+        try {
+          // If quota exceeded, try cache first
+          if (quotaExceeded) {
+             return await getDocsFromCache(queryRef || collRef);
+          }
+          return await getDocs(queryRef || collRef);
+        } catch (err: any) {
+          if (err.code === 'resource-exhausted' || err.message?.includes('quota')) {
+            setQuotaExceeded(true);
+            return await getDocsFromCache(queryRef || collRef).catch(() => null);
+          }
+          throw err;
+        }
+      };
+
+      const safeGetDoc = async (docRef: any) => {
+        try {
+          if (quotaExceeded) return await getDocFromCache(docRef);
+          return await getDoc(docRef);
+        } catch (err: any) {
+          if (err.code === 'resource-exhausted' || err.message?.includes('quota')) {
+            setQuotaExceeded(true);
+            return await getDocFromCache(docRef).catch(() => null);
+          }
+          throw err;
+        }
+      };
+
       const fetchJobs: Promise<any>[] = [
         // 1. Fetch System Config (Public)
-        getDoc(doc(db, 'systemConfigs', 'global')).catch(err => {
-          console.warn("Failed to fetch system config:", err.message);
-          return null;
-        }),
-        // 2. Fetch Events (Public)
-        getDocs(collection(db, 'events')).catch(err => {
-          console.warn("Failed to fetch events:", err.message);
-          return null;
-        }),
+        safeGetDoc(doc(db, 'systemConfigs', 'global')).catch(() => null),
+        
+        // 2. Optimized Event Fetch: Only fetch active/completed tournaments for public viewers
+        (isPublicView 
+          ? safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED'])))
+          : safeGetDocs(collection(db, 'events'))
+        ).catch(() => null),
+        
         // 4. Fetch Submissions (Only for active event if applicable)
-        (appState.activeEventId ? getDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)).catch(err => {
-          console.warn("Failed to fetch submissions:", err.message);
-          return null;
-        }),
+        (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)).catch(() => null),
+        
         // 5. Fetch Shards (Only for active event if applicable)
-        (appState.activeEventId ? getDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null)).catch(err => {
-          console.warn("Failed to fetch shards:", err.message);
-          return null;
-        })
+        (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null)).catch(() => null)
       ];
 
       // 3. Fetch Profiles (Only if Admin)
@@ -187,10 +205,7 @@ export function App() {
 
       if (canFetchProfiles) {
         fetchJobs.push(
-          getDocs(collection(db, 'profiles')).catch(err => {
-            console.warn("Failed to fetch profiles (Permission error usually):", err.message);
-            return null;
-          })
+          safeGetDocs(collection(db, 'profiles')).catch(() => null)
         );
       }
 
@@ -321,9 +336,11 @@ export function App() {
       setLastSync(new Date());
     } catch (err: any) { 
       console.error("Fetch Cloud General Error:", err);
-      // If it's a permission error, we should probably stop the loading spinner but keep trying other things
-      if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
-      // Set even on error to allow UI to show
+      if (err.message?.toLowerCase().includes('quota') || err.message?.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
+        setQuotaExceeded(true);
+        // If quota is exhausted, we still mark data as loaded so UI can show cached versions
+      }
+      if (manual) pushNotification("Sinkronisasi Gagal", "Server mencapai batas penggunaan harian (Quota).", "WARNING");
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
       setIsSyncing(false);
@@ -332,7 +349,16 @@ export function App() {
   };
 
   useEffect(() => {
-    fetchCloudData().catch(err => console.error("Initial fetch error:", err));
+    fetchCloudData().catch(err => {
+      console.error("Initial fetch error:", err);
+      if (err.message?.includes('quota') || err.message?.includes('exhausted')) {
+        setQuotaExceeded(true);
+        toast.error("Kuota Firebase harian tercapai", {
+          description: "Daftar turnamen mungkin tidak muncul karena batasan penggunaan server harian Google telah tercapai.",
+          duration: 10000
+        });
+      }
+    });
   }, [appState.currentUser?.id, appState.activeEventId]);
 
   // AUTO-SYNC PENDING CHANGES: Every 15 seconds if anything is pending
@@ -694,6 +720,9 @@ export function App() {
       }
     }, (error) => {
       console.error("Event Snapshot Error:", error);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        setQuotaExceeded(true);
+      }
     });
 
     return () => unsub();
@@ -745,6 +774,11 @@ export function App() {
         }));
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
       }
+    }, (error) => {
+      console.warn("Shards snapshot error:", error.message);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        setQuotaExceeded(true);
+      }
     });
 
     return () => unsubShards();
@@ -759,6 +793,11 @@ export function App() {
         isSyncingFromCloud.current = true;
         setAppState(prev => ({ ...prev, globalSettings: cloudSettings }));
         setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
+      }
+    }, (error) => {
+      console.warn("Config snapshot error:", error.message);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        setQuotaExceeded(true);
       }
     });
     return () => unsubConfig();
@@ -858,7 +897,11 @@ export function App() {
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
     
     if (isPublicMobileLive || adminViews.includes(view)) {
-      const pollInterval = isPublicMobileLive ? 60000 : 30000;
+      // Significantly increase polling intervals for mobile public users to save quota
+      // Mobile: 2 minutes per update (plenty for random viewers)
+      // Admin/Live: 30 seconds
+      const pollInterval = isPublicMobileLive ? 120000 : 30000;
+      
       const interval = setInterval(() => {
         if (document.visibilityState === 'visible') {
            // Extra check to see if we really need to poll (e.g. if we don't have onSnapshot active)
@@ -866,7 +909,7 @@ export function App() {
            const needsPolling = isPublicMobileLive || view === 'OFFICIALS' || (isHighPriority && window.innerWidth < 1024);
            
            if (needsPolling) {
-             console.log(`Auto-polling cloud updates (${view})...`);
+             console.log(`Auto-polling cloud updates (${view}) - Safe Interval...`);
              fetchCloudData().catch(err => console.error("Polling fetch error:", err));
            }
         }
@@ -1304,19 +1347,22 @@ export function App() {
 
       {quotaExceeded && (
         <div className="fixed top-2 z-[60] left-1/2 -translate-x-1/2 w-[95%] max-w-lg">
-          <div className="bg-amber-100 border-2 border-amber-500 rounded-2xl p-4 shadow-2xl flex items-center gap-4">
-            <div className="bg-amber-500 text-white p-2 rounded-xl">
-              <AlertCircle className="w-5 h-5" />
+          <div className="bg-slate-900 border-2 border-arcus-red/30 rounded-2xl p-4 shadow-2xl flex items-center gap-4">
+            <div className="bg-arcus-red text-white p-2 rounded-xl animate-pulse">
+              <ShieldAlert className="w-5 h-5" />
             </div>
             <div className="flex-1">
-              <p className="text-[10px] font-black uppercase text-amber-900 leading-tight">Firestore Quota Exceeded</p>
-              <p className="text-[9px] font-bold text-amber-800 leading-tight mt-1 italic">
-                Limit gratis harian tercapai. Anda tetap bisa menginput data secara lokal, namun sinkronisasi cloud tertunda hingga besok.
+              <p className="text-[10px] font-black uppercase text-white leading-tight tracking-widest italic">Koneksi Cloud Terbatas</p>
+              <p className="text-[9px] font-bold text-white/70 leading-tight mt-1">
+                Batas harian Google Cloud (50.000 reads) tercapai. Skor tetap aman & tersimpan <span className="text-white">Lokal</span> di browser ini.
+              </p>
+              <p className="text-[8px] font-medium text-white/40 mt-1 uppercase tracking-tighter">
+                Catatan: Turnamen besar (500+ peserta) membutuhkan <span className="text-white font-bold">Paket Blaze</span> di Firebase Console agar fitur real-time tidak terhenti.
               </p>
             </div>
             <button 
               onClick={() => setQuotaExceeded(false)}
-              className="text-amber-500 hover:text-amber-700 p-1"
+              className="text-white/20 hover:text-white p-1"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1339,6 +1385,7 @@ export function App() {
             onScorerLogin={() => setView('SCORER_LOGIN')}
             onRefresh={() => fetchCloudData(true)}
             isSyncing={isSyncing}
+            quotaExceeded={quotaExceeded}
             onShare={handleShare} 
             currentUser={appState.currentUser}
             onLogout={handleLogout}
@@ -1989,6 +2036,10 @@ export function App() {
             }
           } catch (error: any) {
             console.error("Online registration error:", error);
+            if (error.message?.toLowerCase().includes('quota') || error.code === 'resource-exhausted') {
+              setQuotaExceeded(true);
+              pushNotification("Server Penuh", "Batas harian server tercapai. Pendaftaran disimpan LOKAL dan akan disinkronkan otomatis besok pagi.", "WARNING");
+            }
             registerLocallyOnly();
           }
         }} onBack={() => {

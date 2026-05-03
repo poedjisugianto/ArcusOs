@@ -479,7 +479,7 @@ app.get("/api/health", (req, res) => {
 const EVENT_CACHE_FILE = path.join(process.cwd(), 'cached_public_events.json');
 let cachedPublicEvents: any[] | null = null;
 let lastPublicEventsUpdate = 0;
-const PUBLIC_EVENTS_CACHE_TTL = 60 * 60 * 1000; // 1 Hour cache for high stability
+const PUBLIC_EVENTS_CACHE_TTL = 30 * 1000; // 30 Seconds cache for better responsiveness
 
 // Initialize cache from disk on startup
 try {
@@ -514,6 +514,7 @@ app.get("/api/public-events", async (req, res) => {
     try {
       const response = await axios.get(url, { timeout: 6000 });
       if (response.data && response.data.documents) {
+        console.log(`[REST-API] Found ${response.data.documents.length} raw documents.`);
         response.data.documents.forEach((doc: any) => {
           const data = transformRestFields(doc.fields);
           if (data && (data.status === 'ACTIVE' || data.status === 'COMPLETED')) {
@@ -552,7 +553,7 @@ app.get("/api/public-events", async (req, res) => {
       cachedPublicEvents = events;
       lastPublicEventsUpdate = now;
 
-      // Persistence: Save to disk so it survives server restarts during quota outages
+      // Persistence: Save to disk
       try {
         fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify({
           events: cachedPublicEvents,
@@ -569,8 +570,8 @@ app.get("/api/public-events", async (req, res) => {
       });
     }
 
-    // CRITICAL EMERGENCY: If both fetches failed, use STALE cache
-    if (cachedPublicEvents && cachedPublicEvents.length > 0) {
+    // EMERGENCY: Return whatever we have in cache
+    if (cachedPublicEvents) {
       return res.json({ 
         success: true, 
         events: cachedPublicEvents, 
@@ -578,13 +579,12 @@ app.get("/api/public-events", async (req, res) => {
       });
     }
 
-    // ULTIMATE FALLBACK: If no cache and no DB, return a hardcoded "Promotional" event so the site isn't broken
-    console.log("[EMERGENCY] Returning hard fallback events list.");
+    // FINAL FALLBACK: Empty list instead of dummy data if everything fails
     return res.json({
       success: true,
-      events: HARD_FALLBACK_API_RESPONSE,
-      source: 'hard-fallback',
-      note: 'Database currently busy. Showing upcoming schedule.'
+      events: [],
+      source: 'empty-fallback',
+      note: 'Tidak ada event aktif yang ditemukan.'
     });
   } catch (error: any) {
     console.error("Public Events Loop Error:", error.message);

@@ -88,8 +88,8 @@ export function App() {
 
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && saved.startsWith('{')) {
-        const parsed = JSON.parse(saved);
+      if (saved) {
+        const parsed = tryRecoverJSON(saved);
         // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
         return { 
           ...parsed, 
@@ -98,7 +98,7 @@ export function App() {
         };
       }
     } catch (e) {
-      console.error("Local storage recovery failed (corrupted):", e);
+      console.error("Local storage recovery failed:", e);
       // Clean up potentially corrupted storage
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -190,30 +190,52 @@ export function App() {
         
       // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         (isPublicView 
-          ? fetch('/api/public-events')
+          ? fetch('/api/public-events') // IGNORE QUOTA GUARD FOR PUBLIC API
               .then(async res => {
                 const contentType = res.headers.get("content-type");
                 const text = await res.text();
+                
+                // If the server tells us it's a quota issue, we still try to parse the response 
+                // because the server might have returned a cache.
                 if (contentType && contentType.includes("application/json")) {
                   try {
                     return tryRecoverJSON(text);
                   } catch (e: any) {
-                    console.error("API JSON Parse Error at pos:", e.message, "Text preview:", text.substring(0, 200));
+                    console.error("API JSON Parse Error. Text preview:", text.substring(0, 100));
+                    // Try primitive recovery
+                    if (text.includes('{"success":true')) {
+                      const startIndex = text.indexOf('{"success":true');
+                      const bracketEnd = text.lastIndexOf(']}');
+                      if (bracketEnd > startIndex) {
+                         try { return JSON.parse(text.substring(startIndex, bracketEnd + 2)); } catch(err) {}
+                      }
+                    }
                     throw e;
                   }
                 }
-                throw new Error(`Unexpected content type: ${contentType}`);
+                throw new Error(`Unexpected content: ${text.substring(0, 50)}`);
               })
               .then(data => {
-                if (data.success && data.events) {
+                if (data && data.events) {
                    setSyncStatus({ 
-                     source: data.source || 'live', 
-                     time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) 
+                     lastSync: new Date(),
+                     status: 'success',
+                     message: data.source === 'cache' ? 'Sistem Cloud (Restored)' : 'Sistem Cloud Aktif'
                    });
+                   
+                   // If we successfully got data from the API, we can consider the quota issue 
+                   // "managed" for now if we were previously blocked.
+                   
                    return { 
                      docs: (data.events || []).map((e: any) => ({ 
                         id: e.id, 
-                        data: () => e, // This is outer document
+                        // The server standardized it into .data property, but client logic expects doc.data() to return the event object
+                        data: () => ({
+                           id: e.id,
+                           status: e.status || 'ACTIVE',
+                           createdAt: e.createdAt,
+                           ...(e.data || e)
+                        }),
                         exists: true 
                      })), 
                      __type: 'custom_array' 
@@ -222,13 +244,9 @@ export function App() {
                 return null;
               })
               .catch(err => {
-                const errMessage = err.message || "";
-                if (errMessage.toLowerCase().includes('quota') || errMessage.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
-                  setQuotaExceeded(true);
-                }
-                console.warn("API Public fetch failed, falling back to silent Firestore safeGet:", err);
-                // Broaden the fallback query to include MASTER and other active states
-                return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED', 'MASTER', 'PUBLISHED', 'Live']), limit(10)));
+                console.warn("Public fetch fallback triggered:", err.message);
+                // Even on fallback, we try to get from cache if quota exceeded
+                return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED', 'MASTER', 'PUBLISHED', 'Live']), limit(20)));
               })
           : safeGetDocs(collection(db, 'events'))
         ).catch(() => null),

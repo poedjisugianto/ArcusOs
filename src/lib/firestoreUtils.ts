@@ -69,18 +69,28 @@ export function tryRecoverJSON(text: string): any {
     const endChars = [']', '}'];
     for (const char of endChars) {
       let lastIndex = text.lastIndexOf(char);
-      while (lastIndex > 0) {
+      // Limit attempts to avoid freezing the browser if data is gigantic
+      let attempts = 0;
+      while (lastIndex > 0 && attempts < 20) {
+        attempts++;
         try {
           const candidate = text.substring(0, lastIndex + 1);
           const parsed = JSON.parse(candidate);
-          console.log("Successfully recovered JSON.");
+          console.log(`Successfully recovered JSON after ${attempts} attempts.`);
           return parsed;
         } catch (inner) {
           lastIndex = text.lastIndexOf(char, lastIndex - 1);
-          if (lastIndex < 0 || text.length - lastIndex > 1000000) break;
         }
       }
     }
+    
+    // Last ditch: if it's a sharded array that got doubled, try to find the start of the second array
+    if (text.includes('][')) {
+      const parts = text.split('][');
+      try { return JSON.parse(parts[0] + ']'); } catch(e) {}
+    }
+    
+    console.error("Recovery failed. Text preview:", text.substring(0, 100));
     throw e;
   }
 }

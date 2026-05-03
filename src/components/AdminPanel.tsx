@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { TournamentSettings, CategoryType, TargetType, PaymentMethod, ScorerAccess, CategoryConfig, Sponsorship } from '../types';
 import { CATEGORY_LABELS, TARGET_LABELS } from '../constants';
+import { tryRecoverJSON } from '../lib/firestoreUtils';
 
 interface Props {
   eventId: string;
@@ -30,7 +31,7 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
     const savedDraft = localStorage.getItem(`admin_draft_${eventId}`);
     if (savedDraft) {
       try {
-        return JSON.parse(savedDraft);
+        return tryRecoverJSON(savedDraft);
       } catch (e) { console.error("Draft parse failed", e); }
     }
     const baseSettings = (settings || {}) as TournamentSettings;

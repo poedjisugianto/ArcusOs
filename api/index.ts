@@ -495,29 +495,23 @@ app.get("/api/public-events", async (req, res) => {
 
     if (events.length > 0) {
       const finalEvents = events.map(e => {
-        // Find the legitimate tournament data regardless of whether it was sharded or wrapped
         const baseData = e.data || e;
-        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || baseData.tournamentName || baseData.name || baseData.data?.settings?.tournamentName;
+        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || baseData.tournamentName || baseData.name || (e.data && e.data.settings?.tournamentName);
         
-        // Use a very permissive status check: everything except DRAFT
         const status = (e.status || baseData.status || 'ACTIVE').toUpperCase();
         
-        if (!tournamentName) {
-          console.log(`[API-PROCESS] Skipping document ${e.id} - No tournament name found.`);
-          return null;
-        }
+        // Log all documents so we can see what's happening in logs
+        console.log(`[API-PROCESS] Doc: ${e.id}, Name: ${tournamentName}, Status: ${status}`);
 
-        if (status === 'DRAFT') {
-            console.log(`[API-PROCESS] Skipping document ${e.id} - Status is DRAFT.`);
-            return null;
-        }
+        // Only skip if absolutely no name
+        if (!tournamentName) return null;
 
         return {
           id: e.id,
           status: status,
           createdAt: e.createdAt || baseData.createdAt || new Date().toISOString(),
           data: {
-            settings: baseData.settings || e.settings || (e.data && e.data.settings) || {},
+            settings: baseData.settings || e.settings || (e.data && e.data.settings) || { tournamentName },
             archers: baseData.archers || e.archers || (e.data && e.data.archers) || [],
             registrations: baseData.registrations || e.registrations || (e.data && e.data.registrations) || [],
             officials: baseData.officials || e.officials || (e.data && e.data.officials) || []

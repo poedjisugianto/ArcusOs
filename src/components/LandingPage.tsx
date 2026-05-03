@@ -59,18 +59,23 @@ export default function LandingPage({
     const activeEvents = events
     .map(e => {
       const raw = e as any;
-      // ALWAYS try to flatten if there is a .data property
-      if (raw.data && typeof raw.data === 'object') {
-        const status = raw.status || raw.data.status || 'ACTIVE';
-        return { ...raw.data, id: raw.id, status };
+      // Handle standardized structure from API: { id, status, data: { settings: { ... } } }
+      if (raw.data && typeof raw.data === 'object' && raw.data.settings) {
+        return { 
+          ...raw.data, 
+          id: raw.id, 
+          status: raw.status || raw.data.status || 'ACTIVE' 
+        };
       }
+      // Fallback for any direct/flattened data
       return { ...raw, status: raw.status || 'ACTIVE' };
     })
     .filter(e => {
-      // Basic sanity check: Must have a tournament name and not be draft
-      const hasName = !!(e.settings?.tournamentName || e.tournamentName);
+      // Must have a tournament name and not be DRAFT
+      // Tournament name could be in settings or top level
+      const tournamentName = e.settings?.tournamentName || e.tournamentName;
       const isNotDraft = e.status !== 'DRAFT';
-      return hasName && isNotDraft;
+      return tournamentName && isNotDraft;
     });
 
   return (

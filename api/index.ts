@@ -451,36 +451,25 @@ try {
 }
 
 app.get("/api/public-events", async (req, res) => {
-  const now = Date.now();
-  
-  // Return cache if it is fresh OR if we recently failed a fetch
-  if (cachedPublicEvents && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
-    return res.json({ 
-      success: true, 
-      events: cachedPublicEvents,
-      source: 'cache'
-    });
-  }
-
   try {
     let events: any[] = [];
     let fetchSuccessful = false;
     
-    // Primary: REST API
+    // Primary: REST API - No caching, direct fetch
     const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
     try {
-      const response = await axios.get(url, { timeout: 10000 });
+      const response = await axios.get(url, { timeout: 12000 });
       if (response.data && response.data.documents) {
         response.data.documents.forEach((doc: any) => {
-          const data = transformRestFields(doc.fields);
-          if (data) {
-            events.push({ id: doc.name.split('/').pop(), ...data });
+          const dataFromRest = transformRestFields(doc.fields);
+          if (dataFromRest) {
+            events.push({ id: doc.name.split('/').pop(), ...dataFromRest });
           }
         });
         fetchSuccessful = true;
       }
     } catch (err: any) {
-      console.error("[REST-API] Error:", err.message);
+      console.error("[REST-API] Live Fetch Error:", err.message);
     }
 
     // Secondary: Admin SDK Fallback
@@ -490,57 +479,50 @@ app.get("/api/public-events", async (req, res) => {
         snapshot.forEach((doc: any) => {
           events.push({ id: doc.id, ...doc.data() });
         });
-        fetchSuccessful = events.length > 0;
+        fetchSuccessful = true;
       } catch (err: any) {
-        console.error("[ADMIN-SDK] Error:", err.message);
+        console.error("[ADMIN-SDK] Live Fetch Error:", err.message);
       }
     }
 
     if (events.length > 0) {
-      // Standardize format: ensure contents are in a "data" property if they are not already
       const finalEvents = events.map(e => {
-        // Handle both flattened and nested structures reliably
-        const hasTopLevelSettings = !!(e.settings || (e.data && e.data.settings));
-        if (!hasTopLevelSettings) return null; // Skip invalid documents
+        // Find the legitimate tournament data regardless of whether it was sharded or wrapped
+        const baseData = e.data || e;
+        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || baseData.tournamentName;
+        
+        // Skip ghost/invalid records
+        if (!tournamentName) return null;
 
         return {
           id: e.id,
-          status: e.status || e.data?.status || 'ACTIVE',
-          createdAt: e.createdAt || e.data?.createdAt || new Date().toISOString(),
-          data: e.data && !e.settings ? e.data : {
-            settings: e.settings,
-            archers: e.archers,
-            registrations: e.registrations,
-            officials: e.officials
+          status: e.status || baseData.status || 'ACTIVE',
+          createdAt: e.createdAt || baseData.createdAt || new Date().toISOString(),
+          data: {
+            settings: baseData.settings || e.settings || {},
+            archers: baseData.archers || e.archers || [],
+            registrations: baseData.registrations || e.registrations || [],
+            officials: baseData.officials || e.officials || []
           }
         };
       }).filter(Boolean);
 
-      cachedPublicEvents = finalEvents;
-      lastPublicEventsUpdate = now;
-
-      // Persistence
-      try {
-        fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify({
-          events: cachedPublicEvents,
-          timestamp: now
-        }));
-      } catch (e) {}
-
+      // Return immediately - no local caching to ensure it's always live
       return res.json({ 
         success: true, 
-        events: cachedPublicEvents, 
-        source: fetchSuccessful ? 'database' : 'cache'
+        events: finalEvents, 
+        source: 'database'
       });
     }
 
     return res.json({
       success: true,
-      events: cachedPublicEvents || [],
+      events: [],
       source: 'empty'
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: "Database error" });
+    console.error("Critical Public Events Failure:", error.message);
+    res.status(500).json({ success: false, error: "Database temporarily unavailable" });
   }
 });
 

@@ -56,28 +56,26 @@ export default function LandingPage({
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
   
-    const activeEvents = events
+  const activeEvents = (events || [])
     .map(e => {
       const raw = e as any;
-      // Handle standardized structure from API: { id, status, data: { settings: { ... } } }
-      if (raw.data && typeof raw.data === 'object' && raw.data.settings) {
-        return { 
-          ...raw.data, 
-          id: raw.id, 
-          status: (raw.status || raw.data.status || 'ACTIVE').toUpperCase()
-        };
-      }
-      // Fallback for any direct/flattened data
-      return { ...raw, status: (raw.status || 'ACTIVE').toUpperCase() };
+      const baseData = raw.data || raw;
+      
+      // Standardize the event object for UI display
+      return {
+        ...baseData,
+        id: raw.id || baseData.id,
+        status: (raw.status || baseData.status || 'ACTIVE').toUpperCase(),
+        settings: baseData.settings || { 
+          tournamentName: baseData.tournamentName || baseData.name || baseData.title || "Untitled Tournament" 
+        }
+      };
     })
     .filter(e => {
-      // Very broad: must have A name. We ignore status DRAFT for now unless it's strictly excluded.
-      // But we check everything.
-      const tournamentName = e.settings?.tournamentName || e.tournamentName || e.name || e.title || (e.data && (e.data.name || e.data.settings?.tournamentName));
-      const status = (e.status || e.data?.status || 'ACTIVE').toUpperCase();
-      
-      // Still exclude DRAFT, but log if we find one (indirectly via permissive name check)
-      return tournamentName && status !== 'DRAFT';
+      // Show everything except DRAFT
+      const name = e.settings?.tournamentName || e.tournamentName || e.name || e.title;
+      const status = e.status || 'ACTIVE';
+      return name && status !== 'DRAFT';
     });
 
   return (

@@ -229,7 +229,6 @@ export function App() {
                    return { 
                      docs: (data.events || []).map((e: any) => ({ 
                         id: e.id, 
-                        // The server standardized it into .data property, but client logic expects doc.data() to return the event object
                         data: () => ({
                            id: e.id,
                            status: e.status || 'ACTIVE',
@@ -245,8 +244,10 @@ export function App() {
               })
               .catch(err => {
                 console.warn("Public fetch fallback triggered:", err.message);
-                // Even on fallback, we try to get from cache if quota exceeded
-                return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED', 'MASTER', 'PUBLISHED', 'Live']), limit(20)));
+                // Attempt cache-first fetch for events to avoid burning quota
+                return getDocsFromCache(collection(db, 'events')).catch(() => {
+                  return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED', 'MASTER', 'PUBLISHED', 'LIVE', 'Live']), limit(12)));
+                });
               })
           : safeGetDocs(collection(db, 'events'))
         ).catch(() => null),
@@ -617,7 +618,8 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
 
   const syncCloudData = async (manual = false, overrideState?: AppState) => {
-    if (!db || !isOnline || (quotaExceeded && !manual)) return;
+    // ABORT if: no database, offline, quota exceeded (unless manual), or NO LOGGED IN USER (prevents ghost writes)
+    if (!db || !isOnline || (quotaExceeded && !manual) || !appStateRef.current?.currentUser) return;
     
     // Clear any pending sync to debounce
     if (syncTimeoutRef.current) {

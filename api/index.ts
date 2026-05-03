@@ -452,21 +452,26 @@ try {
 
 app.get("/api/public-events", async (req, res) => {
   try {
+    // 1. Return Cache Immediately if Fresh (10 mins)
+    const now = Date.now();
+    if (cachedPublicEvents && (now - lastPublicEventsUpdate < 600000)) {
+      console.log(`[API] Serving fresh cache (${cachedPublicEvents.length} events)`);
+      return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
+    }
+
     let events: any[] = [];
     let fetchSuccessful = false;
     
-    // Primary: REST API - No caching, direct fetch
+    // Primary: REST API 
     const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
     try {
-      const response = await axios.get(url, { timeout: 12000 });
+      const response = await axios.get(url, { timeout: 10000 });
       if (response.data && response.data.documents) {
-        console.log(`[REST-API] Found ${response.data.documents.length} documents in events collection.`);
         response.data.documents.forEach((doc: any) => {
           const dataFromRest = transformRestFields(doc.fields);
           if (dataFromRest) {
             const id = doc.name.split('/').pop();
             const status = (dataFromRest.status || dataFromRest.data?.status || 'ACTIVE').toUpperCase();
-            console.log(`[REST-API] Checking Doc: ${id}, Status: ${status}`);
             events.push({ id, ...dataFromRest });
           }
         });
@@ -493,18 +498,26 @@ app.get("/api/public-events", async (req, res) => {
       }
     }
 
+    if (events.length === 0 && cachedPublicEvents && cachedPublicEvents.length > 0) {
+      console.log(`[API] Live fetch returned 0 events, serving ${cachedPublicEvents.length} events from cache.`);
+      return res.json({
+        success: true,
+        events: cachedPublicEvents,
+        source: 'cache'
+      });
+    }
+
     if (events.length > 0) {
       const finalEvents = events.map(e => {
         const baseData = e.data || e;
-        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || baseData.tournamentName || baseData.name || (e.data && e.data.settings?.tournamentName);
+        // Try every possible field for name
+        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || 
+                              baseData.tournamentName || baseData.name || baseData.title || 
+                              (e.data && e.data.settings?.tournamentName) || "Tournament";
         
         const status = (e.status || baseData.status || 'ACTIVE').toUpperCase();
         
-        // Log all documents so we can see what's happening in logs
         console.log(`[API-PROCESS] Doc: ${e.id}, Name: ${tournamentName}, Status: ${status}`);
-
-        // Only skip if absolutely no name
-        if (!tournamentName) return null;
 
         return {
           id: e.id,
@@ -517,7 +530,7 @@ app.get("/api/public-events", async (req, res) => {
             officials: baseData.officials || e.officials || (e.data && e.data.officials) || []
           }
         };
-      }).filter(Boolean);
+      });
 
       // Update Cache
       try {

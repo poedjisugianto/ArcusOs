@@ -454,14 +454,7 @@ app.get("/api/public-events", async (req, res) => {
   const now = Date.now();
   
   // Return cache if it is fresh OR if we recently failed a fetch
-  // BUT: Ignore cache if it contains dummy/fallback data from previous versions
-  const isStaleFallback = cachedPublicEvents?.some((e: any) => 
-    e.id === 'fallback-event-1' || 
-    e.id === 'VENT-1' || 
-    e.data?.settings?.tournamentName?.includes("ARCUS SERIES #1")
-  );
-
-  if (cachedPublicEvents && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL) && !isStaleFallback) {
+  if (cachedPublicEvents && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
     return res.json({ 
       success: true, 
       events: cachedPublicEvents,
@@ -480,8 +473,11 @@ app.get("/api/public-events", async (req, res) => {
       if (response.data && response.data.documents) {
         response.data.documents.forEach((doc: any) => {
           const data = transformRestFields(doc.fields);
-          // Only filter out DRAFT, show everything else to be inclusive
-          if (data && data.status !== 'DRAFT' && data.settings?.tournamentName) {
+          // Check for status and tournamentName either flat or nested under .data
+          const status = data.status || data.data?.status || 'ACTIVE';
+          const tournamentName = data.settings?.tournamentName || data.data?.settings?.tournamentName;
+          
+          if (status !== 'DRAFT' && tournamentName) {
             events.push({ id: doc.name.split('/').pop(), ...data });
           }
         });
@@ -499,7 +495,10 @@ app.get("/api/public-events", async (req, res) => {
         const snapshot = await db.collection('events').limit(50).get();
         snapshot.forEach((doc: any) => {
           const d = doc.data();
-          if (d.status !== 'DRAFT' && d.data?.settings?.tournamentName) {
+          const status = d.status || d.data?.status || 'ACTIVE';
+          const tournamentName = d.settings?.tournamentName || d.data?.settings?.tournamentName;
+
+          if (status !== 'DRAFT' && tournamentName) {
             events.push({ id: doc.id, ...d });
           }
         });
@@ -546,8 +545,8 @@ app.get("/api/public-events", async (req, res) => {
       });
     }
 
-    // If we have any cache (even if old, as long as it's not fallback), return it
-    if (cachedPublicEvents && !isStaleFallback) {
+    // If we have any cache (even if old), return it
+    if (cachedPublicEvents) {
       return res.json({ 
         success: true, 
         events: cachedPublicEvents, 

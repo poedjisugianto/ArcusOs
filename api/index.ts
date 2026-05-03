@@ -81,19 +81,23 @@ function transformRestFields(fields: any) {
 const HARD_FALLBACK_EVENTS = [
   {
     id: "fallback-event-1",
-    status: "ACTIVE",
+    status: "ACTIVE", // Original status in DB is often ACTIVE
     createdAt: new Date().toISOString(),
-    // Data property is what's processed by the frontend's transformRestFields or Admin SDK data()
     settings: {
-      tournamentName: "ARCUS Series - Indoor Championship",
+      tournamentName: "ARCUS SERIES #1 - CHAMPIONSHIP",
       location: "Jakarta, Indonesia",
-      eventDate: "Stay Tuned",
-      description: "Kami sedang menyiapkan event panahan seru berikutnya. Silakan cek kembali nanti atau Hubungi Admin.",
+      eventDate: "Upcoming 2026",
+      description: "Kejuaraan Panahan Indoor bergengsi. Pendaftaran akan segera dibuka secara resmi.",
       pamphletUrl: "https://images.unsplash.com/photo-1511044491714-802870c1fc94?auto=format&fit=crop&q=80&w=800",
       registrationDeadline: "",
       isPractice: false,
       isFreeEvent: true,
-      categoryConfigs: {}
+      categoryConfigs: {
+        "Recurve": { capacity: 100, fee: 0 },
+        "Compound": { capacity: 100, fee: 0 },
+        "Standard": { capacity: 100, fee: 0 }
+      },
+      paymentMethods: []
     },
     archers: [],
     registrations: [],

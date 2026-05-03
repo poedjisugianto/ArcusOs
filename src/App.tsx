@@ -246,9 +246,9 @@ export function App() {
           // Support both API cache objects and real Firestore docs
           const eventId = e.id || doc.id;
           const ownerId = e.userId || e.ownerId;
-          const status = e.status || e.data?.status || 'DRAFT';
+          const status = e.status || e.data?.status || 'ACTIVE'; // Default to ACTIVE for public view
           
-          let eventObj = { ...e.data, id: eventId, ownerId: ownerId, status: status };
+          let eventObj = { ...(e.data || e), id: eventId, ownerId: ownerId, status: status };
           
           // Reconstruct shards if this is the sharded active event
           if (shardsSnap?.docs && eventId === appState.activeEventId && e.isSharded) {

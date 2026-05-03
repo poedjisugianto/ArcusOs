@@ -67,7 +67,7 @@ export default function LandingPage({
 
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
-  const activeEvents = events.filter(e => e.status !== 'DRAFT');
+  const activeEvents = events.filter(e => e.status !== 'DRAFT' || e.id.includes('fallback'));
 
   return (
     <div className="min-h-screen bg-[#FBFBFD] font-sans selection:bg-arcus-red selection:text-white overflow-x-hidden">

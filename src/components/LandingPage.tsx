@@ -60,22 +60,26 @@ export default function LandingPage({
     .map(e => {
       const raw = e as any;
       const baseData = raw.data || raw;
+      const id = raw.id || baseData.id;
+      const status = (raw.status || baseData.status || 'ACTIVE').toUpperCase();
       
-      // Standardize the event object for UI display
+      // Ensure there's always a settings object and tournament name
+      const settings = baseData.settings || raw.settings || {};
+      const name = settings.tournamentName || baseData.tournamentName || baseData.name || baseData.title || "Tournament Arcus";
+
       return {
         ...baseData,
-        id: raw.id || baseData.id,
-        status: (raw.status || baseData.status || 'ACTIVE').toUpperCase(),
-        settings: baseData.settings || { 
-          tournamentName: baseData.tournamentName || baseData.name || baseData.title || "Untitled Tournament" 
+        id,
+        status,
+        settings: {
+          ...settings,
+          tournamentName: name
         }
       };
     })
     .filter(e => {
-      // Show everything except DRAFT
-      const name = e.settings?.tournamentName || e.tournamentName || e.name || e.title;
-      const status = e.status || 'ACTIVE';
-      return name && status !== 'DRAFT';
+      // ONLY exclude if explicitly DRAFT. Show anything else.
+      return e.status !== 'DRAFT';
     });
 
   return (

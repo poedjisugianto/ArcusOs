@@ -159,7 +159,8 @@ export function App() {
       // Helper to fetch documents with timeout and silent failure for guests
       const safeGetDocs = async (collRef: any, queryRef?: any) => {
         try {
-          if (quotaExceeded && !isPrivileged) return await getDocsFromCache(queryRef || collRef).catch(() => null);
+          // If public view, IGNORE quotaExceeded state for reading
+          if (quotaExceeded && !isPrivileged && !isPublicView) return await getDocsFromCache(queryRef || collRef).catch(() => null);
           return await getDocs(queryRef || collRef);
         } catch (err: any) {
           if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
@@ -173,7 +174,7 @@ export function App() {
 
       const safeGetDoc = async (docRef: any) => {
         try {
-          if (quotaExceeded && !isPrivileged) return await getDocFromCache(docRef).catch(() => null);
+          if (quotaExceeded && !isPrivileged && !isPublicView) return await getDocFromCache(docRef).catch(() => null);
           return await getDoc(docRef);
         } catch (err: any) {
           if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
@@ -246,7 +247,8 @@ export function App() {
                 console.warn("Public fetch fallback triggered:", err.message);
                 // Attempt cache-first fetch for events to avoid burning quota
                 return getDocsFromCache(collection(db, 'events')).catch(() => {
-                  return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED', 'MASTER', 'PUBLISHED', 'LIVE', 'Live']), limit(12)));
+                  // ABSOLUTE LAST RESORT: Broad fetch, no status filter to ensure data appears
+                  return safeGetDocs(collection(db, 'events'), limit(20));
                 });
               })
           : safeGetDocs(collection(db, 'events'))

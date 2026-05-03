@@ -510,24 +510,27 @@ app.get("/api/public-events", async (req, res) => {
     if (events.length > 0) {
       const finalEvents = events.map(e => {
         const baseData = e.data || e;
-        // Try every possible field for name
-        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || 
-                              baseData.tournamentName || baseData.name || baseData.title || 
-                              (e.data && e.data.settings?.tournamentName) || "Tournament";
+        // Search EXHAUSTIVELY for a tournament name
+        const tournamentName = baseData.settings?.tournamentName || 
+                              (baseData.data && baseData.data.settings?.tournamentName) ||
+                              e.settings?.tournamentName || 
+                              baseData.tournamentName || 
+                              baseData.name || 
+                              baseData.title || 
+                              "Tournament Arcus";
         
         const status = (e.status || baseData.status || 'ACTIVE').toUpperCase();
         
-        console.log(`[API-PROCESS] Doc: ${e.id}, Name: ${tournamentName}, Status: ${status}`);
-
         return {
           id: e.id,
           status: status,
           createdAt: e.createdAt || baseData.createdAt || new Date().toISOString(),
           data: {
-            settings: baseData.settings || e.settings || (e.data && e.data.settings) || { tournamentName },
-            archers: baseData.archers || e.archers || (e.data && e.data.archers) || [],
-            registrations: baseData.registrations || e.registrations || (e.data && e.data.registrations) || [],
-            officials: baseData.officials || e.officials || (e.data && e.data.officials) || []
+            ...baseData,
+            settings: {
+              ...(baseData.settings || {}),
+              tournamentName: baseData.settings?.tournamentName || tournamentName
+            }
           }
         };
       });

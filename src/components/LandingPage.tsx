@@ -53,29 +53,21 @@ export default function LandingPage({
   quotaExceeded,
   syncStatus
 }: Props) {
-  // Polling for updates if quota was exceeded
-  React.useEffect(() => {
-    if (!quotaExceeded || !onRefresh) return;
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        console.log("Retrying fetch after quota issue...");
-        onRefresh();
-      }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [quotaExceeded, onRefresh]);
-
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
-  // In the LandingPage, we need to handle both flattened data and documents with a .data property
-  const activeEvents = events
-    .filter(e => e?.status !== 'DRAFT')
+  
+    const activeEvents = events
     .map(e => {
-      // If the data is nested in a .data property (Firestore style)
-      if (e.data && typeof e.data === 'object' && !e.settings) {
-        return { ...e.data, id: e.id, status: e.status || 'ACTIVE' };
+      const raw = e as any;
+      // Handle both flattened and nested data structures
+      if (raw.data && typeof raw.data === 'object' && !raw.settings) {
+        return { ...raw.data, id: raw.id, status: raw.status || 'ACTIVE' };
       }
-      return { ...e, status: e.status || 'ACTIVE' };
+      return { ...raw, status: raw.status || 'ACTIVE' };
+    })
+    .filter(e => {
+      // Robust filter: must have a tournament name and not be a draft
+      return e.settings?.tournamentName && e.status !== 'DRAFT';
     });
 
   return (
@@ -85,10 +77,10 @@ export default function LandingPage({
            style={{ backgroundImage: `radial-gradient(#000 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
 
       {/* Navigation */}
-      <nav className="fixed top-8 sm:top-[2rem] w-full bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-100">
+      <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-100">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12">
           <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center gap-4 group cursor-pointer">
+            <div className="flex items-center gap-4 group cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
               <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center p-2 group-hover:bg-arcus-red transition-all duration-500 shadow-md">
                 <ArcusLogo className="w-full h-full text-white" />
               </div>
@@ -124,18 +116,10 @@ export default function LandingPage({
                   >
                     DASHBOARD
                   </button>
-                  {onLogout && (
-                    <button 
-                      onClick={onLogout}
-                      className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 hover:text-arcus-red transition-colors"
-                    >
-                      LOGOUT
-                    </button>
-                  )}
                 </div>
               ) : (
                 <div className="flex items-center gap-6">
-                  <button onClick={onLogin} className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 hover:text-slate-900 transition-colors">LOGIN PANITIA</button>
+                  <button onClick={onLogin} className="text-[10px] font-black uppercase tracking-[0.15em] text-white bg-slate-900 px-6 py-2.5 rounded-lg shadow-lg hover:bg-arcus-red transition-all uppercase tracking-widest font-black">LOGIN PANITIA</button>
                 </div>
               )}
             </div>
@@ -416,23 +400,18 @@ export default function LandingPage({
                     Tidak ada Turnamen Publik
                   </h3>
                   <p className="max-w-xl mx-auto text-sm text-slate-500 font-medium leading-relaxed mb-10">
-                    {syncStatus?.source === 'hard-fallback' 
-                      ? 'Kami sedang menyiapkan jadwal turnamen berikutnya. Pantau terus halaman ini untuk update terbaru.'
-                      : 'Saat ini belum ada turnamen yang berstatus Publik. Turnamen yang baru dibuat tetap bersifat Draf sampai diaktivasi oleh penyelenggara melalui Dashboard.'
-                    }
+                    Saat ini belum ada turnamen aktif yang tersedia untuk publik. 
+                    Turnamen baru akan muncul di sini setelah diaktivasi oleh penyelenggara melalui Dashboard.
                   </p>
                   
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    {onRefresh && (
-                      <button 
-                        onClick={onRefresh}
-                        disabled={isSyncing}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl active:scale-95 shadow-red-200"
-                      >
-                        <Activity className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Sinkronisasi...' : 'Refresh Daftar'}
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => window.location.reload()}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl active:scale-95 shadow-red-200"
+                    >
+                      <Activity className="w-4 h-4" />
+                      Cek Update
+                    </button>
                     <button 
                       onClick={onLogin}
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-white text-slate-900 border-2 border-slate-100 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-slate-900 transition-all active:scale-95"

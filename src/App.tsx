@@ -1281,55 +1281,22 @@ export function App() {
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
       <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
-      {/* Global Cloud Sync Status Bar */}
-      <div className={`fixed top-0 left-0 right-0 z-[200] px-4 py-1 flex items-center justify-between transition-all duration-500 border-b shadow-sm print:hidden ${
-        !db ? 'bg-emerald-500 text-white border-emerald-600' :
-        isSyncing ? 'bg-blue-600 text-white border-blue-700' :
-        hasPendingChanges ? 'bg-slate-800 text-white border-slate-700' :
-        'bg-slate-900 text-white border-slate-800'
-      }`}>
-        <div className="flex items-center gap-3">
-          {!db ? (
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-3 h-3 text-white animate-pulse" />
-              <span className="text-[9px] font-black uppercase tracking-widest">MODE LOKAL (Cloud Offline)</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-white animate-pulse' : (hasPendingChanges ? 'bg-blue-400 animate-pulse' : 'bg-emerald-500')}`} />
-              <span className="text-[9px] font-black uppercase tracking-widest">
-                {isSyncing ? 'Sinkronisasi Cloud...' : (hasPendingChanges ? 'Menyimpan ke Cloud...' : 'Cloud Terhubung')}
+      {/* Minimal Sync Indicator - Only for Organizers */}
+      {appState.currentUser && (
+        <div className="fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between pointer-events-none opacity-40 hover:opacity-100 transition-opacity print:hidden">
+          <div className="flex items-center gap-2">
+            <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-arcus-red animate-pulse' : (db ? 'bg-emerald-500' : 'bg-slate-300')}`} />
+            <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+              {isSyncing ? 'Synchronizing' : (db ? 'Connected' : 'Offline Mode')}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+              <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+                {appState.currentUser.email}
               </span>
-              {hasPendingChanges && !isSyncing && (
-                <button 
-                  onClick={() => syncCloudData(true)}
-                  className="ml-2 bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-[8px] font-black transition-all active:scale-95 flex items-center gap-1"
-                >
-                  <RefreshCw className="w-2.5 h-2.5" /> PAKSA SINKRON
-                </button>
-              )}
-            </div>
-          )}
-          {lastSync && (
-            <span className="hidden lg:inline text-[8px] font-bold opacity-50 uppercase tracking-tighter">
-              Update: {safeFormatTime(lastSync)}
-            </span>
-          )}
+          </div>
         </div>
-        
-        <div className="flex items-center gap-4">
-          {(window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) && (
-            <div className="hidden md:flex items-center gap-1 bg-red-600 px-2 py-0.5 rounded text-[8px] font-black animate-pulse">
-              <Monitor className="w-3 h-3" /> LOCAL ENVIRONMENT
-            </div>
-          )}
-          {appState.currentUser && (
-            <span className="text-[9px] font-black uppercase tracking-widest opacity-70">
-              {appState.currentUser.email}
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       <AnimatePresence>
         {(isSplashVisible || isCheckingLink) && (

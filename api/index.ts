@@ -454,7 +454,14 @@ app.get("/api/public-events", async (req, res) => {
   const now = Date.now();
   
   // Return cache if it is fresh OR if we recently failed a fetch
-  if (cachedPublicEvents && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
+  // BUT: Ignore cache if it contains dummy/fallback data from previous versions
+  const isStaleFallback = cachedPublicEvents?.some((e: any) => 
+    e.id === 'fallback-event-1' || 
+    e.id === 'VENT-1' || 
+    e.data?.settings?.tournamentName?.includes("ARCUS SERIES #1")
+  );
+
+  if (cachedPublicEvents && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL) && !isStaleFallback) {
     return res.json({ 
       success: true, 
       events: cachedPublicEvents,
@@ -466,90 +473,95 @@ app.get("/api/public-events", async (req, res) => {
     let events: any[] = [];
     let fetchSuccessful = false;
     
-    // Primary: REST API (Often faster/cleaner for public read-only)
+    // Primary: REST API
     const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}`;
     try {
-      const response = await axios.get(url, { timeout: 6000 });
+      const response = await axios.get(url, { timeout: 8000 });
       if (response.data && response.data.documents) {
-        console.log(`[REST-API] Found ${response.data.documents.length} raw documents.`);
         response.data.documents.forEach((doc: any) => {
           const data = transformRestFields(doc.fields);
-          // Only filter out DRAFT, show everything else
-          if (data && data.status !== 'DRAFT') {
+          // Only filter out DRAFT, show everything else to be inclusive
+          if (data && data.status !== 'DRAFT' && data.settings?.tournamentName) {
             events.push({ id: doc.name.split('/').pop(), ...data });
           }
         });
         fetchSuccessful = true;
       }
     } catch (err: any) {
-      // If we got 429 or 403, it's a known quota limit. Log it simply and pause fetch attempts.
       if (err.response?.status === 429 || err.response?.status === 403) {
-        console.log(`[QUOTA] Firestore Limit Hit (${err.response.status}). Using Resilient Cache.`);
-        lastPublicEventsUpdate = now - (PUBLIC_EVENTS_CACHE_TTL - 600000); // Try again in 10 mins
-      } else {
-        console.warn("REST API Fetch failed:", err.message);
+        lastPublicEventsUpdate = now - (PUBLIC_EVENTS_CACHE_TTL - 600000);
       }
     }
 
-    // Secondary: Admin SDK Fallback ONLY if REST failed
+    // Secondary: Admin SDK Fallback
     if (!fetchSuccessful && db) {
       try {
-        const snapshot = await db.collection('events').where('status', '!=', 'DRAFT').limit(30).get();
+        const snapshot = await db.collection('events').limit(50).get();
         snapshot.forEach((doc: any) => {
-          events.push({ id: doc.id, ...doc.data() });
+          const d = doc.data();
+          if (d.status !== 'DRAFT' && d.data?.settings?.tournamentName) {
+            events.push({ id: doc.id, ...d });
+          }
         });
         fetchSuccessful = events.length > 0;
-      } catch (err: any) {
-        // Silently fail as we might not have Admin SDK permissions in this specific environment.
-        // The frontend will handle missing data gracefully via optional chaining and fallbacks.
-      }
+      } catch (err: any) {}
     }
 
     if (fetchSuccessful && events.length > 0) {
-      // Sort and update memory cache
       events.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      cachedPublicEvents = events;
+      
+      const finalEvents = events.map(e => {
+        // Ensure standard structure for LandingPage
+        if (!e.data || (e.settings && !e.data.settings)) {
+          return {
+            id: e.id,
+            status: e.status || 'ACTIVE',
+            createdAt: e.createdAt || new Date().toISOString(),
+            data: {
+              settings: e.settings,
+              archers: e.archers,
+              registrations: e.registrations,
+              officials: e.officials
+            }
+          };
+        }
+        return e;
+      });
+
+      cachedPublicEvents = finalEvents;
       lastPublicEventsUpdate = now;
 
-      // Persistence: Save to disk
+      // Persistence
       try {
         fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify({
           events: cachedPublicEvents,
           timestamp: now
         }));
-      } catch (e) {
-        console.warn("Failed to save cache to disk:", (e as Error).message);
-      }
+      } catch (e) {}
 
       return res.json({ 
         success: true, 
         events: cachedPublicEvents,
-        source: 'live'
+        source: 'database'
       });
     }
 
-    // EMERGENCY: Return whatever we have in cache
-    if (cachedPublicEvents) {
+    // If we have any cache (even if old, as long as it's not fallback), return it
+    if (cachedPublicEvents && !isStaleFallback) {
       return res.json({ 
         success: true, 
         events: cachedPublicEvents, 
-        source: 'emergency-cache'
+        source: 'cache'
       });
     }
 
-    // FINAL FALLBACK: Empty list instead of dummy data if everything fails
     return res.json({
       success: true,
       events: [],
-      source: 'empty-fallback',
-      note: 'Tidak ada event aktif yang ditemukan.'
+      source: 'empty'
     });
   } catch (error: any) {
-    console.error("Public Events Loop Error:", error.message);
-    if (cachedPublicEvents) {
-      return res.json({ success: true, events: cachedPublicEvents, source: 'emergency-cache' });
-    }
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Database offline" });
   }
 });
 

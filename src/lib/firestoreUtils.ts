@@ -62,6 +62,33 @@ export function shardData(data: any): string[] {
 
 export function mergeShards(shards: string[]): any {
   if (!shards.length) return null;
-  const merged = shards.join('');
-  return JSON.parse(merged);
+  // Filter out any holes or nulls that might have happened during reconstruction
+  const merged = shards.filter(s => typeof s === 'string').join('');
+  
+  try {
+    return JSON.parse(merged);
+  } catch (e) {
+    // If it fails with "unexpected non-whitespace character" it might be because 
+    // old shards were leftover. We try to find the first complete JSON object.
+    console.warn("Corrupted JSON detected in shards, attempting recovery...");
+    
+    // Heuristic: if we have multiple JSON objects joined, the error often happens 
+    // after the first valid closing brace.
+    try {
+      // Find the last closing brace and try parsing substrings (inefficient but better than crashing)
+      let lastBrace = merged.lastIndexOf('}');
+      while (lastBrace > 0) {
+        try {
+          const candidate = merged.substring(0, lastBrace + 1);
+          return JSON.parse(candidate);
+        } catch (inner) {
+          lastBrace = merged.lastIndexOf('}', lastBrace - 1);
+        }
+      }
+    } catch (recoveryError) {
+      console.error("Shard recovery failed entirely");
+    }
+    
+    throw e;
+  }
 }

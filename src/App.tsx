@@ -88,7 +88,7 @@ export function App() {
 
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
+      if (saved && saved.startsWith('{')) {
         const parsed = JSON.parse(saved);
         // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
         return { 
@@ -98,7 +98,9 @@ export function App() {
         };
       }
     } catch (e) {
-      console.error("Local storage recovery failed:", e);
+      console.error("Local storage recovery failed (corrupted):", e);
+      // Clean up potentially corrupted storage
+      localStorage.removeItem(STORAGE_KEY);
     }
 
     return {
@@ -186,7 +188,13 @@ export function App() {
       // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         (isPublicView 
           ? fetch('/api/public-events')
-              .then(res => res.json())
+              .then(res => {
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                  return res.json();
+                }
+                throw new Error(`Unexpected content type: ${contentType}`);
+              })
               .then(data => {
                 if (data.success && data.events) {
                    setSyncStatus({ 
@@ -251,11 +259,19 @@ export function App() {
           let eventObj = { ...(e.data || e), id: eventId, ownerId: ownerId, status: status };
           
           // Reconstruct shards if this is the sharded active event
-          if (shardsSnap?.docs && eventId === appState.activeEventId && e.isSharded) {
+          if (shardsSnap?.docs && eventId === appState.activeEventId && (e.isSharded || e.data?.isSharded)) {
+            const shardCounts = e.shardCounts || e.data?.shardCounts || {};
             const shardsByArray: Record<string, string[]> = {};
+            
             shardsSnap.docs.forEach((sd: any) => {
               const s = sd.data();
-              if (s.key && s.content) {
+              if (s.key && s.content !== undefined) {
+                // If we have shardCounts, only use shards within the limit
+                const maxCount = shardCounts[s.key];
+                if (maxCount !== undefined && s.index >= maxCount) {
+                  return; // Skip zombie shard
+                }
+                
                 if (!shardsByArray[s.key]) shardsByArray[s.key] = [];
                 shardsByArray[s.key][s.index] = s.content;
               }
@@ -621,10 +637,14 @@ export function App() {
           const arraysToShard = ['archers', 'registrations', 'scores', 'scoreLogs', 'matches'];
           
           const shardsMap: Record<string, string[]> = {};
+          const shardCounts: Record<string, number> = {};
           arraysToShard.forEach(key => {
             if (strippedEvent[key]) {
               shardsMap[key] = shardData(strippedEvent[key]);
+              shardCounts[key] = shardsMap[key].length;
               delete strippedEvent[key];
+            } else {
+              shardCounts[key] = 0;
             }
           });
 
@@ -638,7 +658,8 @@ export function App() {
               data: strippedEvent,
               status: activeEvent.status || strippedEvent.status || 'DRAFT',
               updatedAt: new Date().toISOString(),
-              isSharded: true
+              isSharded: true,
+              shardCounts // Store totals so we don't load zombie shards
             }, { merge: true });
             lastSyncedHash.current[metaHashKey] = metaString;
           }

@@ -14,7 +14,7 @@ import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache, limit } from 'firebase/firestore';
-import { handleFirestoreError, OperationType, shardData, mergeShards } from './lib/firestoreUtils';
+import { handleFirestoreError, OperationType, shardData, mergeShards, tryRecoverJSON } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import { safeFormatTime } from './lib/dateUtils';
 import AdminPanel from './components/AdminPanel';
@@ -138,7 +138,10 @@ export function App() {
 
   const fetchCloudData = async (manual = false, userOverride?: User | null) => {
     if (!db) return;
-    if (manual) setIsSyncing(true);
+    if (manual) {
+      setIsSyncing(true);
+      setQuotaExceeded(false); // Reset quota guard on manual refresh
+    }
     
     // Safety: If we have pending local changes, don't overwrite with cloud data
     // unless explicitly requested via manual refresh
@@ -193,7 +196,7 @@ export function App() {
                 const text = await res.text();
                 if (contentType && contentType.includes("application/json")) {
                   try {
-                    return JSON.parse(text);
+                    return tryRecoverJSON(text);
                   } catch (e: any) {
                     console.error("API JSON Parse Error at pos:", e.message, "Text preview:", text.substring(0, 200));
                     throw e;
@@ -219,8 +222,13 @@ export function App() {
                 return null;
               })
               .catch(err => {
+                const errMessage = err.message || "";
+                if (errMessage.toLowerCase().includes('quota') || errMessage.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
+                  setQuotaExceeded(true);
+                }
                 console.warn("API Public fetch failed, falling back to silent Firestore safeGet:", err);
-                return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED']), limit(3)));
+                // Broaden the fallback query to include MASTER and other active states
+                return safeGetDocs(collection(db, 'events'), query(collection(db, 'events'), where('status', 'in', ['ACTIVE', 'COMPLETED', 'MASTER', 'PUBLISHED', 'Live']), limit(10)));
               })
           : safeGetDocs(collection(db, 'events'))
         ).catch(() => null),
@@ -399,14 +407,16 @@ export function App() {
       setLastSync(new Date());
     } catch (err: any) { 
       console.error("Fetch Cloud General Error:", err);
-      if (err.message?.toLowerCase().includes('quota') || err.message?.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
+      const errStr = err.message || JSON.stringify(err);
+      if (errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
         setQuotaExceeded(true);
         // Silent fallback for public users - don't notify if not admin
+        const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === UserRole.SUPERADMIN);
         if (isPrivileged && manual) {
-           pushNotification("Quota Note", "Daftar turnamen diambil dari cache lokal karena batas server tercapai.", "WARNING");
+           pushNotification("Quota Note", "Batas server tercapai. Menampilkan data dari cache.", "WARNING");
         }
       } else {
-        if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke server. Periksa koneksi internet.", "WARNING");
+        if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke server.", "WARNING");
       }
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
@@ -589,7 +599,7 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
 
   const syncCloudData = async (manual = false, overrideState?: AppState) => {
-    if (!db || !isOnline) return;
+    if (!db || !isOnline || (quotaExceeded && !manual)) return;
     
     // Clear any pending sync to debounce
     if (syncTimeoutRef.current) {
@@ -626,6 +636,9 @@ export function App() {
     isCurrentlySyncing.current = true;
     setIsSyncing(true);
     try {
+      if (quotaExceeded && !manual) {
+        throw new Error("Quota exceeded - Sync paused");
+      }
       const isPrivileged = !!(state.currentUser?.isSuperAdmin || state.currentUser?.role === 'SUPERADMIN' || state.currentUser?.email === 'poedji.sugianto@gmail.com' || state.currentUser?.email === 'admin@arcus.id');
 
       // 1. Sync Global Settings (Only SuperAdmin)

@@ -460,10 +460,14 @@ app.get("/api/public-events", async (req, res) => {
     try {
       const response = await axios.get(url, { timeout: 12000 });
       if (response.data && response.data.documents) {
+        console.log(`[REST-API] Found ${response.data.documents.length} documents in events collection.`);
         response.data.documents.forEach((doc: any) => {
           const dataFromRest = transformRestFields(doc.fields);
           if (dataFromRest) {
-            events.push({ id: doc.name.split('/').pop(), ...dataFromRest });
+            const id = doc.name.split('/').pop();
+            const status = (dataFromRest.status || dataFromRest.data?.status || 'ACTIVE').toUpperCase();
+            console.log(`[REST-API] Checking Doc: ${id}, Status: ${status}`);
+            events.push({ id, ...dataFromRest });
           }
         });
         fetchSuccessful = true;
@@ -476,8 +480,12 @@ app.get("/api/public-events", async (req, res) => {
     if (!fetchSuccessful && db) {
       try {
         const snapshot = await db.collection('events').limit(100).get();
+        console.log(`[ADMIN-SDK] Found ${snapshot.size} documents in events collection.`);
         snapshot.forEach((doc: any) => {
-          events.push({ id: doc.id, ...doc.data() });
+          const d = doc.data();
+          const status = (d.status || d.data?.status || 'ACTIVE').toUpperCase();
+          console.log(`[ADMIN-SDK] Checking Doc: ${doc.id}, Status: ${status}`);
+          events.push({ id: doc.id, ...d });
         });
         fetchSuccessful = true;
       } catch (err: any) {
@@ -489,29 +497,59 @@ app.get("/api/public-events", async (req, res) => {
       const finalEvents = events.map(e => {
         // Find the legitimate tournament data regardless of whether it was sharded or wrapped
         const baseData = e.data || e;
-        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || baseData.tournamentName;
+        const tournamentName = baseData.settings?.tournamentName || e.settings?.tournamentName || baseData.tournamentName || baseData.name || baseData.data?.settings?.tournamentName;
         
-        // Skip ghost/invalid records
-        if (!tournamentName) return null;
+        // Use a very permissive status check: everything except DRAFT
+        const status = (e.status || baseData.status || 'ACTIVE').toUpperCase();
+        
+        if (!tournamentName) {
+          console.log(`[API-PROCESS] Skipping document ${e.id} - No tournament name found.`);
+          return null;
+        }
+
+        if (status === 'DRAFT') {
+            console.log(`[API-PROCESS] Skipping document ${e.id} - Status is DRAFT.`);
+            return null;
+        }
 
         return {
           id: e.id,
-          status: e.status || baseData.status || 'ACTIVE',
+          status: status,
           createdAt: e.createdAt || baseData.createdAt || new Date().toISOString(),
           data: {
-            settings: baseData.settings || e.settings || {},
-            archers: baseData.archers || e.archers || [],
-            registrations: baseData.registrations || e.registrations || [],
-            officials: baseData.officials || e.officials || []
+            settings: baseData.settings || e.settings || (e.data && e.data.settings) || {},
+            archers: baseData.archers || e.archers || (e.data && e.data.archers) || [],
+            registrations: baseData.registrations || e.registrations || (e.data && e.data.registrations) || [],
+            officials: baseData.officials || e.officials || (e.data && e.data.officials) || []
           }
         };
       }).filter(Boolean);
 
-      // Return immediately - no local caching to ensure it's always live
+      // Update Cache
+      try {
+        const cacheData = { events: finalEvents, timestamp: Date.now() };
+        fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
+        cachedPublicEvents = finalEvents;
+        lastPublicEventsUpdate = cacheData.timestamp;
+        console.log(`[CACHE] Updated disk cache with ${finalEvents.length} events.`);
+      } catch (cacheErr) {
+        console.warn("[CACHE] Failed to write to disk:", cacheErr);
+      }
+
       return res.json({ 
         success: true, 
         events: finalEvents, 
         source: 'database'
+      });
+    }
+
+    // If database returned nothing but we HAVE cache, use it
+    if (cachedPublicEvents && cachedPublicEvents.length > 0) {
+      console.log(`[API] Serving ${cachedPublicEvents.length} events from fallback cache (DB empty/down).`);
+      return res.json({
+        success: true,
+        events: cachedPublicEvents,
+        source: 'cache'
       });
     }
 
@@ -522,6 +560,17 @@ app.get("/api/public-events", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Critical Public Events Failure:", error.message);
+    
+    // Last resort: try to serve from cache on error
+    if (cachedPublicEvents && cachedPublicEvents.length > 0) {
+      console.log(`[API-ERROR-FALLBACK] Serving ${cachedPublicEvents.length} events from cache due to crash.`);
+      return res.json({
+        success: true,
+        events: cachedPublicEvents,
+        source: 'error-cache'
+      });
+    }
+    
     res.status(500).json({ success: false, error: "Database temporarily unavailable" });
   }
 });

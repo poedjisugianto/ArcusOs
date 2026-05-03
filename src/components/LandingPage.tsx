@@ -64,18 +64,20 @@ export default function LandingPage({
         return { 
           ...raw.data, 
           id: raw.id, 
-          status: raw.status || raw.data.status || 'ACTIVE' 
+          status: (raw.status || raw.data.status || 'ACTIVE').toUpperCase()
         };
       }
       // Fallback for any direct/flattened data
-      return { ...raw, status: raw.status || 'ACTIVE' };
+      return { ...raw, status: (raw.status || 'ACTIVE').toUpperCase() };
     })
     .filter(e => {
-      // Must have a tournament name and not be DRAFT
-      // Tournament name could be in settings or top level
-      const tournamentName = e.settings?.tournamentName || e.tournamentName;
-      const isNotDraft = e.status !== 'DRAFT';
-      return tournamentName && isNotDraft;
+      // Very broad: must have A name. We ignore status DRAFT for now unless it's strictly excluded.
+      // But we check everything.
+      const tournamentName = e.settings?.tournamentName || e.tournamentName || e.name || e.title || (e.data && (e.data.name || e.data.settings?.tournamentName));
+      const status = (e.status || e.data?.status || 'ACTIVE').toUpperCase();
+      
+      // Still exclude DRAFT, but log if we find one (indirectly via permissive name check)
+      return tournamentName && status !== 'DRAFT';
     });
 
   return (

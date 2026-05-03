@@ -60,42 +60,33 @@ export function shardData(data: any): string[] {
   return shards;
 }
 
-export function mergeShards(shards: string[]): any {
-  if (!shards.length) return null;
-  // Filter out any holes or nulls that might have happened during reconstruction
-  const merged = shards.filter(s => typeof s === 'string').join('');
-  if (!merged) return null;
-  
+export function tryRecoverJSON(text: string): any {
+  if (!text) return null;
   try {
-    return JSON.parse(merged);
-  } catch (e) {
-    // If it fails with "unexpected non-whitespace character" it might be because 
-    // old shards were leftover. We try to find the first complete JSON object.
-    console.warn("Corrupted JSON detected in shards, attempting recovery...");
-    
-    // Recovery heuristic: 
-    // Usually the data we want is the FIRST valid JSON block.
-    // If it's an array (typical for sharded data), find the first ']' followed by a possible start of something else.
-    // But faster is to try and find valid JSON by trimming from the end.
-    
+    return JSON.parse(text);
+  } catch (e: any) {
+    console.warn("Corrupted JSON detected, attempting recovery:", e.message);
     const endChars = [']', '}'];
     for (const char of endChars) {
-      let lastIndex = merged.lastIndexOf(char);
+      let lastIndex = text.lastIndexOf(char);
       while (lastIndex > 0) {
         try {
-          const candidate = merged.substring(0, lastIndex + 1);
+          const candidate = text.substring(0, lastIndex + 1);
           const parsed = JSON.parse(candidate);
-          console.log("Successfully recovered JSON from corrupted shards.");
+          console.log("Successfully recovered JSON.");
           return parsed;
         } catch (inner) {
-          lastIndex = merged.lastIndexOf(char, lastIndex - 1);
-          // Safety break to avoid infinite loop or too many attempts
-          if (lastIndex < 0 || merged.length - lastIndex > 500000) break; 
+          lastIndex = text.lastIndexOf(char, lastIndex - 1);
+          if (lastIndex < 0 || text.length - lastIndex > 1000000) break;
         }
       }
     }
-    
-    console.error("Shard recovery failed entirely - original error:", e.message);
     throw e;
   }
+}
+
+export function mergeShards(shards: string[]): any {
+  if (!shards.length) return null;
+  const merged = shards.filter(s => typeof s === 'string').join('');
+  return tryRecoverJSON(merged);
 }

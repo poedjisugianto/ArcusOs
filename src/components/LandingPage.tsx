@@ -68,12 +68,15 @@ export default function LandingPage({
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
   // In the LandingPage, we need to handle both flattened data and documents with a .data property
-  const activeEvents = events.filter(e => e.status !== 'DRAFT').map(e => {
-    if (e.data && !e.settings) {
-      return { ...e.data, id: e.id, status: e.status };
-    }
-    return e;
-  });
+  const activeEvents = events
+    .filter(e => e?.status !== 'DRAFT')
+    .map(e => {
+      // If the data is nested in a .data property (Firestore style)
+      if (e.data && typeof e.data === 'object' && !e.settings) {
+        return { ...e.data, id: e.id, status: e.status || 'ACTIVE' };
+      }
+      return { ...e, status: e.status || 'ACTIVE' };
+    });
 
   return (
     <div className="min-h-screen bg-[#FBFBFD] font-sans selection:bg-arcus-red selection:text-white overflow-x-hidden">
@@ -249,11 +252,8 @@ export default function LandingPage({
                     </button>
                     {syncStatus && (
                       <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest leading-none">
-                          {syncStatus.source === 'live' ? 'ONLINE SYNC' : 'ARCHIVE MODE'}
-                        </span>
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-1">
-                          LATEST: {syncStatus.time}
+                          DATA DIPERBARUI: {syncStatus.time}
                         </span>
                       </div>
                     )}

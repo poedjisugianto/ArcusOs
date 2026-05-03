@@ -77,51 +77,8 @@ function transformRestFields(fields: any) {
   return result;
 }
 
-// Hard Fallback Data for extreme quota cases
-const HARD_FALLBACK_EVENTS = [
-  {
-    id: "fallback-event-1",
-    status: "ACTIVE", // Original status in DB is often ACTIVE
-    createdAt: new Date().toISOString(),
-    settings: {
-      tournamentName: "ARCUS SERIES #1 - CHAMPIONSHIP",
-      location: "Jakarta, Indonesia",
-      eventDate: "Upcoming 2026",
-      description: "Kejuaraan Panahan Indoor bergengsi. Pendaftaran akan segera dibuka secara resmi.",
-      pamphletUrl: "https://images.unsplash.com/photo-1511044491714-802870c1fc94?auto=format&fit=crop&q=80&w=800",
-      registrationDeadline: "",
-      isPractice: false,
-      isFreeEvent: true,
-      categoryConfigs: {
-        "Recurve": { capacity: 100, fee: 0 },
-        "Compound": { capacity: 100, fee: 0 },
-        "Standard": { capacity: 100, fee: 0 }
-      },
-      paymentMethods: []
-    },
-    archers: [],
-    registrations: [],
-    officials: []
-  }
-];
-
-// In the API, we need to decide if we return the "data" object or the flattened object
-// Our LandingPage expects the API to return something that has a .data property 
-// OR we flatten it before sending. 
-// Looking at App.tsx line 251: eventObj = { ...e.data, id, ownerId, status }
-// So our API should return objects where the content is in a "data" property if it's imitating a Firestore doc.
-
-const HARD_FALLBACK_API_RESPONSE = HARD_FALLBACK_EVENTS.map(e => ({
-  id: e.id,
-  status: e.status,
-  createdAt: e.createdAt,
-  data: {
-    settings: e.settings,
-    archers: e.archers,
-    registrations: e.registrations,
-    officials: e.officials
-  }
-}));
+// Hard Fallback Data removed to ensure only real user data is shown.
+const HARD_FALLBACK_API_RESPONSE: any[] = [];
 
 // Helper to get global settings from Firestore
 const getGlobalSettings = async () => {
@@ -517,7 +474,8 @@ app.get("/api/public-events", async (req, res) => {
         console.log(`[REST-API] Found ${response.data.documents.length} raw documents.`);
         response.data.documents.forEach((doc: any) => {
           const data = transformRestFields(doc.fields);
-          if (data && (data.status === 'ACTIVE' || data.status === 'COMPLETED')) {
+          // Only filter out DRAFT, show everything else
+          if (data && data.status !== 'DRAFT') {
             events.push({ id: doc.name.split('/').pop(), ...data });
           }
         });
@@ -536,7 +494,7 @@ app.get("/api/public-events", async (req, res) => {
     // Secondary: Admin SDK Fallback ONLY if REST failed
     if (!fetchSuccessful && db) {
       try {
-        const snapshot = await db.collection('events').where('status', 'in', ['ACTIVE', 'COMPLETED']).limit(20).get();
+        const snapshot = await db.collection('events').where('status', '!=', 'DRAFT').limit(30).get();
         snapshot.forEach((doc: any) => {
           events.push({ id: doc.id, ...doc.data() });
         });

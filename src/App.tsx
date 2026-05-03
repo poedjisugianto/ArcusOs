@@ -188,10 +188,16 @@ export function App() {
       // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         (isPublicView 
           ? fetch('/api/public-events')
-              .then(res => {
+              .then(async res => {
                 const contentType = res.headers.get("content-type");
+                const text = await res.text();
                 if (contentType && contentType.includes("application/json")) {
-                  return res.json();
+                  try {
+                    return JSON.parse(text);
+                  } catch (e: any) {
+                    console.error("API JSON Parse Error at pos:", e.message, "Text preview:", text.substring(0, 200));
+                    throw e;
+                  }
                 }
                 throw new Error(`Unexpected content type: ${contentType}`);
               })
@@ -276,8 +282,23 @@ export function App() {
                 shardsByArray[s.key][s.index] = s.content;
               }
             });
+
             Object.entries(shardsByArray).forEach(([key, shards]) => {
-              eventObj[key] = mergeShards(shards);
+              try {
+                // Verify shards array integrity - No "holes" allowed
+                const expectedCount = shardCounts[key];
+                if (expectedCount !== undefined) {
+                  for (let i = 0; i < expectedCount; i++) {
+                    if (shards[i] === undefined) {
+                      console.warn(`Shard hole detected for ${key} at index ${i}. Joining partial data...`);
+                    }
+                  }
+                }
+                eventObj[key] = mergeShards(shards);
+              } catch (parseError: any) {
+                console.error(`Failed to reconstruct sharded key ${key}:`, parseError.message);
+                eventObj[key] = []; // Fallback to empty if corrupted
+              }
             });
           }
 

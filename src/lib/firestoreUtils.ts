@@ -64,6 +64,7 @@ export function mergeShards(shards: string[]): any {
   if (!shards.length) return null;
   // Filter out any holes or nulls that might have happened during reconstruction
   const merged = shards.filter(s => typeof s === 'string').join('');
+  if (!merged) return null;
   
   try {
     return JSON.parse(merged);
@@ -72,23 +73,29 @@ export function mergeShards(shards: string[]): any {
     // old shards were leftover. We try to find the first complete JSON object.
     console.warn("Corrupted JSON detected in shards, attempting recovery...");
     
-    // Heuristic: if we have multiple JSON objects joined, the error often happens 
-    // after the first valid closing brace.
-    try {
-      // Find the last closing brace and try parsing substrings (inefficient but better than crashing)
-      let lastBrace = merged.lastIndexOf('}');
-      while (lastBrace > 0) {
+    // Recovery heuristic: 
+    // Usually the data we want is the FIRST valid JSON block.
+    // If it's an array (typical for sharded data), find the first ']' followed by a possible start of something else.
+    // But faster is to try and find valid JSON by trimming from the end.
+    
+    const endChars = [']', '}'];
+    for (const char of endChars) {
+      let lastIndex = merged.lastIndexOf(char);
+      while (lastIndex > 0) {
         try {
-          const candidate = merged.substring(0, lastBrace + 1);
-          return JSON.parse(candidate);
+          const candidate = merged.substring(0, lastIndex + 1);
+          const parsed = JSON.parse(candidate);
+          console.log("Successfully recovered JSON from corrupted shards.");
+          return parsed;
         } catch (inner) {
-          lastBrace = merged.lastIndexOf('}', lastBrace - 1);
+          lastIndex = merged.lastIndexOf(char, lastIndex - 1);
+          // Safety break to avoid infinite loop or too many attempts
+          if (lastIndex < 0 || merged.length - lastIndex > 500000) break; 
         }
       }
-    } catch (recoveryError) {
-      console.error("Shard recovery failed entirely");
     }
     
+    console.error("Shard recovery failed entirely - original error:", e.message);
     throw e;
   }
 }

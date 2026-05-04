@@ -224,19 +224,14 @@ export function App() {
                    // If we successfully got data from the API, we can consider the quota issue 
                    // "managed" for now if we were previously blocked.
                    
-                   return { 
-                     docs: (data.events || []).map((e: any) => ({ 
-                        id: e.id, 
-                        data: () => ({
-                           id: e.id,
-                           status: e.status || 'ACTIVE',
-                           createdAt: e.createdAt,
-                           ...(e.data || e)
-                        }),
-                        exists: true 
-                     })), 
-                     __type: 'custom_array' 
-                   };
+                    return { 
+                      docs: (data.events || []).map((e: any) => ({ 
+                         id: e.id, 
+                         data: () => ({ ...e }), // Trust the API's prepared flat structure
+                         exists: true 
+                      })), 
+                      __type: 'custom_array' 
+                    };
                 }
                 return null;
               })
@@ -289,7 +284,7 @@ export function App() {
           const ownerId = e.userId || e.ownerId;
           const status = e.status || e.data?.status || 'ACTIVE'; // Default to ACTIVE for public view
           
-          let eventObj = { ...(e.data || e), id: eventId, ownerId: ownerId, status: status };
+          let eventObj = { ...e, id: eventId, ownerId: ownerId, status: status };
           
           // Reconstruct shards if this is the sharded active event
           if (shardsSnap?.docs && eventId === appState.activeEventId && (e.isSharded || e.data?.isSharded)) {
@@ -1442,7 +1437,7 @@ export function App() {
       <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (
           <LandingPage 
-            events={appState.events.filter(e => !e.settings?.isPractice && e.status !== 'DRAFT')} 
+            events={appState.events.filter(e => e.status !== 'DRAFT')} 
             onViewLive={(id) => navigateToPublicEvent(id, 'PUBLIC_LIVE')} 
             onViewParticipants={(id) => navigateToPublicEvent(id, 'PUBLIC_ENTRY_LIST')} 
             onViewInfo={(id) => navigateToPublicEvent(id, 'PUBLIC_EVENT_INFO')} 

@@ -484,12 +484,10 @@ app.get("/api/public-events", async (req, res) => {
     // Secondary: Admin SDK Fallback
     if (!fetchSuccessful && db) {
       try {
+        // Broad fetch without ordering to avoid missing index or missing field exclusions
         const snapshot = await db.collection('events').limit(100).get();
-        console.log(`[ADMIN-SDK] Found ${snapshot.size} documents in events collection.`);
         snapshot.forEach((doc: any) => {
           const d = doc.data();
-          const status = (d.status || d.data?.status || 'ACTIVE').toUpperCase();
-          console.log(`[ADMIN-SDK] Checking Doc: ${doc.id}, Status: ${status}`);
           events.push({ id: doc.id, ...d });
         });
         fetchSuccessful = true;
@@ -499,39 +497,40 @@ app.get("/api/public-events", async (req, res) => {
     }
 
     if (events.length === 0 && cachedPublicEvents && cachedPublicEvents.length > 0) {
-      console.log(`[API] Live fetch returned 0 events, serving ${cachedPublicEvents.length} events from cache.`);
-      return res.json({
-        success: true,
-        events: cachedPublicEvents,
-        source: 'cache'
-      });
+      return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
     }
 
     if (events.length > 0) {
       const finalEvents = events.map(e => {
-        const baseData = e.data || e || {};
-        // Search EXHAUSTIVELY for a tournament name with fallbacks
-        const tournamentName = baseData.settings?.tournamentName || 
-                              (baseData.data && baseData.data.settings?.tournamentName) ||
+        const rawEvent = e.data || e || {};
+        
+        // 1. Determine Identity & Status
+        const eventId = e.id || rawEvent.id || rawEvent.eventId;
+        const status = (e.status || rawEvent.status || 'ACTIVE').toUpperCase();
+        
+        // 2. Standardize Settings (Critical for Landing Page)
+        const tournamentName = rawEvent.settings?.tournamentName || 
                               e.settings?.tournamentName || 
-                              baseData.tournamentName || 
-                              baseData.name || 
-                              baseData.title || 
+                              rawEvent.tournamentName || 
+                              rawEvent.name || 
                               "Tournament Arcus";
         
-        const status = (e.status || baseData.status || 'ACTIVE').toUpperCase();
-        
+        // 3. Build a "Perfect" Event Object that matches Firestore format exactly
         return {
-          id: e.id,
+          id: eventId,
           status: status,
-          createdAt: e.createdAt || baseData.createdAt || new Date().toISOString(),
-          data: {
-            ...baseData,
-            settings: {
-              ...(baseData.settings || {}),
-              tournamentName: (baseData.settings?.tournamentName || tournamentName || "Tournament Arcus")
-            }
-          }
+          createdAt: e.createdAt || rawEvent.createdAt || new Date().toISOString(),
+          userId: rawEvent.userId || rawEvent.ownerId || e.userId,
+          settings: {
+            ...(rawEvent.settings || e.settings || {}),
+            tournamentName // Force correct name
+          },
+          archers: rawEvent.archers || [],
+          registrations: rawEvent.registrations || [],
+          sessions: rawEvent.sessions || [],
+          bracket: rawEvent.bracket || null,
+          targetFaces: rawEvent.targetFaces || [],
+          isPublic: rawEvent.isPublic !== false
         };
       });
 
@@ -549,7 +548,7 @@ app.get("/api/public-events", async (req, res) => {
       return res.json({ 
         success: true, 
         events: finalEvents, 
-        source: 'database'
+        source: 'live'
       });
     }
 

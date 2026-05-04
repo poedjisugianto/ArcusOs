@@ -59,13 +59,13 @@ export default function LandingPage({
   const activeEvents = (events || [])
     .map(e => {
       const raw = e as any;
-      const baseData = raw.data || raw;
+      // Handle both Firestore doc objects (with .data()) and plain objects from API
+      // If it exists in raw.data, prioritize it, otherwise use raw itself
+      const baseData = (typeof raw.data === 'function') ? raw.data() : (raw.data || raw);
       const id = raw.id || baseData.id;
       const status = (raw.status || baseData.status || 'ACTIVE').toUpperCase();
-      
-      // Ensure there's always a settings object and tournament name
-      const settings = baseData.settings || raw.settings || {};
-      const name = settings.tournamentName || baseData.tournamentName || baseData.name || baseData.title || "Tournament Arcus";
+      const settings = raw.settings || baseData.settings || {};
+      const name = settings.tournamentName || raw.tournamentName || baseData.tournamentName || baseData.name || "Tournament Arcus";
 
       return {
         ...baseData,
@@ -77,10 +77,7 @@ export default function LandingPage({
         }
       };
     })
-    .filter(e => {
-      // ONLY exclude if explicitly DRAFT. Show anything else.
-      return e.status !== 'DRAFT';
-    });
+    .filter(e => e && e.status !== 'DRAFT');
 
   return (
     <div className="min-h-screen bg-[#FBFBFD] font-sans selection:bg-arcus-red selection:text-white overflow-x-hidden">

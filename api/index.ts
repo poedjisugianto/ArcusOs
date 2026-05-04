@@ -509,8 +509,8 @@ app.get("/api/public-events", async (req, res) => {
 
     if (events.length > 0) {
       const finalEvents = events.map(e => {
-        const baseData = e.data || e;
-        // Search EXHAUSTIVELY for a tournament name
+        const baseData = e.data || e || {};
+        // Search EXHAUSTIVELY for a tournament name with fallbacks
         const tournamentName = baseData.settings?.tournamentName || 
                               (baseData.data && baseData.data.settings?.tournamentName) ||
                               e.settings?.tournamentName || 
@@ -529,7 +529,7 @@ app.get("/api/public-events", async (req, res) => {
             ...baseData,
             settings: {
               ...(baseData.settings || {}),
-              tournamentName: baseData.settings?.tournamentName || tournamentName
+              tournamentName: (baseData.settings?.tournamentName || tournamentName || "Tournament Arcus")
             }
           }
         };

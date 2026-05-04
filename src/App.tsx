@@ -159,12 +159,11 @@ export function App() {
       // Helper to fetch documents with timeout and silent failure for guests
       const safeGetDocs = async (collRef: any, queryRef?: any) => {
         try {
-          // If public view, IGNORE quotaExceeded state for reading
-          if (quotaExceeded && !isPrivileged && !isPublicView) return await getDocsFromCache(queryRef || collRef).catch(() => null);
           return await getDocs(queryRef || collRef);
         } catch (err: any) {
-          if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
-            setQuotaExceeded(true);
+          const errStr = err.message || "";
+          if (err.code === 'resource-exhausted' || errStr.toLowerCase().includes('quota')) {
+            console.warn("Read quota hit, falling back to cache.");
             return await getDocsFromCache(queryRef || collRef).catch(() => null);
           }
           console.warn("Fetch failed:", err.message);
@@ -174,11 +173,10 @@ export function App() {
 
       const safeGetDoc = async (docRef: any) => {
         try {
-          if (quotaExceeded && !isPrivileged && !isPublicView) return await getDocFromCache(docRef).catch(() => null);
           return await getDoc(docRef);
         } catch (err: any) {
-          if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
-            setQuotaExceeded(true);
+          const errStr = err.message || "";
+          if (err.code === 'resource-exhausted' || errStr.toLowerCase().includes('quota')) {
             return await getDocFromCache(docRef).catch(() => null);
           }
           return null;
@@ -190,8 +188,8 @@ export function App() {
         safeGetDoc(doc(db, 'systemConfigs', 'global')).catch(() => null),
         
       // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
-        (isPublicView 
-          ? fetch('/api/public-events') // IGNORE QUOTA GUARD FOR PUBLIC API
+        ((view === 'LANDING' || view.startsWith('PUBLIC_')) 
+          ? fetch('/api/public-events') // ALWAYS use the API for public views to save quota
               .then(async res => {
                 const contentType = res.headers.get("content-type");
                 const text = await res.text();
@@ -218,11 +216,10 @@ export function App() {
               })
               .then(data => {
                 if (data && data.events) {
-                   setSyncStatus({ 
-                     lastSync: new Date(),
-                     status: 'success',
-                     message: data.source === 'cache' ? 'Sistem Cloud (Restored)' : 'Sistem Cloud Aktif'
-                   });
+                    setSyncStatus({ 
+                      source: data.source === 'cache' ? 'Sistem Cloud (Restored)' : 'Sistem Cloud Aktif',
+                      time: new Date().toLocaleTimeString('id-ID')
+                    });
                    
                    // If we successfully got data from the API, we can consider the quota issue 
                    // "managed" for now if we were previously blocked.
@@ -639,8 +636,8 @@ export function App() {
     if (!state.isDataLoaded && !manual && !isOwnerOrAdmin) return;
 
     if (!manual) {
-      // For auto-sync, use a MUCH longer debounce to avoid hitting write limits
-      syncTimeoutRef.current = setTimeout(() => performSync(state, activeEvent, false), 30000);
+      // Normal debounce for upgraded plan
+      syncTimeoutRef.current = setTimeout(() => performSync(state, activeEvent, false), 5000);
       return;
     }
 
@@ -1439,27 +1436,7 @@ export function App() {
         </div>
       )}
 
-      {quotaExceeded && (appState.currentUser?.email === 'poedji.sugianto@gmail.com') && (
-        <div className="fixed top-2 z-[60] left-1/2 -translate-x-1/2 w-[95%] max-w-lg">
-          <div className="bg-slate-900 border-2 border-arcus-red/30 rounded-2xl p-4 shadow-2xl flex items-center gap-4">
-            <div className="bg-arcus-red text-white p-2 rounded-xl animate-pulse">
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <p className="text-[10px] font-black uppercase text-white leading-tight tracking-widest italic">Admin: Firestore Quota Limit</p>
-              <p className="text-[9px] font-bold text-white/70 leading-tight mt-1">
-                Firestore Quota Tercapai. Landing Page dilayani dari <span className="text-arcus-red font-bold underline">Resilient Server Cache</span>.
-              </p>
-            </div>
-            <button 
-              onClick={() => setQuotaExceeded(false)}
-              className="text-white/20 hover:text-white p-1"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Status Bar removed for cleaner UI on paid plan */}
 
       <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (

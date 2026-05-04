@@ -242,10 +242,11 @@ export function App() {
               })
               .catch(err => {
                 console.warn("Public fetch fallback triggered:", err.message);
-                // Attempt cache-first fetch for events to avoid burning quota
-                return getDocsFromCache(collection(db, 'events')).catch(() => {
-                  // ABSOLUTE LAST RESORT: Broad fetch, no status filter to ensure data appears
-                  return safeGetDocs(collection(db, 'events'), limit(20));
+                // ABSOLUTE LAST RESORT: Broad fetch from network then cache
+                const collRef = collection(db, 'events');
+                const queryRef = query(collRef, limit(20));
+                return getDocs(queryRef).catch(() => {
+                  return getDocsFromCache(queryRef).catch(() => null);
                 });
               })
           : safeGetDocs(collection(db, 'events'))

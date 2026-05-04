@@ -452,9 +452,9 @@ try {
 
 app.get("/api/public-events", async (req, res) => {
   try {
-    // 1. Return Cache Immediately if Fresh (10 mins)
+    // 1. Return Cache Immediately if Fresh (1 minute for responsiveness)
     const now = Date.now();
-    if (cachedPublicEvents && (now - lastPublicEventsUpdate < 600000)) {
+    if (cachedPublicEvents && cachedPublicEvents.length > 0 && (now - lastPublicEventsUpdate < 60000)) {
       console.log(`[API] Serving fresh cache (${cachedPublicEvents.length} events)`);
       return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
     }

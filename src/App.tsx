@@ -64,6 +64,7 @@ export function App() {
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [liveBoardTVMode, setLiveBoardTVMode] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [isBlazePlan, setIsBlazePlan] = useState(true); // Default to true as user upgraded
   const [syncStatus, setSyncStatus] = useState<{ source: string, time: string } | null>(null);
   const isSyncingFromCloud = React.useRef(false);
   const isCurrentlySyncing = React.useRef(false);
@@ -447,15 +448,15 @@ export function App() {
     });
   }, [appState.currentUser?.id, appState.activeEventId]);
 
-  // AUTO-SYNC PENDING CHANGES: Every 15 seconds if anything is pending
+  // AUTO-SYNC PENDING CHANGES: Every 5-10 seconds for Blaze plan speed
   useEffect(() => {
-    if (!hasPendingChanges || isSyncing || quotaExceeded) return;
+    if (!hasPendingChanges || isSyncing) return;
     const interval = setInterval(() => {
       console.log("Auto-syncing pending changes...");
       syncCloudData(false);
-    }, 15000); 
+    }, 8000); 
     return () => clearInterval(interval);
-  }, [hasPendingChanges, isSyncing, quotaExceeded]);
+  }, [hasPendingChanges, isSyncing]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
 
@@ -632,8 +633,8 @@ export function App() {
     if (!state.isDataLoaded && !manual && !isOwnerOrAdmin) return;
 
     if (!manual) {
-      // Normal debounce for upgraded plan
-      syncTimeoutRef.current = setTimeout(() => performSync(state, activeEvent, false), 5000);
+      // Fast debounce for upgraded Blaze plan
+      syncTimeoutRef.current = setTimeout(() => performSync(state, activeEvent, false), 1000);
       return;
     }
 
@@ -651,9 +652,6 @@ export function App() {
     isCurrentlySyncing.current = true;
     setIsSyncing(true);
     try {
-      if (quotaExceeded && !manual) {
-        throw new Error("Quota exceeded - Sync paused");
-      }
       const isPrivileged = !!(state.currentUser?.isSuperAdmin || state.currentUser?.role === 'SUPERADMIN' || state.currentUser?.email === 'poedji.sugianto@gmail.com' || state.currentUser?.email === 'admin@arcus.id');
 
       // 1. Sync Global Settings (Only SuperAdmin)

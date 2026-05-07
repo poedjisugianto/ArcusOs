@@ -463,6 +463,7 @@ app.get("/api/public-events", async (req, res) => {
     let fetchSuccessful = false;
     
     // Primary: REST API 
+    console.log(`[API] Fetching public events for project: ${firebaseConfig.projectId}`);
     const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
     try {
       const response = await axios.get(url, { timeout: 10000 });
@@ -472,20 +473,24 @@ app.get("/api/public-events", async (req, res) => {
           if (dataFromRest) {
             const id = doc.name.split('/').pop();
             const status = (dataFromRest.status || dataFromRest.data?.status || 'ACTIVE').toUpperCase();
-            events.push({ id, ...dataFromRest });
+            // Don't show DRAFT events to public
+            if (status !== 'DRAFT') {
+              events.push({ id, ...dataFromRest });
+            }
           }
         });
         fetchSuccessful = true;
       }
     } catch (err: any) {
-      console.error("[REST-API] Live Fetch Error:", err.message);
+      console.error("[REST-API] Live Fetch Error:", err.response?.data || err.message);
     }
 
-    // Secondary: Admin SDK Fallback
-    if (!fetchSuccessful && db) {
+    // Secondary: Admin SDK Fallback (If REST fails or returns empty)
+    if ((!fetchSuccessful || events.length === 0) && db) {
       try {
-        // Broad fetch without ordering to avoid missing index or missing field exclusions
-        const snapshot = await db.collection('events').limit(100).get();
+        console.log("[API] Falling back to Admin SDK for events fetch...");
+        // Broad fetch without ordering
+        const snapshot = await db.collection('events').where('status', '!=', 'DRAFT').limit(100).get();
         snapshot.forEach((doc: any) => {
           const d = doc.data();
           events.push({ id: doc.id, ...d });
@@ -497,6 +502,7 @@ app.get("/api/public-events", async (req, res) => {
     }
 
     if (events.length === 0 && cachedPublicEvents && cachedPublicEvents.length > 0) {
+      console.log(`[API] DB returned 0 events, using disk cache (${cachedPublicEvents.length})`);
       return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
     }
 
@@ -509,13 +515,13 @@ app.get("/api/public-events", async (req, res) => {
         const status = (e.status || rawEvent.status || 'ACTIVE').toUpperCase();
         
         // 2. Standardize Settings (Critical for Landing Page)
-        const tournamentName = rawEvent.settings?.tournamentName || 
-                              e.settings?.tournamentName || 
-                              rawEvent.tournamentName || 
-                              rawEvent.name || 
-                              "Tournament Arcus";
+        const name = rawEvent.settings?.tournamentName || 
+                     e.settings?.tournamentName || 
+                     rawEvent.tournamentName || 
+                     rawEvent.name || 
+                     "Tournament Arcus";
         
-        // 3. Build a "Perfect" Event Object that matches Firestore format exactly
+        // 3. Build a "Perfect" Event Object
         return {
           id: eventId,
           status: status,
@@ -523,7 +529,7 @@ app.get("/api/public-events", async (req, res) => {
           userId: rawEvent.userId || rawEvent.ownerId || e.userId,
           settings: {
             ...(rawEvent.settings || e.settings || {}),
-            tournamentName // Force correct name
+            tournamentName: name
           },
           archers: rawEvent.archers || [],
           registrations: rawEvent.registrations || [],
@@ -540,15 +546,16 @@ app.get("/api/public-events", async (req, res) => {
         fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
         cachedPublicEvents = finalEvents;
         lastPublicEventsUpdate = cacheData.timestamp;
-        console.log(`[CACHE] Updated disk cache with ${finalEvents.length} events.`);
+        console.log(`[CACHE] System updated with ${finalEvents.length} events.`);
       } catch (cacheErr) {
-        console.warn("[CACHE] Failed to write to disk:", cacheErr);
+        console.warn("[CACHE] Disk write disabled:", cacheErr);
       }
 
       return res.json({ 
         success: true, 
         events: finalEvents, 
-        source: 'live'
+        source: 'live',
+        count: finalEvents.length
       });
     }
 

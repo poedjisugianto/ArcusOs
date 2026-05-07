@@ -41,6 +41,15 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
     ].map(p => [p.id, p])).values()
   );
   
+  // Only show pnding registrations that are truly not verified yet
+  // We filter out any IDs that exist in archers/officials as APPROVED or simply have APPROVED status in unique list
+  const pendingRegistrations = uniqueParticipants.filter(p => 
+    p.status !== 'APPROVED' && 
+    p.status !== 'CONFIRMED' &&
+    !((event.archers || []).some(a => a.id === p.id && a.status === 'APPROVED')) &&
+    !((event.officials || []).some(o => o.id === p.id && o.status === 'APPROVED'))
+  );
+
   const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);
   
   const totalPlatformFees = event.settings.isFreeEvent ? 0 : uniqueParticipants.reduce((acc, curr) => {
@@ -197,11 +206,11 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
               Total Pendaftar: {uniqueParticipants.length}
             </div>
             <div className="flex items-center gap-2 bg-orange-50 text-orange-600 px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-orange-100">
-              Menunggu Konfirmasi: {(event.registrations || []).filter(reg => reg.status !== 'APPROVED').length}
+              Menunggu Konfirmasi: {pendingRegistrations.length}
             </div>
           </div>
         </div>
-
+ 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -211,11 +220,11 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
                 <th className="px-8 py-4">Metode</th>
                 <th className="px-8 py-4 text-center">Bukti Bayar</th>
                 <th className="px-8 py-4 text-right">Nominal</th>
-                <th className="px-8 py-4 text-right pr-12">Aksi</th>
+                <th className="px-8 py-4 text-right pr-12">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {(event.registrations || []).filter(reg => reg.status !== 'APPROVED').map(reg => (
+              {pendingRegistrations.map(reg => (
                 <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-8 py-6">
                     <p className="font-bold text-slate-900 uppercase font-oswald italic leading-none">{reg.name}</p>

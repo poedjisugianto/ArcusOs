@@ -38,7 +38,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
     return (state.archers || []).find(a => a.id === selectedArcherId);
   }, [state.archers, selectedArcherId]);
 
-  const config = selectedArcher ? (state.settings.categoryConfigs || {})[selectedArcher.category as CategoryType] : null;
+  const config = selectedArcher ? ((state.settings?.categoryConfigs || {})[selectedArcher.category as CategoryType]) : null;
 
   useEffect(() => {
     setIsDirty(false);
@@ -319,7 +319,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
           <div className="flex items-center gap-1.5 font-sans">
              <button onClick={() => setShowScanner(true)} className="p-3 bg-arcus-red text-white rounded-lg active:scale-90 transition-all shadow-md"><ScanLine className="w-5 h-5" /></button>
              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-[200px] px-2 bg-slate-50 border border-slate-100 p-1 rounded-lg">
-                {Array.from({ length: state.settings.totalTargets }).map((_, i) => (
+                {Array.from({ length: state.settings?.totalTargets || 0 }).map((_, i) => (
                   <button 
                     key={i} 
                     onClick={() => setSelectedTarget(i + 1)}
@@ -365,7 +365,7 @@ const ScoringPanel: React.FC<Props> = ({ state, onSaveScore, onBack }) => {
                 <p className="text-[10px] font-black uppercase tracking-widest">{a.targetNo}{a.position}</p>
                 <div className="flex items-center gap-2">
                    <div className="flex gap-0.5 overflow-hidden max-w-[60px]">
-                      {Array.from({ length: (state.settings.categoryConfigs || {})[a.category as CategoryType]?.ends || 6 }).map((_, i) => (
+                      {Array.from({ length: (state.settings?.categoryConfigs || {})[a.category as CategoryType]?.ends || 6 }).map((_, i) => (
                          <div key={i} className={`w-1 h-1 rounded-full shrink-0 ${(state.scores || []).find(s => s.archerId === a.id && s.endIndex === i && !s.isDeleted) ? 'bg-slate-900' : 'bg-slate-200'}`} />
                       ))}
                    </div>

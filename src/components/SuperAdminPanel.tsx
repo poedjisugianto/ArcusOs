@@ -39,6 +39,16 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
   const [testEmail, setTestEmail] = useState('');
   const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean, message: string } | null>(null);
+  const [smtpStatus, setSmtpStatus] = useState<any>(null);
+
+  useEffect(() => {
+    if (activeTab === 'SETTINGS') {
+      fetch('/api/smtp-diagnostic')
+        .then(res => res.json())
+        .then(data => setSmtpStatus(data.config))
+        .catch(err => console.error("SMTP diag failed", err));
+    }
+  }, [activeTab]);
 
   const stats = useMemo(() => {
     const totalEvents = state.events.length;
@@ -111,10 +121,13 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
       if (res.ok && data.success) {
         setTestEmailResult({ success: true, message: "Email uji coba berhasil dikirim!" });
       } else {
-        setTestEmailResult({ success: false, message: "Gagal mengirim email uji coba." });
+        setTestEmailResult({ 
+          success: false, 
+          message: data.message || data.error || "Gagal mengirim email uji coba." 
+        });
       }
-    } catch (err) {
-      setTestEmailResult({ success: false, message: "Terjadi kesalahan sistem." });
+    } catch (err: any) {
+      setTestEmailResult({ success: false, message: err.message || "Terjadi kesalahan sistem." });
     } finally {
       setIsTestingEmail(false);
     }
@@ -432,7 +445,21 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
           </div>
 
           <div className="space-y-6 border-t pt-10">
-             <h4 className="font-black text-xs uppercase text-slate-400">Uji Coba Pengiriman Email (SMTP)</h4>
+             <div className="flex items-center justify-between">
+                <h4 className="font-black text-xs uppercase text-slate-400">Uji Coba Pengiriman Email (SMTP)</h4>
+                {smtpStatus && (
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-md ${smtpStatus.host === 'NOT SET' ? 'bg-slate-100 text-slate-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                       {smtpStatus.host}
+                    </span>
+                    {smtpStatus.isGmail && (
+                      <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-md ${smtpStatus.passLooksLikeAppPassword ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                        {smtpStatus.passLooksLikeAppPassword ? 'App Password OK' : 'Bukan App Password?'}
+                      </span>
+                    )}
+                  </div>
+                )}
+             </div>
              <div className="flex flex-col md:flex-row gap-4 items-end">
                 <div className="flex-1 space-y-1.5">
                    <label className="text-[9px] font-black uppercase text-slate-400">Email Tujuan</label>
@@ -457,9 +484,23 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
                 </button>
              </div>
              {testEmailResult && (
-                <div className={`p-4 rounded-2xl border flex items-center gap-3 animate-in fade-in slide-in-from-top-2 ${testEmailResult.success ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                   {testEmailResult.success ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                   <p className="text-[10px] font-bold uppercase tracking-tight">{testEmailResult.message}</p>
+                <div className={`p-4 rounded-2xl border flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 ${testEmailResult.success ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                   <div className="flex items-center gap-3">
+                      {testEmailResult.success ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                      <p className="text-[10px] font-bold uppercase tracking-tight">{testEmailResult.message}</p>
+                   </div>
+                   {!testEmailResult.success && testEmailResult.message.includes("App Password") && (
+                     <div className="bg-white/50 p-4 rounded-xl space-y-2 text-[10px]">
+                        <p className="font-black text-red-900 border-b pb-1">SOLUSI UNTUK GMAIL:</p>
+                        <ol className="list-decimal ml-4 space-y-1 font-medium">
+                           <li>Pastikan <strong>2-Step Verification</strong> aktif di Akun Google Anda.</li>
+                           <li>Buka <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google App Passwords</a>.</li>
+                           <li>Buat password baru (pilih "Lainnya", namai "ARCUS").</li>
+                           <li>Gunakan kode 16 digit yang muncul sebagai <strong>SMTP_PASS</strong> di Settings {'\u003E'} Env Vars.</li>
+                           <li><strong>JANGAN</strong> gunakan password login Gmail standar Anda.</li>
+                        </ol>
+                     </div>
+                   )}
                 </div>
              )}
           </div>

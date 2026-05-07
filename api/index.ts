@@ -29,22 +29,17 @@ try {
 let adminApp: any = null;
 if (!getApps().length) {
   try {
-    // Attempt no-args initialization first to use ambient credentials
-    adminApp = initializeApp();
-    console.log("[FIREBASE-ADMIN] App initialized using ambient credentials.");
-  } catch (err) {
+    // Priority: use explicit projectId from config to avoid using compute project defaults
+    const options: any = {};
     if (firebaseConfig.projectId) {
-      try {
-        adminApp = initializeApp({
-          projectId: firebaseConfig.projectId
-        });
-        console.log("[FIREBASE-ADMIN] App initialized with projectId from config:", firebaseConfig.projectId);
-      } catch (innerErr) {
-        console.error("[FIREBASE-ADMIN] Initialization error (config):", innerErr);
-      }
-    } else {
-      console.error("[FIREBASE-ADMIN] Initialization error (ambient):", err);
+      options.projectId = firebaseConfig.projectId;
+      console.log("[FIREBASE-ADMIN] Using projectId from config:", options.projectId);
     }
+    
+    adminApp = initializeApp(options);
+    console.log("[FIREBASE-ADMIN] App initialized.");
+  } catch (err) {
+    console.error("[FIREBASE-ADMIN] Initialization error:", err);
   }
 } else {
   adminApp = getApps()[0];
@@ -98,36 +93,49 @@ const HARD_FALLBACK_API_RESPONSE: any[] = [];
 
 // Helper to get global settings from Firestore
 const getGlobalSettings = async () => {
+  const now = Date.now();
+  if (cachedGlobalSettings && (now - lastGlobalSettingsUpdate < SETTINGS_CACHE_TTL)) {
+    return cachedGlobalSettings;
+  }
+
   try {
-    // 1. Try Admin SDK first if available as it is typically more robust in this environment
+    let settings = null;
+    // 1. Try Admin SDK first
     if (db) {
       try {
         const docSnap = await db.collection('systemConfigs').doc('global').get();
         if (docSnap.exists) {
           const data = docSnap.data();
-          if (data && data.data) return data.data;
-          return data;
+          settings = data?.data || data;
         }
       } catch (adminErr: any) {
         console.warn("[ADMIN-SDK] Settings fetch error:", adminErr.message);
       }
     }
 
-    // 2. Fallback to REST API
-    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/systemConfigs/global?key=${firebaseConfig.apiKey}`;
-    try {
-      const response = await axios.get(url, { timeout: 4000 });
-      if (response.data && response.data.fields) {
-        const transformed = transformRestFields(response.data.fields);
-        return transformed.data || transformed;
+    // 2. Fallback to REST API if Admin failed or returned nothing
+    if (!settings) {
+      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/systemConfigs/global?key=${firebaseConfig.apiKey}`;
+      try {
+        const response = await axios.get(url, { timeout: 4000 });
+        if (response.data && response.data.fields) {
+          const transformed = transformRestFields(response.data.fields);
+          settings = transformed.data || transformed;
+        }
+      } catch (restErr: any) {
+         console.warn("[REST-API] Settings fetch error:", restErr.response?.data || restErr.message);
       }
-    } catch (restErr: any) {
-       console.warn("[REST-API] Settings fetch error:", restErr.response?.data || restErr.message);
+    }
+
+    if (settings) {
+      cachedGlobalSettings = settings;
+      lastGlobalSettingsUpdate = now;
+      return settings;
     }
   } catch (err: any) {
     console.warn("Global Settings fetch failed entirely:", err.message);
   }
-  return null;
+  return cachedGlobalSettings; // Return stale cache if fetch fails
 };
 
 // Initialize Midtrans Snap with dynamic keys
@@ -161,6 +169,7 @@ let cachedTransporter: any = null;
 
 app.post("/api/send-email-otp", async (req, res) => {
   const { email, message, subject } = req.body;
+  const smtpHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
   
   const missingVars = [];
   if (!process.env.SMTP_HOST) missingVars.push("SMTP_HOST");
@@ -176,39 +185,56 @@ app.post("/api/send-email-otp", async (req, res) => {
     });
   }
 
-  if (!cachedTransporter) {
-    const smtpHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
-    const smtpUser = (process.env.SMTP_USER || "").trim();
-    const smtpPass = (process.env.SMTP_PASS || "").trim();
-    const smtpPort = parseInt(process.env.SMTP_PORT || "587");
-    
-    // Auto-detect secure based on port if SMTP_SECURE is not explicitly "true" or "false"
-    let smtpSecure = process.env.SMTP_SECURE === "true";
-    if (!process.env.SMTP_SECURE) {
-      smtpSecure = smtpPort === 465;
-    }
-
-    cachedTransporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      // Add timeout to prevent hanging
-      connectionTimeout: 10000, 
-      greetingTimeout: 10000,
-    });
-  }
-
-  const startTime = Date.now();
   let attempts = 0;
   const maxAttempts = 2;
+  const startTime = Date.now();
   
   while (attempts < maxAttempts) {
+    attempts++;
+    
+    if (!cachedTransporter) {
+      const smtpUser = (process.env.SMTP_USER || "").trim();
+      const smtpPass = (process.env.SMTP_PASS || "").trim();
+      const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+      
+      console.log(`[EMAIL-CONFIG] Using Host: ${smtpHost}, Port: ${smtpPort}, User: ${smtpUser.replace(/(.{4}).*@/, "$1***@")}`);
+      
+      const isGmail = smtpHost.includes("gmail.com");
+
+      if (isGmail && smtpPass.length !== 16 && smtpPass.length !== 0) {
+         console.warn("[EMAIL-WARN] SMTP_PASS for Gmail does not look like a 16-character App Password. Login will likely fail.");
+      }
+
+      let smtpSecure = process.env.SMTP_SECURE === "true";
+      if (!process.env.SMTP_SECURE) {
+        smtpSecure = smtpPort === 465;
+      }
+
+      const transportConfig: any = {
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 10000, 
+        greetingTimeout: 10000,
+      };
+
+      // Use Gmail service if explicitly using Gmail for better reliability
+      if (isGmail) {
+        transportConfig.service = 'gmail';
+        // When using service: 'gmail', host/port/secure are handled internally by nodemailer
+      }
+
+      cachedTransporter = nodemailer.createTransport(transportConfig);
+    }
+
     try {
-      attempts++;
       console.log(`[EMAIL ATTEMPT ${attempts}] Sending to ${email}...`);
       await cachedTransporter.sendMail({
         from: `"ARCUS Archery System" <${(process.env.SMTP_USER || "").trim()}>`,
@@ -237,19 +263,34 @@ app.post("/api/send-email-otp", async (req, res) => {
     } catch (error: any) {
       if (attempts >= maxAttempts) {
         const duration = Date.now() - startTime;
+        let errorMessage = error.message;
+        
+        // Specially handle Gmail Auth failures (535)
+        if (errorMessage.includes("535") || errorMessage.includes("authentication failed")) {
+          if (smtpHost.includes("gmail.com")) {
+            errorMessage = "Autentikasi Gmail Gagal. Jika Anda menggunakan Gmail, Anda WAJIB menggunakan 'App Password' (bukan password akun utama) karena Google memblokir akses login aplikasi standar. Silakan buat App Password di Google Account Anda.";
+          }
+        }
+
         console.error(`[EMAIL API ERROR] Failed after ${duration}ms (${attempts} attempts):`, {
           code: error.code,
           command: error.command,
           response: error.response,
-          message: error.message
+          message: error.message,
+          suggestion: errorMessage
         });
+
         return res.status(500).json({ 
           success: false, 
           error: error.message,
-          message: "Gagal mengirim email setelah beberapa kali mencoba. Silakan cek kredensial SMTP." 
+          message: errorMessage || "Gagal mengirim email setelah beberapa kali mencoba. Silakan cek kredensial SMTP." 
         });
       }
       console.warn(`[EMAIL RETRY] Attempt ${attempts} failed: ${error.message}. Retrying in 1s...`);
+      // If it's a login error, clear the cached transporter to force re-creation with potentially updated env vars
+      if (error.message.includes("535") || error.code === "EAUTH") {
+        cachedTransporter = null;
+      }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
@@ -450,6 +491,25 @@ app.post("/api/payment/webhook", async (req, res) => {
   }
 });
 
+app.get("/api/smtp-diagnostic", (req, res) => {
+  const host = process.env.SMTP_HOST || "";
+  const user = process.env.SMTP_USER || "";
+  const pass = process.env.SMTP_PASS || "";
+  const port = process.env.SMTP_PORT || "587";
+  
+  res.json({
+    success: true,
+    config: {
+      host: host || "NOT SET",
+      user: user ? `${user.substring(0, 4)}***@${user.split('@')[1] || 'domain'}` : "NOT SET",
+      port: port,
+      passStatus: pass ? `SET (${pass.length} chars)` : "NOT SET",
+      isGmail: host.includes("gmail.com"),
+      passLooksLikeAppPassword: host.includes("gmail.com") ? pass.length === 16 : null
+    }
+  });
+});
+
 // Health check and DB Diagnostics
 app.get("/api/health", async (req, res) => {
   const dbStatus = db ? "connected" : "not initialized";
@@ -496,7 +556,12 @@ app.get("/api/db-test", async (req, res) => {
 const EVENT_CACHE_FILE = path.join(process.cwd(), 'cached_public_events.json');
 let cachedPublicEvents: any[] | null = null;
 let lastPublicEventsUpdate = 0;
-const PUBLIC_EVENTS_CACHE_TTL = 30 * 1000; // 30 Seconds cache for better responsiveness
+const PUBLIC_EVENTS_CACHE_TTL = 300 * 1000; // Increased to 5 minutes to save quota
+
+// Server-side cache for Global Settings to avoid excessive reads
+let cachedGlobalSettings: any = null;
+let lastGlobalSettingsUpdate = 0;
+const SETTINGS_CACHE_TTL = 300 * 1000; // 5 minutes
 
 // Initialize cache from disk on startup
 try {
@@ -512,10 +577,9 @@ try {
 
 app.get("/api/public-events", async (req, res) => {
   try {
-    // 1. Return Cache Immediately if Fresh (1 minute for responsiveness)
+    // 1. Return Cache Immediately if Fresh (5 minutes for heavy traffic)
     const now = Date.now();
-    if (cachedPublicEvents && cachedPublicEvents.length > 0 && (now - lastPublicEventsUpdate < 60000)) {
-      console.log(`[API] Serving fresh cache (${cachedPublicEvents.length} events)`);
+    if (cachedPublicEvents && cachedPublicEvents.length > 0 && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
       return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
     }
 

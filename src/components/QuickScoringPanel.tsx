@@ -45,7 +45,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
           else setCurrentEnd(prev => Math.max(0, prev - 1));
         }
         if (e.key === 'ArrowRight') {
-          if (mode === 'TARGET') setSelectedTarget(prev => Math.min(event.settings.totalTargets, prev + 1));
+          if (mode === 'TARGET') setSelectedTarget(prev => Math.min(event.settings?.totalTargets || 1, prev + 1));
           else setCurrentEnd(prev => prev + 1);
         }
       }
@@ -53,7 +53,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mode, selectedTarget, currentEnd, event.settings.totalTargets]);
+  }, [mode, selectedTarget, currentEnd, event.settings?.totalTargets]);
 
   // Local state for inputs to allow "Save All"
   const [localScores, setLocalScores] = useState<Record<string, { total: number; count6: number; count5: number }>>({});
@@ -195,7 +195,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     const archer = event.archers.find(a => a.id === archerId);
     if (!confirm(`Reset skor untuk ${archer?.name} di Rambahan ${currentEnd + 1}?`)) return;
     
-    const config = (event.settings.categoryConfigs || {})[archer?.category as CategoryType];
+    const config = (event.settings?.categoryConfigs || {})[archer?.category as CategoryType];
     const dummyArrows: (number | 'X')[] = new Array(config?.arrows || 6).fill(-1);
     
     const now = Date.now();
@@ -234,7 +234,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
     archersToDisplay.forEach(a => {
       const data = localScores[a.id];
       if (data && dirtyRows[a.id]) {
-        const config = (event.settings.categoryConfigs || {})[a.category as CategoryType];
+        const config = (event.settings?.categoryConfigs || {})[a.category as CategoryType];
         const dummyArrows: (number | 'X')[] = new Array(config?.arrows || 6).fill(0);
         
         scoresToSave.push({
@@ -261,7 +261,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
       
       if (mode === 'TARGET') {
         // Auto advance to next target
-        if (selectedTarget < event.settings.totalTargets) {
+        if (selectedTarget < (event.settings?.totalTargets || 0)) {
           setSelectedTarget(prev => prev + 1);
         } else if (currentEnd < 10) { // Arbitrary limit or use config
           setSelectedTarget(1);
@@ -369,7 +369,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                 <button onClick={() => setSelectedTarget(prev => Math.max(1, prev - 1))} className="p-2 bg-white rounded-lg text-slate-900"><ChevronLeft className="w-4 h-4" /></button>
                 <span className="px-4 text-xs font-black uppercase font-oswald text-slate-900">Bantalan {selectedTarget}</span>
-                <button onClick={() => setSelectedTarget(prev => Math.min(event.settings.totalTargets, prev + 1))} className="p-2 bg-white rounded-lg text-slate-900"><ChevronRight className="w-4 h-4" /></button>
+                <button onClick={() => setSelectedTarget(prev => Math.min(event.settings?.totalTargets || 1, prev + 1))} className="p-2 bg-white rounded-lg text-slate-900"><ChevronRight className="w-4 h-4" /></button>
              </div>
            ) : (
              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
@@ -420,7 +420,7 @@ const QuickScoringPanel: React.FC<Props> = ({ event, onSaveScore, onBack }) => {
       <div className="grid grid-cols-1 gap-4">
         {archersToDisplay.map((a, archerIdx) => {
           const data = localScores[a.id] || { total: 0, count6: 0, count5: 0 };
-          const config = (event.settings.categoryConfigs || {})[a.category as CategoryType];
+          const config = (event.settings?.categoryConfigs || {})[a.category as CategoryType];
           const isPuta = config?.targetType === TargetType.PUTA;
 
           return (

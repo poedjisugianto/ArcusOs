@@ -68,7 +68,7 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
           Aktivasi Turnamen
         </h2>
         <p className="text-slate-500 text-center mb-8">
-          Masukkan kode aktivasi yang telah dikirim ke <span className="font-semibold text-slate-700">{userEmail}</span> untuk mengaktifkan turnamen <span className="font-semibold text-slate-700">"{event.settings.tournamentName}"</span>.
+          Masukkan kode aktivasi yang telah dikirim ke <span className="font-semibold text-slate-700">{userEmail}</span> untuk mengaktifkan turnamen <span className="font-semibold text-slate-700">"{event.settings?.tournamentName}"</span>.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-6">

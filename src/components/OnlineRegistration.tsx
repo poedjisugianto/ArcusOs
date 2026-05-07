@@ -25,8 +25,8 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     return isNaN(parsed) ? 1 : parsed;
   });
   
-  const isRegistrationClosed = (event.settings.registrationDeadline && isValidDate(event.settings.registrationDeadline)) 
-    ? new Date() > new Date(event.settings.registrationDeadline) 
+  const isRegistrationClosed = (event.settings?.registrationDeadline && isValidDate(event.settings?.registrationDeadline)) 
+    ? new Date() > new Date(event.settings?.registrationDeadline) 
     : false;
 
   const [collectiveMembers, setCollectiveMembers] = useState<{name: string, category: string}[]>([]);
@@ -87,7 +87,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     }
   }, [globalSettings.paymentGatewayClientKey, globalSettings.paymentGatewayProvider, globalSettings.paymentGatewayIsProduction]);
 
-  const categories = event.settings.categoryConfigs && Object.keys(event.settings.categoryConfigs).length > 0
+  const categories = event.settings?.categoryConfigs && Object.keys(event.settings.categoryConfigs).length > 0
     ? Object.keys(event.settings.categoryConfigs).filter(cat => cat !== CategoryType.OFFICIAL) 
     : (Object.keys(CategoryType) as CategoryType[]).filter(cat => cat !== CategoryType.OFFICIAL);
 
@@ -107,7 +107,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     }
   };
 
-  const availableManualMethods = (event.settings.paymentMethods && event.settings.paymentMethods.length > 0)
+  const availableManualMethods = (event.settings?.paymentMethods && event.settings.paymentMethods.length > 0)
     ? event.settings.paymentMethods
     : [{ 
         id: 'global_default', 
@@ -171,9 +171,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       
       let totalPaid = 0;
       if (formData.regType === 'OFFICIAL') {
-        totalPaid = event.settings.officialFee || 0;
+        totalPaid = event.settings?.officialFee || 0;
       } else {
-        const config = event.settings.categoryConfigs?.[formData.category as CategoryType];
+        const config = event.settings?.categoryConfigs?.[formData.category as CategoryType];
         totalPaid = config?.registrationFee || 0;
       }
       
@@ -212,9 +212,9 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         
         let totalPaid = 0;
         if (member.category === CategoryType.OFFICIAL) {
-          totalPaid = event.settings.officialFee || 0;
+          totalPaid = event.settings?.officialFee || 0;
         } else {
-          const config = event.settings.categoryConfigs?.[member.category as CategoryType];
+          const config = event.settings?.categoryConfigs?.[member.category as CategoryType];
           totalPaid = config?.registrationFee || 0;
         }
         
@@ -264,7 +264,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         if (data.success && data.token && window.snap) {
           // @ts-ignore
           window.snap.pay(data.token, {
-            onSuccess: () => { onRegister(registrations.map(r => ({ ...r, status: 'PAID' }))); setStep(3); },
+            onSuccess: () => { onRegister(registrations.map(r => ({ ...r, status: 'APPROVED' }))); setStep(3); },
             onPending: () => { onRegister(registrations); setStep(3); },
             onError: () => toast.error("Pembayaran Gagal"),
           });
@@ -306,7 +306,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             </button>
             <div className="flex flex-col">
               <h1 className="text-xs md:text-lg font-black font-oswald uppercase italic text-slate-900 tracking-tighter leading-none">REGISTRASI</h1>
-              <p className="text-[6px] md:text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] italic truncate max-w-[100px] md:max-w-[200px]">{event.settings.tournamentName}</p>
+              <p className="text-[6px] md:text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] italic truncate max-w-[100px] md:max-w-[200px]">{event.settings?.tournamentName}</p>
             </div>
           </div>
           <button onClick={onViewParticipants} className="px-3 py-2 bg-slate-900 text-white rounded-lg text-[7px] md:text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
@@ -342,7 +342,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                 <p className="text-[9px] font-bold text-slate-400 italic">Pastikan nama Anda sudah muncul di daftar peserta.</p>
               </div>
 
-              {event.settings.waGroupLink && (
+              {event.settings?.waGroupLink && (
                 <div className="pt-4 border-t border-slate-100 space-y-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">GABUNG GRUP WHATSAPP</p>
                   <a 
@@ -573,7 +573,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           <div className="bg-white p-8 rounded-3xl w-full max-w-sm text-center space-y-6 shadow-2xl">
             <h3 className="text-2xl font-black font-oswald italic">SIMULASI PEMBAYARAN</h3>
             <img src={simulatedQR || ""} alt="QR" className="w-48 h-48 mx-auto border-4 border-slate-100 rounded-2xl" />
-            <button onClick={() => completeSimulation({ id: 'sim_' + Date.now(), registrationNo: 'SIM-123', name: formData.name, email: formData.email, club: formData.club, category: formData.category, totalPaid: 0, platformFee: 0, status: 'PAID', paymentType: 'GATEWAY', timestamp: Date.now() })} className="w-full py-4 bg-emerald-500 text-white rounded-xl font-black uppercase">Berhasil (Mock)</button>
+            <button onClick={() => completeSimulation({ id: 'sim_' + Date.now(), registrationNo: 'SIM-123', name: formData.name, email: formData.email, club: formData.club, category: formData.category, totalPaid: 0, platformFee: 0, status: 'APPROVED', paymentType: 'GATEWAY', timestamp: Date.now() })} className="w-full py-4 bg-emerald-500 text-white rounded-xl font-black uppercase">Berhasil (Mock)</button>
             <button onClick={() => setIsSimulatingPayment(false)} className="text-slate-400 text-xs font-bold uppercase">Batal</button>
           </div>
         </div>

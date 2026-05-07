@@ -185,8 +185,15 @@ export function App() {
       };
 
       const fetchJobs: Promise<any>[] = [
-        // 1. Fetch System Config
-        safeGetDoc(doc(db, 'systemConfigs', 'global')).catch(() => null),
+        // 1. Fetch System Config (Optimized with Server Cache)
+        fetch('/api/settings')
+          .then(res => res.json())
+          .then(data => ({
+            exists: () => true,
+            data: () => data,
+            __is_api_mock: true
+          }))
+          .catch(() => safeGetDoc(doc(db, 'systemConfigs', 'global'))),
         
       // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         ((view === 'LANDING' || view.startsWith('PUBLIC_')) 
@@ -462,14 +469,11 @@ export function App() {
     });
   }, [appState.currentUser?.id, appState.activeEventId]);
 
-  // AUTO-SYNC PENDING CHANGES: Every 5-10 seconds for Blaze plan speed
+  // AUTO-SYNC PENDING CHANGES: Removed setInterval, syncCloudData handles debouncing
   useEffect(() => {
-    if (!hasPendingChanges || isSyncing) return;
-    const interval = setInterval(() => {
-      console.log("Auto-syncing pending changes...");
+    if (hasPendingChanges && !isSyncing) {
       syncCloudData(false);
-    }, 8000); 
-    return () => clearInterval(interval);
+    }
   }, [hasPendingChanges, isSyncing]);
 
   const [isCheckingLink, setIsCheckingLink] = useState(false);
@@ -621,12 +625,6 @@ export function App() {
     localStorage.setItem('ARCUS_CURRENT_VIEW', view);
   }, [view]);
 
-  useEffect(() => {
-    if (!isSyncingFromCloud.current && appState.isDataLoaded) {
-      setHasPendingChanges(true);
-    }
-  }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
-
   const syncCloudData = async (manual = false, overrideState?: AppState) => {
     // ABORT if: no database, offline, quota exceeded (unless manual), or NO LOGGED IN USER/SCORER (prevents ghost writes)
     if (!db || !isOnline || (quotaExceeded && !manual) || (!appStateRef.current?.currentUser && !appStateRef.current?.activeScorer)) return;
@@ -638,7 +636,7 @@ export function App() {
 
     // Use overrideState if provided (for immediate syncs), otherwise use latest state from ref
     const state = overrideState || appStateRef.current;
-    if (!state) return;
+    if (!state || (!hasPendingChanges && !manual && !overrideState)) return;
     
     const activeEvent = state.activeEventId ? state.events.find(e => e.id === state.activeEventId) : null;
     
@@ -666,6 +664,25 @@ export function App() {
     isCurrentlySyncing.current = true;
     setIsSyncing(true);
     try {
+      // 0. Double check if there's actually anything to sync to save quota
+      const lastSync = localStorage.getItem('last_cloud_sync_hash');
+      const currentHash = JSON.stringify({
+        settings: state.globalSettings,
+        profile: state.currentUser?.id,
+        activeEventId: activeEvent?.id,
+        eventData: activeEvent ? {
+          archers: activeEvent.archers.length,
+          regs: activeEvent.registrations.length,
+          scores: activeEvent.scores.length
+        } : null
+      });
+
+      if (lastSync === currentHash && !manual) {
+        console.log("Sync skipped: No structural changes detected.");
+        setHasPendingChanges(false);
+        return;
+      }
+
       const isPrivileged = !!(
         state.currentUser?.isSuperAdmin || 
         state.currentUser?.role === 'SUPERADMIN' || 
@@ -815,6 +832,7 @@ export function App() {
       }
       
       setLastSync(new Date());
+      localStorage.setItem('last_cloud_sync_hash', currentHash);
       setHasPendingChanges(false);
       if (manual) pushNotification("Sinkronisasi Selesai", "Data telah aman di cloud.", "SUCCESS");
     } catch (err: any) { 
@@ -1094,10 +1112,10 @@ export function App() {
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
     
     if (isPublicMobileLive || adminViews.includes(view)) {
-      // Significantly increase polling intervals for mobile public users to save quota
-      // Mobile: 2 minutes per update (plenty for random viewers)
-      // Admin/Live: 30 seconds
-      const pollInterval = isPublicMobileLive ? 120000 : 30000;
+      // Significantly increase polling intervals to save quota
+      // Mobile Public: 3 minutes per update
+      // Admin/Live: 60 seconds
+      const pollInterval = isPublicMobileLive ? 180000 : 60000;
       
       const interval = setInterval(() => {
         if (document.visibilityState === 'visible') {
@@ -1199,7 +1217,7 @@ export function App() {
 
   const handleShare = (id: string, name?: string) => {
     const event = appState.events.find(e => e.id === id);
-    const eventName = name || event?.settings.tournamentName || 'Tournament';
+    const eventName = name || event?.settings?.tournamentName || 'Tournament';
     
     // Gunakan origin jika bukan localhost, jika localhost coba gunakan Fallback Production URL jika ada
     const currentOrigin = window.location.origin;
@@ -1621,7 +1639,7 @@ export function App() {
                   settings: { ...event.settings, isActivated: true } 
                 });
                 setView('EVENT_ADMIN');
-                pushNotification("Aktivasi Berhasil", `Turnamen "${event.settings.tournamentName}" telah diaktifkan dan sekarang publik.`, "SUCCESS");
+                pushNotification("Aktivasi Berhasil", `Turnamen "${event.settings?.tournamentName}" telah diaktifkan dan sekarang publik.`, "SUCCESS");
                 
                 // Force comprehensive sync to ensure everyone else sees it
                 setTimeout(() => syncCloudData(true), 800);
@@ -1640,7 +1658,7 @@ export function App() {
                     body: JSON.stringify({
                       email: appState.currentUser!.email,
                       subject: "Aktivasi Turnamen ARCUS (Kirim Ulang)",
-                      message: `Halo ${appState.currentUser!.name},\n\nKode aktivasi untuk turnamen "${event.settings.tournamentName}" adalah: ${event.settings.activationCode}\n\nSilakan masukkan kode ini di dashboard untuk mengaktifkan turnamen Anda.`
+                      message: `Halo ${appState.currentUser!.name},\n\nKode aktivasi untuk turnamen "${event.settings?.tournamentName}" adalah: ${event.settings?.activationCode}\n\nSilakan masukkan kode ini di dashboard untuk mengaktifkan turnamen Anda.`
                     })
                   });
                   const result = await response.json();
@@ -1733,7 +1751,7 @@ export function App() {
                 }
               }).catch((err) => {
                 console.error("Failed to send activation email", err);
-                pushNotification("Gagal Kirim Email", "Gagal mengirim kode aktivasi otomatis. Gunakan tombol Kirim Ulang.", "WARNING");
+                pushNotification("Gagal Kirim Email", err.message || "Gagal mengirim kode aktivasi otomatis. Gunakan tombol Kirim Ulang.", "WARNING");
               });
             }} 
             onCreatePractice={(n, isFree) => { 
@@ -1835,7 +1853,7 @@ export function App() {
                     <span className="bg-arcus-red text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest italic animate-pulse">Live Console</span>
                     <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest">ARCUS TOUR-OS v2.0</span>
                   </div>
-                  <h2 className="text-xl md:text-3xl lg:text-4xl font-black font-oswald uppercase italic leading-none tracking-tighter text-slate-900 drop-shadow-sm">{activeEvent.settings.tournamentName}</h2>
+                  <h2 className="text-xl md:text-3xl lg:text-4xl font-black font-oswald uppercase italic leading-none tracking-tighter text-slate-900 drop-shadow-sm">{activeEvent?.settings?.tournamentName}</h2>
                   <p className="flex items-center gap-2 text-[9px] md:text-[11px] font-bold text-slate-500 italic">
                     <Activity className="w-2.5 h-2.5 text-emerald-500" />
                     {appState.activeScorer ? `Petugas: ${appState.activeScorer.name}` : 'Akses Penuh: Penyelenggara'}
@@ -1968,8 +1986,8 @@ export function App() {
         {view === 'ARCHERS' && activeEvent && (
           <ArcherList 
             archers={(activeEvent.archers || []).filter(a => a.category !== CategoryType.OFFICIAL)} 
-            archersPerTarget={activeEvent.settings.archersPerTarget} 
-            totalTargets={activeEvent.settings.totalTargets} 
+            archersPerTarget={activeEvent.settings?.archersPerTarget || 4} 
+            totalTargets={activeEvent.settings?.totalTargets || 20} 
             settings={activeEvent.settings}
             eventId={activeEvent.id}
             globalSettings={appState.globalSettings}
@@ -2037,24 +2055,42 @@ export function App() {
             onApproveRegistration={async (regId) => { 
           const reg = activeEvent.registrations.find(r => r.id === regId); 
           if (reg) { 
+            const isOfficial = reg.category === 'OFFICIAL';
             const existingArcher = activeEvent.archers.find(a => a.id === regId);
-            let finalPin = '';
-            if (existingArcher) {
-              finalPin = existingArcher.pin;
-              // Just update status if already an archer
-              handleUpdateEvent(activeEvent.id, {
-                archers: activeEvent.archers.map(a => a.id === regId ? { ...a, status: 'APPROVED' } : a),
-                registrations: activeEvent.registrations.map(r => r.id === regId ? { ...r, status: 'APPROVED' } : r)
-              });
+            const existingOfficial = (activeEvent.officials || []).find(o => o.id === regId);
+            
+            let updatePayload: Partial<ArcheryEvent> = {
+              registrations: activeEvent.registrations.map(r => r.id === regId ? { ...r, status: 'APPROVED' } : r)
+            };
+
+            if (isOfficial) {
+              // Add/Update in officials
+              const newOfficial = { ...reg, status: 'APPROVED' };
+              if (existingOfficial) {
+                updatePayload.officials = (activeEvent.officials || []).map(o => o.id === regId ? { ...o, status: 'APPROVED' } : o);
+              } else {
+                updatePayload.officials = [...(activeEvent.officials || []), newOfficial as any];
+              }
+              // Remove from archers if mistaken
+              if (existingArcher) {
+                updatePayload.archers = activeEvent.archers.filter(a => a.id !== regId);
+              }
             } else {
-              // Move/Add to archers if not there
-              finalPin = Math.floor(1000 + Math.random() * 9000).toString();
-              const newArcher: Archer = { ...reg, status: 'APPROVED', targetNo: 0, position: 'A', wave: 1, pin: finalPin }; 
-              handleUpdateEvent(activeEvent.id, { 
-                registrations: activeEvent.registrations.map(r => r.id === regId ? { ...r, status: 'APPROVED' } : r), 
-                archers: [...activeEvent.archers, newArcher] 
-              }); 
+              // Add/Update in archers
+              if (existingArcher) {
+                updatePayload.archers = activeEvent.archers.map(a => a.id === regId ? { ...a, status: 'APPROVED' } : a);
+              } else {
+                const finalPin = Math.floor(1000 + Math.random() * 9000).toString();
+                const newArcher: Archer = { ...reg, status: 'APPROVED', targetNo: 0, position: 'A', wave: 1, pin: finalPin }; 
+                updatePayload.archers = [...activeEvent.archers, newArcher];
+              }
+              // Remove from officials if mistaken
+              if (existingOfficial) {
+                updatePayload.officials = (activeEvent.officials || []).filter(o => o.id !== regId);
+              }
             }
+
+            handleUpdateEvent(activeEvent.id, updatePayload); 
 
             // Send Confirmation Email
             try {
@@ -2063,15 +2099,19 @@ export function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   email: reg.email,
-                  subject: `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}`,
-                  message: `Halo ${reg.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah DISETUJUI.\n\nDetail Pendaftaran:\n- Kategori: ${reg.category}\n- Klub: ${reg.club}\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nLihat Live Score: ${window.location.origin}?event=${activeEvent.id}&view=live\n\nSelamat bertanding!`
+                  subject: `Konfirmasi Pendaftaran: ${activeEvent?.settings?.tournamentName}`,
+                  message: `Halo ${reg.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah DISETUJUI.\n\nDetail Pendaftaran:\n- Kategori: ${reg.category}\n- Klub: ${reg.club}\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent?.id}&view=entry-list\n\nLihat Live Score: ${window.location.origin}?event=${activeEvent?.id}&view=live\n\nSelamat bertanding!`
                 })
               });
-              if (response.ok) {
+              const result = await response.json();
+              if (response.ok && result.success) {
                 pushNotification("Email Terkirim", `Konfirmasi pendaftaran telah dikirim ke ${reg.email}`, "SUCCESS");
+              } else {
+                pushNotification("Email Gagal", result.message || "Gagal mengirim email konfirmasi.", "WARNING");
               }
-            } catch (err) {
+            } catch (err: any) {
               console.error("Failed to send confirmation email", err);
+              pushNotification("Email Gagal", err.message, "WARNING");
             }
           } 
         }} onPayPlatformFee={(id) => handleUpdateEvent(id, { settings: { ...activeEvent.settings, platformFeePaidToOwner: true } })} onBack={() => setView('EVENT_ADMIN')} />
@@ -2167,16 +2207,22 @@ export function App() {
             if (regs.length <= 5) {
               for (const r of regs) {
                 const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
-                const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent.settings.tournamentName}` : `Pendaftaran Diterima: ${activeEvent.settings.tournamentName}`;
+                const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent?.settings?.tournamentName}` : `Pendaftaran Diterima: ${activeEvent?.settings?.tournamentName}`;
                 const message = isAutoConfirm 
-                  ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent.settings.tournamentName}".\n\nPendaftaran Anda telah VERIFIKASI.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent.id}&view=entry-list\n\nSelamat bertanding!`
-                  : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent.settings.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
+                  ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent?.settings?.tournamentName}".\n\nPendaftaran Anda telah VERIFIKASI.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent?.id}&view=entry-list\n\nSelamat bertanding!`
+                  : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
 
-                await fetch('/api/send-email-otp', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: r.email, subject, message })
-                }).catch(e => console.warn("Email failed", e));
+                try {
+                  const emailRes = await fetch('/api/send-email-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: r.email, subject, message })
+                  });
+                  const emailData = await emailRes.json();
+                  if (!emailData.success) console.warn("Email individual failed", emailData.message);
+                } catch (e) {
+                  console.warn("Email fetch failed", e);
+                }
               }
             }
           } catch (error: any) {

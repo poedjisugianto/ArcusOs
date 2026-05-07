@@ -35,7 +35,7 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
 
   const getEventsForDay = (day: number) => {
     return events.filter(event => {
-      const dateStr = event.settings.eventDate;
+      const dateStr = event.settings?.eventDate;
       if (!dateStr || !isValidDate(dateStr)) return false;
       const eventDate = new Date(dateStr);
       return eventDate.getFullYear() === year && 
@@ -45,7 +45,7 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
   };
 
   const monthlyEvents = events.filter(e => {
-    const dStr = e.settings.eventDate;
+    const dStr = e.settings?.eventDate;
     if (!dStr || !isValidDate(dStr)) return false;
     const d = new Date(dStr);
     return d.getMonth() === month && d.getFullYear() === year;
@@ -107,7 +107,7 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
                     onClick={() => onViewInfo(event.id)}
                     className="text-[7px] md:text-[8px] font-black uppercase tracking-tight bg-slate-900 text-white p-1 rounded border-l-2 border-arcus-red truncate cursor-pointer hover:bg-arcus-red transition-all"
                   >
-                    {event.settings.tournamentName}
+                    {event.settings?.tournamentName}
                   </div>
                 ))}
               </div>
@@ -128,16 +128,16 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h5 className="text-xs font-black font-oswald uppercase italic tracking-tight text-slate-900 group-hover:text-arcus-red transition-colors truncate">
-                    {event.settings.tournamentName}
+                    {event.settings?.tournamentName}
                   </h5>
                   <div className="flex items-center gap-3 mt-1.5">
                     <div className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">
                        <Clock className="w-3 h-3" />
-                       {event.settings.eventDate}
+                       {event.settings?.eventDate}
                     </div>
                     <div className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest truncate">
                        <MapPin className="w-3 h-3" />
-                       {event.settings.location}
+                       {event.settings?.location}
                     </div>
                   </div>
                   
@@ -150,10 +150,10 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
                     </button>
                     <a 
                       href={generateGoogleCalendarLink({
-                        title: event.settings.tournamentName,
-                        description: event.settings.description || '',
-                        location: event.settings.location || '',
-                        startDate: event.settings.eventDate || ''
+                        title: event.settings?.tournamentName || '',
+                        description: event.settings?.description || '',
+                        location: event.settings?.location || '',
+                        startDate: event.settings?.eventDate || ''
                       })}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -163,10 +163,10 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
                     </a>
                     <button 
                       onClick={() => generateICalFile({
-                        title: event.settings.tournamentName,
-                        description: event.settings.description || '',
-                        location: event.settings.location || '',
-                        startDate: event.settings.eventDate || ''
+                        title: event.settings?.tournamentName || '',
+                        description: event.settings?.description || '',
+                        location: event.settings?.location || '',
+                        startDate: event.settings?.eventDate || ''
                       })}
                       className="px-4 py-1.5 bg-white border border-slate-100 text-slate-400 rounded-lg text-[8px] font-black uppercase tracking-widest hover:border-arcus-red hover:text-arcus-red transition-all flex items-center gap-1"
                     >

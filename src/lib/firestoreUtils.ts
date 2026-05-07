@@ -47,7 +47,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-export const SHARD_MAX_SIZE = 800000; // 800KB
+export const SHARD_MAX_SIZE = 500000; // 500KB - more safe for Firestore overhead
 
 export function shardData(data: any): string[] {
   const json = JSON.stringify(data);

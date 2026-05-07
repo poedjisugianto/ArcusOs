@@ -27,27 +27,43 @@ try {
 
 // Initialize Firebase Admin lazily
 let adminApp: any = null;
-if (!getApps().length && firebaseConfig.projectId) {
+if (!getApps().length) {
   try {
-    adminApp = initializeApp({
-      projectId: firebaseConfig.projectId,
-    }, "admin-app"); // Use a named app to avoid collisions
-    console.log("[FIREBASE-ADMIN] App initialized for project:", firebaseConfig.projectId);
+    // Attempt no-args initialization first to use ambient credentials
+    adminApp = initializeApp();
+    console.log("[FIREBASE-ADMIN] App initialized using ambient credentials.");
   } catch (err) {
-    console.error("[FIREBASE-ADMIN] Initialization error:", err);
+    if (firebaseConfig.projectId) {
+      try {
+        adminApp = initializeApp({
+          projectId: firebaseConfig.projectId
+        });
+        console.log("[FIREBASE-ADMIN] App initialized with projectId from config:", firebaseConfig.projectId);
+      } catch (innerErr) {
+        console.error("[FIREBASE-ADMIN] Initialization error (config):", innerErr);
+      }
+    } else {
+      console.error("[FIREBASE-ADMIN] Initialization error (ambient):", err);
+    }
   }
 } else {
-  adminApp = getApps().find(a => a.name === "admin-app") || getApps()[0];
+  adminApp = getApps()[0];
 }
 
-// Note: databaseId needs to be specified correctly
-// Using the correct pattern for secondary databases in admin SDK
-const db = (adminApp && firebaseConfig.projectId) 
-  ? getFirestore(adminApp, firebaseConfig.firestoreDatabaseId || "(default)") 
-  : (firebaseConfig.projectId ? getFirestore() : null);
+// Determine actual project ID being used
+const effectiveProjectId = adminApp?.options?.projectId || firebaseConfig.projectId || process.env.GOOGLE_CLOUD_PROJECT;
+
+// Ensure we use the correct database ID
+const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") 
+  ? firebaseConfig.firestoreDatabaseId 
+  : undefined;
+
+const db = (adminApp) 
+  ? (dbId ? getFirestore(adminApp, dbId) : getFirestore(adminApp))
+  : null;
 
 if (db) {
-  console.log("[FIREBASE-ADMIN] Firestore connected to database:", firebaseConfig.firestoreDatabaseId || "(default)");
+  console.log("[FIREBASE-ADMIN] Firestore connected. Project:", effectiveProjectId, "Database:", dbId || "(default)");
 }
 
 // Transformation helper for Firestore REST API
@@ -83,26 +99,33 @@ const HARD_FALLBACK_API_RESPONSE: any[] = [];
 // Helper to get global settings from Firestore
 const getGlobalSettings = async () => {
   try {
-    // Try REST first as it's often more reliable in these sandboxed environments for settings
+    // 1. Try Admin SDK first if available as it is typically more robust in this environment
+    if (db) {
+      try {
+        const docSnap = await db.collection('systemConfigs').doc('global').get();
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          if (data && data.data) return data.data;
+          return data;
+        }
+      } catch (adminErr: any) {
+        console.warn("[ADMIN-SDK] Settings fetch error:", adminErr.message);
+      }
+    }
+
+    // 2. Fallback to REST API
     const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/systemConfigs/global?key=${firebaseConfig.apiKey}`;
     try {
       const response = await axios.get(url, { timeout: 4000 });
       if (response.data && response.data.fields) {
         const transformed = transformRestFields(response.data.fields);
-        return transformed.data;
+        return transformed.data || transformed;
       }
-    } catch (restErr) {
-       // fallback silently to admin
+    } catch (restErr: any) {
+       console.warn("[REST-API] Settings fetch error:", restErr.response?.data || restErr.message);
     }
-
-    if (db) {
-       const docSnap = await db.collection('systemConfigs').doc('global').get();
-       if (docSnap.exists) {
-         return docSnap.data()?.data;
-       }
-    }
-  } catch (err) {
-    console.warn("Global Settings fetch failed:", (err as Error).message);
+  } catch (err: any) {
+    console.warn("Global Settings fetch failed entirely:", err.message);
   }
   return null;
 };
@@ -427,9 +450,46 @@ app.post("/api/payment/webhook", async (req, res) => {
   }
 });
 
-// Health check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "ARCUS API is running" });
+// Health check and DB Diagnostics
+app.get("/api/health", async (req, res) => {
+  const dbStatus = db ? "connected" : "not initialized";
+  res.json({ 
+    status: "ok", 
+    message: "ARCUS API is running",
+    db: dbStatus,
+    projectId: firebaseConfig.projectId,
+    databaseId: firebaseConfig.firestoreDatabaseId || "(default)"
+  });
+});
+
+app.get("/api/db-test", async (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  try {
+    // Try to list collections to see if we have broad access
+    const collections = await db.listCollections();
+    const collectionIds = collections.map((c: any) => c.id);
+    
+    // Try to get a specific document
+    const doc = await db.collection('test').doc('connection').get();
+    
+    return res.json({ 
+      success: true, 
+      exists: doc.exists, 
+      path: doc.ref.path,
+      collections: collectionIds,
+      projectId: firebaseConfig.projectId,
+      databaseId: firebaseConfig.firestoreDatabaseId || "(default)"
+    });
+  } catch (err: any) {
+    console.error("[DB-TEST] Full Error Object:", err);
+    return res.status(500).json({ 
+      success: false, 
+      error: err.message,
+      code: err.code,
+      details: err.details,
+      stack: err.stack
+    });
+  }
 });
 
 // Global Cache for Public Events with High Resiliency
@@ -463,8 +523,9 @@ app.get("/api/public-events", async (req, res) => {
     let fetchSuccessful = false;
     
     // Primary: REST API 
-    console.log(`[API] Fetching public events for project: ${firebaseConfig.projectId}`);
+    console.log(`[API] Fetching public events for project: ${firebaseConfig.projectId}, DB: ${firebaseConfig.firestoreDatabaseId || "(default)"}`);
     const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
+    console.log(`[API] REST URL: ${url.replace(firebaseConfig.apiKey, "KEY_HIDDEN")}`);
     try {
       const response = await axios.get(url, { timeout: 10000 });
       if (response.data && response.data.documents) {
@@ -472,7 +533,7 @@ app.get("/api/public-events", async (req, res) => {
           const dataFromRest = transformRestFields(doc.fields);
           if (dataFromRest) {
             const id = doc.name.split('/').pop();
-            const status = (dataFromRest.status || dataFromRest.data?.status || 'ACTIVE').toUpperCase();
+            const status = (dataFromRest.status || dataFromRest.data?.status || (dataFromRest.settings?.status) || 'ACTIVE').toUpperCase();
             // Don't show DRAFT events to public
             if (status !== 'DRAFT') {
               events.push({ id, ...dataFromRest });
@@ -482,20 +543,33 @@ app.get("/api/public-events", async (req, res) => {
         fetchSuccessful = true;
       }
     } catch (err: any) {
-      console.error("[REST-API] Live Fetch Error:", err.response?.data || err.message);
+      const errorData = err.response?.data;
+      console.error("[REST-API] Live Fetch Error:", JSON.stringify(errorData || err.message));
+      // If 403, it might be rule-based or API restriction
     }
 
     // Secondary: Admin SDK Fallback (If REST fails or returns empty)
-    if ((!fetchSuccessful || events.length === 0) && db) {
+    if (db) {
       try {
-        console.log("[API] Falling back to Admin SDK for events fetch...");
-        // Broad fetch without ordering
-        const snapshot = await db.collection('events').where('status', '!=', 'DRAFT').limit(100).get();
+        console.log("[API] Attempting Admin SDK events fetch...");
+        const snapshot = await db.collection('events').limit(100).get();
+        const adminEvents: any[] = [];
         snapshot.forEach((doc: any) => {
           const d = doc.data();
-          events.push({ id: doc.id, ...d });
+          const status = (d.status || d.data?.status || (d.settings?.status) || 'ACTIVE').toUpperCase();
+          if (status !== 'DRAFT') {
+            adminEvents.push({ id: doc.id, ...d });
+          }
         });
-        fetchSuccessful = true;
+        
+        // Merge or replace based on what's more reliable
+        if (adminEvents.length > 0) {
+           // If REST failed or returned less, use Admin data
+           if (!fetchSuccessful || adminEvents.length > events.length) {
+              events = adminEvents;
+              fetchSuccessful = true;
+           }
+        }
       } catch (err: any) {
         console.error("[ADMIN-SDK] Live Fetch Error:", err.message);
       }

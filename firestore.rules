@@ -60,7 +60,7 @@ service cloud.firestore {
       allow read: if true; 
       allow create: if isSignedIn();
       allow update: if isAdmin() || 
-                      (isSignedIn() && (existing().userId == request.auth.uid || existing().ownerId == request.auth.uid)) ||
+                      (isSignedIn() && (resource == null || existing().userId == request.auth.uid || existing().ownerId == request.auth.uid)) ||
                       isPublicRegistration();
       allow delete: if isAdmin() || 
                       (isSignedIn() && (existing().userId == request.auth.uid || existing().ownerId == request.auth.uid));
@@ -72,8 +72,14 @@ service cloud.firestore {
 
       match /shards/{shardId} {
         allow read: if true;
-        allow write: if isAdmin() || (isSignedIn() && (get(/databases/$(database)/documents/events/$(eventId)).data.userId == request.auth.uid || get(/databases/$(database)/documents/events/$(eventId)).data.ownerId == request.auth.uid));
+        allow write: if isAdmin() || 
+                       (isSignedIn() && (get(/databases/$(database)/documents/events/$(eventId)).data.userId == request.auth.uid || 
+                                       get(/databases/$(database)/documents/events/$(eventId)).data.ownerId == request.auth.uid));
       }
+    }
+
+    match /events/{document=**} {
+      allow read: if true;
     }
 
     // --- System Configs ---

@@ -9,7 +9,7 @@ import {
   AlertTriangle, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole } from './types';
+import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole, TournamentSettings } from './types';
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -280,12 +280,18 @@ export function App() {
       if (eventsSnap?.docs) {
         cloudEvents = eventsSnap.docs.map((doc: any) => {
           const e = doc.data();
-          // Support both API cache objects and real Firestore docs
           const eventId = e.id || doc.id;
           const ownerId = e.userId || e.ownerId;
-          const status = e.status || e.data?.status || 'ACTIVE'; // Default to ACTIVE for public view
+          const status = e.status || e.data?.status || (e.settings?.status) || 'ACTIVE';
           
-          let eventObj = { ...e, id: eventId, ownerId: ownerId, status: status };
+          // CRITICAL: If the document has a 'data' wrapper (from our sharding logic), unwrap it first!
+          // This prevents duplicating fields at root and inside 'data'
+          let eventObj: any = { id: eventId, ownerId, status, isSharded: !!e.isSharded };
+          if (e.data && typeof e.data === 'object' && !Array.isArray(e.data)) {
+            eventObj = { ...eventObj, ...e.data };
+          } else {
+            eventObj = { ...eventObj, ...e };
+          }
           
           // Reconstruct shards if this is the sharded active event
           if (shardsSnap?.docs && eventId === appState.activeEventId && (e.isSharded || e.data?.isSharded)) {
@@ -317,10 +323,18 @@ export function App() {
                     }
                   }
                 }
-                eventObj[key] = mergeShards(shards);
+                const merged = mergeShards(shards);
+                if (key.startsWith('settings_')) {
+                  const settingsKey = key.replace('settings_', '') as keyof TournamentSettings;
+                  if (eventObj.settings) {
+                    (eventObj.settings as any)[settingsKey] = merged;
+                  }
+                } else {
+                  eventObj[key] = merged;
+                }
               } catch (parseError: any) {
                 console.error(`Failed to reconstruct sharded key ${key}:`, parseError.message);
-                eventObj[key] = []; // Fallback to empty if corrupted
+                if (!key.startsWith('settings_')) eventObj[key] = []; 
               }
             });
           }
@@ -614,8 +628,8 @@ export function App() {
   }, [appState.events, appState.globalSettings, appState.currentUser, appState.isDataLoaded]);
 
   const syncCloudData = async (manual = false, overrideState?: AppState) => {
-    // ABORT if: no database, offline, quota exceeded (unless manual), or NO LOGGED IN USER (prevents ghost writes)
-    if (!db || !isOnline || (quotaExceeded && !manual) || !appStateRef.current?.currentUser) return;
+    // ABORT if: no database, offline, quota exceeded (unless manual), or NO LOGGED IN USER/SCORER (prevents ghost writes)
+    if (!db || !isOnline || (quotaExceeded && !manual) || (!appStateRef.current?.currentUser && !appStateRef.current?.activeScorer)) return;
     
     // Clear any pending sync to debounce
     if (syncTimeoutRef.current) {
@@ -652,7 +666,13 @@ export function App() {
     isCurrentlySyncing.current = true;
     setIsSyncing(true);
     try {
-      const isPrivileged = !!(state.currentUser?.isSuperAdmin || state.currentUser?.role === 'SUPERADMIN' || state.currentUser?.email === 'poedji.sugianto@gmail.com' || state.currentUser?.email === 'admin@arcus.id');
+      const isPrivileged = !!(
+        state.currentUser?.isSuperAdmin || 
+        state.currentUser?.role === 'SUPERADMIN' || 
+        state.currentUser?.email === 'poedji.sugianto@gmail.com' || 
+        state.currentUser?.email === 'admin@arcus.id' ||
+        (state.activeScorer && state.activeScorer.eventId === activeEvent?.id)
+      );
 
       // 1. Sync Global Settings (Only SuperAdmin)
       if (state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com') {
@@ -679,23 +699,73 @@ export function App() {
       // 3. Sync Active Event (Only if authorized)
       if (activeEvent && isPrivileged) {
         try {
-          // STRATEGY: We shard the big arrays to avoid the 1MB document limit
-          const strippedEvent: any = { ...activeEvent };
-          const arraysToShard = ['archers', 'registrations', 'scores', 'scoreLogs', 'matches'];
+          // STRATEGY: We dynamically detect and shard ANY field that is too large or potentially heavy
+          const rawEvent: any = JSON.parse(JSON.stringify(activeEvent)); 
+          // CLEANUP: Ensure we don't have a nested 'data' field from a previous sync bug
+          if (rawEvent.data && typeof rawEvent.data === 'object' && !Array.isArray(rawEvent.data)) {
+            const nestedData = rawEvent.data;
+            delete rawEvent.data;
+            Object.assign(rawEvent, nestedData);
+          }
           
-          const shardsMap: Record<string, string[]> = {};
+          const strippedEvent: any = { ...rawEvent };
           const shardCounts: Record<string, number> = {};
-          arraysToShard.forEach(key => {
-            if (strippedEvent[key]) {
-              shardsMap[key] = shardData(strippedEvent[key]);
-              shardCounts[key] = shardsMap[key].length;
-              delete strippedEvent[key];
-            } else {
-              shardCounts[key] = 0;
+          const shardsMap: Record<string, string[]> = {};
+          
+          const SHARD_THRESHOLD = 1500; // 1.5KB - extremely aggressive to avoid document limit
+          
+          // 1. Shard any large root field
+          Object.keys(strippedEvent).forEach(key => {
+            // Keep core identity and status fields at root for queryability
+            const protectedKeys = ['id', 'status', 'userId', 'ownerId', 'localUpdatedAt', 'isSharded', 'shardCounts', 'settings'];
+            if (protectedKeys.includes(key)) return;
+
+            const val = strippedEvent[key];
+            if (val) {
+              const str = (typeof val === 'string') ? val : JSON.stringify(val);
+              if (str.length > SHARD_THRESHOLD) { 
+                shardsMap[key] = shardData(val);
+                shardCounts[key] = shardsMap[key].length;
+                delete strippedEvent[key];
+              }
             }
           });
 
-          // 3a. Save core event metadata only if basically changed
+          // 2. Also shard heavy sub-fields in settings (> 2KB)
+          if (strippedEvent.settings) {
+            Object.keys(strippedEvent.settings).forEach(key => {
+              const forbiddenSettings = ['tournamentName', 'organizerId', 'isPractice', 'status', 'isActivated', 'isConfirmed', 'isFreeEvent'];
+              if (forbiddenSettings.includes(key)) return;
+
+              const val = strippedEvent.settings[key];
+              if (val) {
+                const str = (typeof val === 'string') ? val : JSON.stringify(val);
+                if (str.length > SHARD_THRESHOLD) {
+                  const shardKey = `settings_${key}`;
+                  shardsMap[shardKey] = shardData(val);
+                  shardCounts[shardKey] = shardsMap[shardKey].length;
+                  delete strippedEvent.settings[key];
+                }
+              }
+            });
+          }
+
+          // Debug and Emergency Size Guard
+          const finalTotalSize = JSON.stringify(strippedEvent).length;
+          if (finalTotalSize > 800000) {
+             console.error(`[SYNC-CRITICAL] Object still too large after sharding: ${finalTotalSize} bytes. Purging non-essential fields to prevent sync failure.`);
+             // Emergency purge of ANY large field left
+             Object.keys(strippedEvent).forEach(k => {
+               if (['settings', 'id', 'status'].includes(k)) return;
+               const fieldStr = JSON.stringify(strippedEvent[k]);
+               if (fieldStr.length > 1000) {
+                 console.warn(`Purging field ${k} (size: ${fieldStr.length})`);
+                 delete strippedEvent[k];
+               }
+             });
+          }
+
+          // 3a. Save core event metadata
           const metaString = JSON.stringify(strippedEvent);
           const metaHashKey = `${activeEvent.id}_meta`;
           if (lastSyncedHash.current[metaHashKey] !== metaString) {
@@ -707,7 +777,7 @@ export function App() {
               updatedAt: new Date().toISOString(),
               isSharded: true,
               shardCounts // Store totals so we don't load zombie shards
-            }, { merge: true });
+            });
             lastSyncedHash.current[metaHashKey] = metaString;
           }
 
@@ -876,7 +946,16 @@ export function App() {
                 Object.entries(shardsByArray).forEach(([key, shards]) => {
                   try {
                     const merged = mergeShards(shards);
-                    if (merged) (updatedEvent as any)[key] = merged;
+                    if (merged) {
+                      if (key.startsWith('settings_')) {
+                        const settingsKey = key.replace('settings_', '') as keyof TournamentSettings;
+                        if (updatedEvent.settings) {
+                          (updatedEvent.settings as any)[settingsKey] = merged;
+                        }
+                      } else {
+                        (updatedEvent as any)[key] = merged;
+                      }
+                    }
                   } catch (err) {
                     console.error(`Failed to merge shards for ${key}:`, err);
                   }
@@ -1062,21 +1141,24 @@ export function App() {
 
   const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
     let finalEvent: ArcheryEvent | null = null;
+    let nextState: AppState | null = null;
+
     setAppState(prev => {
       const event = prev.events.find(e => e.id === id);
       if (!event) return prev;
 
       finalEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
-      return { 
+      nextState = { 
         ...prev, 
         events: prev.events.map(e => e.id === id ? finalEvent! : e) 
       };
+      return nextState;
     });
 
     setHasPendingChanges(true);
-    // CRITICAL: Immediately sync management changes to cloud to avoid race conditions
-    if (finalEvent && db && isOnline) {
-      await saveEventToCloud(finalEvent);
+    // CRITICAL: Immediately sync management changes to cloud using the fresh state to avoid stale appStateRef
+    if (finalEvent && db && isOnline && nextState) {
+      await syncCloudData(true, nextState);
       setHasPendingChanges(false);
     }
   };
@@ -1489,7 +1571,7 @@ export function App() {
             onLogin={(u) => { 
               setAppState(prev => {
                 const updatedEvents = prev.events.map(e => {
-                  if (!e.settings.organizerId || e.settings.organizerId === 'guest') {
+                  if (!e.settings?.organizerId || e.settings?.organizerId === 'guest') {
                     const updated = { ...e, settings: { ...e.settings, organizerId: u.id } };
                     // Sync this specific event to cloud
                     saveEventToCloud(updated);
@@ -1598,7 +1680,7 @@ export function App() {
             onMarkNotifRead={() => setAppState(prev => ({ ...prev, notifications: prev.notifications.map(n => ({ ...n, read: true })) }))} 
             globalSettings={appState.globalSettings} 
             onLogout={handleLogout}
-            events={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin)} 
+            events={appState.events.filter(e => e.settings?.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin)} 
             onCreateEvent={async (n, isFree, desc) => { 
               const activationCode = Math.floor(1000 + Math.random() * 9000).toString();
               const e: ArcheryEvent = { 
@@ -1728,7 +1810,7 @@ export function App() {
             onBack={() => setView('MEMBER_DASHBOARD')} 
           />
         )}
-        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
+        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings?.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
         {view === 'EVENT_ADMIN' && activeEvent && (
           <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-24 animate-in fade-in duration-700 px-4 md:px-0">
             {/* Console Header */}

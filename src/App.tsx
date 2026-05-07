@@ -701,7 +701,7 @@ export function App() {
           if (lastSyncedHash.current[metaHashKey] !== metaString) {
             await setDoc(doc(db, 'events', activeEvent.id), { 
               id: activeEvent.id, 
-              userId: activeEvent.settings.organizerId || state.currentUser?.id || null, 
+              userId: activeEvent.settings?.organizerId || activeEvent.ownerId || state.currentUser?.id || null, 
               data: strippedEvent,
               status: activeEvent.status || strippedEvent.status || 'DRAFT',
               updatedAt: new Date().toISOString(),

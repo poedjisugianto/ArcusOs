@@ -205,8 +205,8 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
                         <ArcusLogo className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="font-black uppercase text-xs text-slate-900 leading-tight">{event.settings.tournamentName}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">{event.settings.location}</p>
+                        <p className="font-black uppercase text-xs text-slate-900 leading-tight">{event.settings?.tournamentName || 'Untitled'}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{event.settings?.location || 'No Location'}</p>
                       </div>
                     </div>
                   </td>
@@ -227,7 +227,7 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className="text-[10px] font-bold text-slate-500">{event.settings.eventDate || 'TBA'}</span>
+                    <span className="text-[10px] font-bold text-slate-500">{event.settings?.eventDate || 'TBA'}</span>
                   </td>
                   <td className="px-8 py-5 text-right">
                     <button 

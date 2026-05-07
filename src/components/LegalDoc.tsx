@@ -103,9 +103,9 @@ export default function LegalDoc({ type, onBack }: Props) {
           </div>
           <div className="prose prose-slate max-w-none">
             <h3 className="text-4xl font-black font-oswald uppercase italic text-slate-900 tracking-tight mb-8">{doc.title}</h3>
-            <p className="text-slate-500 text-lg leading-relaxed font-medium">
+            <div className="text-slate-500 text-lg leading-relaxed font-medium">
               {doc.text}
-            </p>
+            </div>
           </div>
         </div>
       </div>

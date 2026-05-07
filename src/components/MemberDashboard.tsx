@@ -310,7 +310,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
 
   const unpaidEvents = events.filter(e => {
     const totalFee = calculateEventFees(e);
-    return !e.settings.platformFeePaidToOwner && totalFee > 0 && !e.settings.isPractice;
+    return !e.settings?.platformFeePaidToOwner && totalFee > 0 && !e.settings?.isPractice;
   });
   const receivedNotifs = notifications.filter(n => n.recipientId === userId || !n.recipientId);
   const sentNotifs = notifications.filter(n => n.senderId === userId);
@@ -324,9 +324,9 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   };
 
   const getExpirationStatus = (event: ArcheryEvent) => {
-    const createdAt = event.settings.createdAt || Date.now();
+    const createdAt = event.settings?.createdAt || Date.now();
     const ageInDays = (Date.now() - createdAt) / (1000 * 60 * 60 * 24);
-    const retentionLimit = event.settings.isPractice ? globalSettings.practiceRetentionDays : globalSettings.dataRetentionDays;
+    const retentionLimit = event.settings?.isPractice ? globalSettings.practiceRetentionDays : globalSettings.dataRetentionDays;
     const remainingDays = Math.ceil(retentionLimit - ageInDays);
     
     if (remainingDays <= 3) {

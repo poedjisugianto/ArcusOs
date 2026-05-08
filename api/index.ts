@@ -780,10 +780,56 @@ app.post("/api/register-participant", async (req, res) => {
   }
 });
 
-// Periodic Cache Refresher (Preheat)
+// Memory cache for events list
+let cachedEvents: any[] | null = null;
+let lastEventsUpdate = 0;
+const EVENTS_CACHE_TTL = 60 * 1000; // 60 seconds
+
+app.get("/api/public-events", async (req, res) => {
+  const now = Date.now();
+  
+  // Return cached if fresh
+  if (cachedEvents && (now - lastEventsUpdate < EVENTS_CACHE_TTL)) {
+    return res.json({ events: cachedEvents, source: 'cache', timestamp: lastEventsUpdate });
+  }
+
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+
+  try {
+    const snapshot = await db.collection('events').where('isPublic', '!=', false).limit(50).get();
+    const events: any[] = [];
+    snapshot.forEach((doc: any) => {
+      const data = doc.data();
+      const eventData = data.data || data;
+      const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+      
+      if (status !== 'DRAFT' && status !== 'DELETED') {
+         events.push({
+           id: doc.id,
+           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
+           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
+           settings: {
+             ...(eventData.settings || {}),
+             tournamentName: eventData.settings?.tournamentName || eventData.tournamentName || "Tournament Arcus",
+             location: eventData.settings?.location || eventData.location || "Lokasi",
+             eventDate: eventData.settings?.eventDate || eventData.eventDate || "TBA"
+           }
+         });
+      }
+    });
+
+    cachedEvents = events;
+    lastEventsUpdate = now;
+    res.json({ events, source: 'live', timestamp: now });
+  } catch (err: any) {
+    if (cachedEvents) return res.json({ events: cachedEvents, source: 'fallback' });
+    res.status(500).json({ error: "Quota Exceeded or DB Error" });
+  }
+});
+
+// Periodic Cache Refresher (Keep for Express environments, but prioritize active check above)
 async function preheatEventsCache() {
   if (!db) return;
-  console.log("[CACHE-PREHEAT] Starting automatic fetch...");
   try {
     const snapshot = await db.collection('events').limit(50).get();
     const events: any[] = [];
@@ -791,37 +837,19 @@ async function preheatEventsCache() {
       const data = doc.data();
       const eventData = data.data || data;
       const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-      
-      // Validation for "ACTIVE" status using broad mapping
       if (status !== 'DRAFT' && status !== 'DELETED') {
          events.push({
            id: doc.id,
            status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
-           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
-           userId: data.userId || eventData.userId || data.ownerId || eventData.ownerId,
-           settings: {
-             ...(eventData.settings || {}),
-             tournamentName: eventData.settings?.tournamentName || eventData.tournamentName || "Tournament Arcus",
-             location: eventData.settings?.location || eventData.location || "Lokasi",
-             eventDate: eventData.settings?.eventDate || eventData.eventDate || "TBA"
-           },
-           archers: eventData.archers || [],
-           registrations: eventData.registrations || [],
-           isPublic: data.isPublic !== false && eventData.isPublic !== false
+           settings: eventData.settings || {}
          });
       }
     });
-
     if (events.length > 0) {
-      const cacheData = { events, timestamp: Date.now() };
-      fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
-      cachedPublicEvents = events;
-      lastPublicEventsUpdate = cacheData.timestamp;
-      console.log(`[CACHE-PREHEAT] Success: ${events.length} events cached. Next refresh in 30 mins.`);
+      cachedEvents = events;
+      lastEventsUpdate = Date.now();
     }
-  } catch (err: any) {
-    console.warn("[CACHE-PREHEAT] Error:", err.message);
-  }
+  } catch (err: any) {}
 }
 
 // Memory cache for individual event details to save quota on live views

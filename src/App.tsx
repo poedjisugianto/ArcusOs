@@ -299,6 +299,14 @@ export function App() {
       if (isPublicView && apiCacheDetails?.__is_api_cache) {
         submissionsSnap = apiCacheDetails.submissions;
         shardsSnap = apiCacheDetails.shards;
+        
+        // Inject fresh event data into the documents list if we are viewing this specific event
+        if (apiCacheDetails.event && eventsSnap?.docs) {
+          const idx = eventsSnap.docs.findIndex((d: any) => d.id === apiCacheDetails.event.id);
+          if (idx !== -1) {
+            eventsSnap.docs[idx] = apiCacheDetails.event;
+          }
+        }
       }
 
       const cloudSettings = (configSnap?.exists?.() && configSnap.data()) ? configSnap.data()?.data : null;
@@ -1180,7 +1188,8 @@ export function App() {
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
     
     // Sinkronisasi otomatis untuk semua view penting
-    const pollInterval = 30000;
+    // Data dipastikan segar setiap 15 detik untuk pengunjung & admin
+    const pollInterval = 15000;
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
          console.log(`Sinkronisasi data cloud (${view})...`);

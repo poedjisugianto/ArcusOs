@@ -660,31 +660,30 @@ app.post("/api/register-participant", async (req, res) => {
 
 // Memory cache for individual event details to save quota on live views
 const eventDetailsCache: Record<string, { data: any, timestamp: number }> = {};
-const DETAIL_CACHE_TTL = 30 * 1000; // 30 seconds (Near LIVE but still protects server)
+const DETAIL_CACHE_TTL = 5 * 1000; // 5 detik (Sangat segar, hampir real-time)
 
 app.get("/api/event-details/:id", async (req, res) => {
   const eventId = req.params.id;
   const now = Date.now();
 
-  // Return cached if fresh (under 30 seconds)
+  // Kembalikan cache hanya jika di bawah 5 detik (untuk meredam benturan ratusan user di detik yang sama)
   if (eventDetailsCache[eventId] && (now - eventDetailsCache[eventId].timestamp < DETAIL_CACHE_TTL)) {
     return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'cache' });
   }
 
-  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  if (!db) return res.status(500).json({ error: "Sistem Cloud tidak siap" });
 
   try {
-    // 1. Fetch main event doc
     const eventDoc = await db.collection('events').doc(eventId).get();
-    if (!eventDoc.exists) return res.status(404).json({ error: "Event not found" });
+    if (!eventDoc.exists) return res.status(404).json({ error: "Turnamen dihapus atau tidak ada" });
     
     const data = eventDoc.data();
     const eventData = data.data || data;
 
-    // 2. Fetch subcollections
+    // Ambil data archer dan skor secara LIVE
     const [submissionsSnap, shardsSnap] = await Promise.all([
-      db.collection('events').doc(eventId).collection('submissions').limit(2000).get(),
-      db.collection('events').doc(eventId).collection('shards').limit(500).get()
+      db.collection('events').doc(eventId).collection('submissions').limit(5000).get(),
+      db.collection('events').doc(eventId).collection('shards').limit(1000).get()
     ]);
 
     const submissions: any[] = [];

@@ -57,28 +57,36 @@ export default function LandingPage({
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
   
   const activeEvents = (events || [])
-    .filter(Boolean)
     .map(e => {
       const raw = e as any;
-      // Handle both Firestore doc objects (with .data()) and plain objects from API
-      // If it exists in raw.data, prioritize it, otherwise use raw itself
+      // Extract data safely from various possible Firestore-like or plain structures
       const baseData = (typeof raw.data === 'function') ? raw.data() : (raw.data || raw);
-      const id = raw.id || baseData.id;
-      const status = (raw.status || baseData.status || 'ACTIVE').toUpperCase();
-      const settings = raw.settings || baseData.settings || {};
-      const name = settings.tournamentName || raw.tournamentName || baseData.tournamentName || baseData.name || "Tournament Arcus";
+      const id = raw.id || baseData.id || (raw.ref?.id);
+      
+      // Normalize status string (trim and uppercase)
+      let statusStr = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
+      if (statusStr === 'PUBLISHED' || statusStr === 'READY') statusStr = 'ACTIVE';
+
+      // Deep search for settings
+      const settings = baseData.settings || raw.settings || {};
+      const tournamentName = settings.tournamentName || baseData.tournamentName || raw.tournamentName || baseData.name || "Tournament Arcus";
+      const location = settings.location || baseData.location || "Lokasi";
+      const eventDate = settings.eventDate || baseData.eventDate || "TBA";
 
       return {
         ...baseData,
         id,
-        status,
+        status: statusStr,
         settings: {
           ...settings,
-          tournamentName: name
+          tournamentName,
+          location,
+          eventDate,
+          status: statusStr // Safety
         }
       };
     })
-    .filter(e => e && e.status !== 'DRAFT');
+    .filter(ev => ev.id && ev.status !== 'DRAFT' && ev.status !== 'DELETED');
 
   return (
     <div className="min-h-screen bg-[#FBFBFD] font-sans selection:bg-arcus-red selection:text-white overflow-x-hidden">

@@ -556,7 +556,8 @@ app.get("/api/db-test", async (req, res) => {
 const EVENT_CACHE_FILE = path.join(process.cwd(), 'cached_public_events.json');
 let cachedPublicEvents: any[] | null = null;
 let lastPublicEventsUpdate = 0;
-const PUBLIC_EVENTS_CACHE_TTL = 300 * 1000; // Increased to 5 minutes to save quota
+const PUBLIC_EVENTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes cache to strictly save quota
+const BROWSER_CACHE_TTL = 600; // 10 minutes browser cache
 
 // Server-side cache for Global Settings to avoid excessive reads
 let cachedGlobalSettings: any = null;
@@ -576,117 +577,110 @@ try {
 }
 
 app.get("/api/public-events", async (req, res) => {
+  // Set Cache-Control to tell browsers and proxies to cache this for 10 minutes
+  // Reduces server hits drastically for public visitors
+  res.setHeader('Cache-Control', `public, max-age=${BROWSER_CACHE_TTL}, stale-while-revalidate=300`);
+
   try {
-    // 1. Return Cache Immediately if Fresh (5 minutes for heavy traffic)
     const now = Date.now();
+    // Use cache if fresh
     if (cachedPublicEvents && cachedPublicEvents.length > 0 && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
       return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
     }
 
     let events: any[] = [];
     let fetchSuccessful = false;
+    let isQuotaExceeded = false;
     
     // Primary: REST API 
-    console.log(`[API] Fetching public events for project: ${firebaseConfig.projectId}, DB: ${firebaseConfig.firestoreDatabaseId || "(default)"}`);
-    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
-    console.log(`[API] REST URL: ${url.replace(firebaseConfig.apiKey, "KEY_HIDDEN")}`);
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=50`;
+    
     try {
-      const response = await axios.get(url, { timeout: 10000 });
+      const response = await axios.get(url, { timeout: 6000 });
       if (response.data && response.data.documents) {
         response.data.documents.forEach((doc: any) => {
           const dataFromRest = transformRestFields(doc.fields);
           if (dataFromRest) {
             const id = doc.name.split('/').pop();
-            const status = (dataFromRest.status || dataFromRest.data?.status || (dataFromRest.settings?.status) || 'ACTIVE').toUpperCase();
-            // Don't show DRAFT events to public
-            if (status !== 'DRAFT') {
-              events.push({ id, ...dataFromRest });
-            }
+            events.push({ id, ...dataFromRest });
           }
         });
         fetchSuccessful = true;
       }
     } catch (err: any) {
-      const errorData = err.response?.data;
-      console.error("[REST-API] Live Fetch Error:", JSON.stringify(errorData || err.message));
-      // If 403, it might be rule-based or API restriction
-    }
-
-    // Secondary: Admin SDK Fallback (If REST fails or returns empty)
-    if (db) {
-      try {
-        console.log("[API] Attempting Admin SDK events fetch...");
-        const snapshot = await db.collection('events').limit(100).get();
-        const adminEvents: any[] = [];
-        snapshot.forEach((doc: any) => {
-          const d = doc.data();
-          const status = (d.status || d.data?.status || (d.settings?.status) || 'ACTIVE').toUpperCase();
-          if (status !== 'DRAFT') {
-            adminEvents.push({ id: doc.id, ...d });
-          }
-        });
-        
-        // Merge or replace based on what's more reliable
-        if (adminEvents.length > 0) {
-           // If REST failed or returned less, use Admin data
-           if (!fetchSuccessful || adminEvents.length > events.length) {
-              events = adminEvents;
-              fetchSuccessful = true;
-           }
-        }
-      } catch (err: any) {
-        console.error("[ADMIN-SDK] Live Fetch Error:", err.message);
+      const errorMsg = err.response?.data?.error?.message || err.message || "";
+      if (errorMsg.includes("Quota") || errorMsg.includes("limit exceeded") || err.response?.status === 429) {
+        isQuotaExceeded = true;
+        console.error("[REST-API] QUOTA EXCEEDED. Falling back to persistent cache.");
+      } else {
+        console.error("[REST-API] Error:", errorMsg);
       }
     }
 
-    if (events.length === 0 && cachedPublicEvents && cachedPublicEvents.length > 0) {
-      console.log(`[API] DB returned 0 events, using disk cache (${cachedPublicEvents.length})`);
-      return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
+    // Secondary: Admin SDK Fallback (Only if REST failed and not a persistent quota issue)
+    if (db && !fetchSuccessful && !isQuotaExceeded) {
+      try {
+        const snapshot = await db.collection('events').limit(30).get();
+        const adminEvents: any[] = [];
+        snapshot.forEach((doc: any) => {
+          adminEvents.push({ id: doc.id, ...doc.data() });
+        });
+        
+        if (adminEvents.length > 0) {
+           events = adminEvents;
+           fetchSuccessful = true;
+        }
+      } catch (err: any) {
+        const errorMsg = err.message || "";
+        if (errorMsg.includes("Quota") || errorMsg.includes("exhausted")) {
+           isQuotaExceeded = true;
+        }
+        console.error("[ADMIN-SDK] Error:", errorMsg);
+      }
     }
 
+    // If we have new data, process and cache it
     if (events.length > 0) {
       const finalEvents = events.map(e => {
-        const rawEvent = e.data || e || {};
+        const eventData = e.data || e;
+        const id = e.id || eventData.id;
         
-        // 1. Determine Identity & Status
-        const eventId = e.id || rawEvent.id || rawEvent.eventId;
-        const status = (e.status || rawEvent.status || 'ACTIVE').toUpperCase();
+        let status = (e.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+        // Be extremely lenient: if it's not draft/deleted, and contains active-like words, show it
+        if (status === 'PUBLISHED' || status === 'READY' || status === 'OPEN' || status === 'ONGOING') {
+          status = 'ACTIVE';
+        }
         
-        // 2. Standardize Settings (Critical for Landing Page)
-        const name = rawEvent.settings?.tournamentName || 
-                     e.settings?.tournamentName || 
-                     rawEvent.tournamentName || 
-                     rawEvent.name || 
-                     "Tournament Arcus";
-        
-        // 3. Build a "Perfect" Event Object
+        const settings = eventData.settings || e.settings || {};
+        const name = settings.tournamentName || eventData.tournamentName || e.tournamentName || "Tournament Arcus";
+
         return {
-          id: eventId,
-          status: status,
-          createdAt: e.createdAt || rawEvent.createdAt || new Date().toISOString(),
-          userId: rawEvent.userId || rawEvent.ownerId || e.userId,
+          id,
+          status,
+          createdAt: e.createdAt || eventData.createdAt || new Date().toISOString(),
+          userId: e.userId || eventData.userId || e.ownerId || eventData.ownerId,
           settings: {
-            ...(rawEvent.settings || e.settings || {}),
-            tournamentName: name
+            ...settings,
+            tournamentName: name,
+            location: settings.location || eventData.location || "Lokasi",
+            eventDate: settings.eventDate || eventData.eventDate || "TBA"
           },
-          archers: rawEvent.archers || [],
-          registrations: rawEvent.registrations || [],
-          sessions: rawEvent.sessions || [],
-          bracket: rawEvent.bracket || null,
-          targetFaces: rawEvent.targetFaces || [],
-          isPublic: rawEvent.isPublic !== false
+          archers: eventData.archers || [],
+          registrations: eventData.registrations || [],
+          isPublic: e.isPublic !== false && eventData.isPublic !== false
         };
-      });
+      }).filter(ev => ev.status !== 'DRAFT' && ev.status !== 'DELETED');
 
       // Update Cache
-      try {
-        const cacheData = { events: finalEvents, timestamp: Date.now() };
-        fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
-        cachedPublicEvents = finalEvents;
-        lastPublicEventsUpdate = cacheData.timestamp;
-        console.log(`[CACHE] System updated with ${finalEvents.length} events.`);
-      } catch (cacheErr) {
-        console.warn("[CACHE] Disk write disabled:", cacheErr);
+      if (finalEvents.length > 0) {
+        try {
+          const cacheData = { events: finalEvents, timestamp: Date.now() };
+          fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
+          cachedPublicEvents = finalEvents;
+          lastPublicEventsUpdate = cacheData.timestamp;
+        } catch (cacheErr) {
+          console.warn("[CACHE] Disk write error:", cacheErr);
+        }
       }
 
       return res.json({ 
@@ -697,21 +691,18 @@ app.get("/api/public-events", async (req, res) => {
       });
     }
 
-    // If database returned nothing but we HAVE cache, use it
-    if (cachedPublicEvents && cachedPublicEvents.length > 0) {
-      console.log(`[API] Serving ${cachedPublicEvents.length} events from fallback cache (DB empty/down).`);
+    // EMERGENCY FALLBACK: ALWAYS serve cache if Google is down or hit quota
+    if (cachedPublicEvents) {
+      console.log(`[SAFE-MODE] Serving ${cachedPublicEvents.length} events from persistent cache.`);
       return res.json({
         success: true,
         events: cachedPublicEvents,
-        source: 'cache'
+        source: isQuotaExceeded ? 'quota-fallback-cache' : 'empty-db-fallback-cache',
+        isStale: true
       });
     }
 
-    return res.json({
-      success: true,
-      events: [],
-      source: 'empty'
-    });
+    return res.json({ success: true, events: [], source: 'not-found' });
   } catch (error: any) {
     console.error("Critical Public Events Failure:", error.message);
     

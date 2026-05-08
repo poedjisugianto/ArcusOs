@@ -114,6 +114,14 @@ export interface ScoreLog {
   endIndex?: number;
 }
 
+export enum RegistrationStatus {
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CONFIRMED = 'CONFIRMED'
+}
+
 export interface ParticipantRegistration {
   id: string;
   registrationNo?: string;
@@ -122,7 +130,7 @@ export interface ParticipantRegistration {
   phone?: string;
   club: string;
   category: string;
-  status: 'PENDING' | 'PAID' | 'APPROVED' | 'REJECTED' | 'CONFIRMED';
+  status: RegistrationStatus;
   paymentProof?: string;
   paymentProofUrl?: string;
   timestamp?: number;

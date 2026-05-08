@@ -196,47 +196,31 @@ export function App() {
           }))
           .catch(() => safeGetDoc(doc(db, 'systemConfigs', 'global'))),
         
-      // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
+        // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         ((view === 'LANDING' || view.startsWith('PUBLIC_')) 
-          ? fetch('/api/public-events') // ALWAYS use the API for public views to save quota
+          ? fetch('/api/public-events') 
               .then(async res => {
                 const contentType = res.headers.get("content-type");
                 const text = await res.text();
-                
-                // If the server tells us it's a quota issue, we still try to parse the response 
-                // because the server might have returned a cache.
                 if (contentType && contentType.includes("application/json")) {
                   try {
-                    return tryRecoverJSON(text);
-                  } catch (e: any) {
-                    console.error("API JSON Parse Error. Text preview:", text.substring(0, 100));
-                    // Try primitive recovery
-                    if (text.includes('{"success":true')) {
-                      const startIndex = text.indexOf('{"success":true');
-                      const bracketEnd = text.lastIndexOf(']}');
-                      if (bracketEnd > startIndex) {
-                         try { return JSON.parse(text.substring(startIndex, bracketEnd + 2)); } catch(err) {}
-                      }
-                    }
-                    throw e;
+                    return JSON.parse(text);
+                  } catch (e) {
+                    console.error("JSON Parse Error:", e);
+                    return null;
                   }
                 }
-                throw new Error(`Unexpected content: ${text.substring(0, 50)}`);
+                throw new Error(`Non-JSON response`);
               })
               .then(data => {
                 if (data && data.events) {
-                    setSyncStatus({ 
-                      source: data.source === 'cache' ? 'Sistem Cloud (Restored)' : 'Sistem Cloud Aktif',
-                      time: new Date().toLocaleTimeString('id-ID')
-                    });
-                   
-                   // If we successfully got data from the API, we can consider the quota issue 
-                   // "managed" for now if we were previously blocked.
-                   
+                    if (data.events.length > 0) {
+                      setAppState(prev => ({ ...prev, events: data.events }));
+                    }
                     return { 
                       docs: (data.events || []).map((e: any) => ({ 
                          id: e.id, 
-                         data: () => ({ ...e }), // Trust the API's prepared flat structure
+                         data: () => ({ ...e }),
                          exists: true 
                       })), 
                       __type: 'custom_array' 
@@ -244,27 +228,22 @@ export function App() {
                 }
                 return null;
               })
-              .catch(err => {
-                console.warn("Public fetch fallback triggered:", err.message);
-                // ABSOLUTE LAST RESORT: Broad fetch from network then cache
-                const collRef = collection(db, 'events');
-                const queryRef = query(collRef, limit(20));
-                return getDocs(queryRef).catch(() => {
-                  return getDocsFromCache(queryRef).catch(() => null);
-                });
+              .catch(() => {
+                if (!isPublicView) return safeGetDocs(collection(db, 'events'));
+                return null;
               })
-          : safeGetDocs(collection(db, 'events'))
+          : (isPrivileged ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
         ).catch(() => null),
         
-        // 4. Fetch Submissions (Only for active event if applicable)
-        (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)).catch(() => null),
+        // 4. Fetch Submissions (ONLY for privileged/non-public views)
+        (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)),
         
-        // 5. Fetch Shards (Only for active event if applicable)
-        (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null)).catch(() => null)
+        // 5. Fetch Shards (ONLY for privileged/non-public views)
+        (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null))
       ];
 
-      // 3. Fetch Profiles (Only if Admin AND in management view)
-      const needsFullProfiles = canFetchProfiles && (view === 'SUPER_ADMIN' || view === 'MEMBER_DASHBOARD' || view === 'EVENT_ADMIN');
+      // 3. Fetch Profiles (Only if Admin AND not public view)
+      const needsFullProfiles = canFetchProfiles && !isPublicView && (view === 'SUPER_ADMIN' || view === 'MEMBER_DASHBOARD' || view === 'EVENT_ADMIN');
 
       if (needsFullProfiles) {
         fetchJobs.push(
@@ -287,12 +266,13 @@ export function App() {
       const shardsSnap = results[3];
       const profilesSnap = results.length > 4 ? results[4] : null;
 
-      const cloudSettings = configSnap?.exists?.() ? configSnap.data().data : null;
+      const cloudSettings = (configSnap?.exists?.() && configSnap.data()) ? configSnap.data()?.data : null;
       
       let cloudEvents: any[] | null = null;
       if (eventsSnap?.docs) {
         cloudEvents = eventsSnap.docs.map((doc: any) => {
           const e = doc.data();
+          if (!e) return null;
           const eventId = e.id || doc.id;
           const ownerId = e.userId || e.ownerId;
           const status = e.status || e.data?.status || (e.settings?.status) || 'ACTIVE';
@@ -1562,7 +1542,7 @@ export function App() {
       <main className="min-h-screen pt-10 sm:pt-11">
         {view === 'LANDING' && (
           <LandingPage 
-            events={appState.events.filter(e => e.status !== 'DRAFT')} 
+            events={appState.events} 
             onViewLive={(id) => navigateToPublicEvent(id, 'PUBLIC_LIVE')} 
             onViewParticipants={(id) => navigateToPublicEvent(id, 'PUBLIC_ENTRY_LIST')} 
             onViewInfo={(id) => navigateToPublicEvent(id, 'PUBLIC_EVENT_INFO')} 

@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { ArcheryEvent, GlobalSettings, ParticipantRegistration, CategoryType } from '../types';
+import { ArcheryEvent, GlobalSettings, ParticipantRegistration, CategoryType, RegistrationStatus } from '../types';
+
+declare global {
+  interface Window {
+    snap: {
+      pay: (token: string, options: any) => void;
+    };
+  }
+}
 import { CATEGORY_LABELS } from '../constants';
 import { isValidDate } from '../lib/dateUtils';
 import { 
@@ -218,7 +226,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
         totalPaid,
         platformFee,
-        status: 'PENDING',
+        status: RegistrationStatus.PENDING,
         paymentType: formData.paymentType,
         timestamp: Date.now()
       });
@@ -259,7 +267,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
           totalPaid,
           platformFee,
-          status: 'PENDING',
+          status: RegistrationStatus.PENDING,
           paymentType: formData.paymentType,
           timestamp: Date.now()
         });
@@ -272,6 +280,13 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       setIsSubmitting(true);
       try {
         console.log("Initiating payment gateway for:", totalAmount);
+        
+        if (!window.snap && globalSettings.paymentGatewayProvider === 'MIDTRANS') {
+           toast.error("Sedang memuat sistem pembayaran. Silakan tunggu sebentar atau refresh...");
+           setIsSubmitting(false);
+           return;
+        }
+
         const res = await fetch('/api/payment/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -284,7 +299,10 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           })
         });
         
-        if (!res.ok) throw new Error("Gagal membuat transaksi pembayaran");
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || errorData.message || "Gagal membuat transaksi pembayaran di server");
+        }
         
         const data = await res.json();
         
@@ -306,6 +324,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             onError: (result: any) => {
               console.error("Payment error", result);
               toast.error("Pembayaran Gagal. Silakan coba lagi.");
+              setIsSubmitting(false);
             },
             onClose: () => {
               console.log("Payment popup closed");
@@ -313,17 +332,19 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             }
           });
         } else {
-          console.warn("Snap is missing or success=false, failing back to simulation or error");
-          if (!window.snap) {
-            toast.error("Sistem pembayaran (Snap) belum siap. Silakan refresh halaman.");
+          console.warn("Snap is missing or success=false", data);
+          if (data.error) {
+            toast.error(`Error: ${data.error}`);
+          } else if (!window.snap) {
+            toast.error("Sistem pembayaran (Snap) belum siap dipanggil.");
           } else {
-            toast.error("Gagal mendapatkan token pendaftaran.");
+            toast.error("Gagal mendapatkan token pendaftaran dari Gateway.");
           }
           setIsSubmitting(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Payment registration error:", err);
-        toast.error("Terjadi kesalahan sistem pendaftaran. Gunakan Transfer Manual jika masalah berlanjut.");
+        toast.error(err.message || "Terjadi kesalahan sistem pendaftaran.");
         setIsSubmitting(false);
       }
     } else {

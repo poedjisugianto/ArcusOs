@@ -219,18 +219,11 @@ export function App() {
                       setAppState(prev => ({ ...prev, events: data.events }));
                     }
                     
-                    // Show a reassuring message if we are using the fallback cache
-                    if (data.source === 'quota-fallback-cache') {
-                      setSyncStatus({ 
-                        source: 'Mode Hemat Quota (Aktif)', 
-                        time: new Date().toLocaleTimeString('id-ID')
-                      });
-                    } else {
-                      setSyncStatus({ 
-                        source: 'Sistem Cloud Terhubung', 
-                        time: new Date().toLocaleTimeString('id-ID')
-                      });
-                    }
+                    // Reassuring status for visitors
+                    setSyncStatus({ 
+                      source: 'Sistem Cloud Terhubung', 
+                      time: new Date().toLocaleTimeString('id-ID')
+                    });
 
                     return { 
                       docs: (data.events || []).map((e: any) => ({ 
@@ -1183,10 +1176,10 @@ export function App() {
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
     
     if (isPublicTournamentView || adminViews.includes(view)) {
-      // Significantly increase polling intervals to save quota
-      // Public Views: 5 minutes per update (Served from Cache)
-      // Admin/Live: 2 minutes
-      const pollInterval = isPublicTournamentView ? 300000 : 120000;
+      // Significantly increase polling intervals
+      // Public Views: 60 seconds per update (Served from Fresh API Cache)
+      // Admin/Live: 60 seconds
+      const pollInterval = 60000;
       
       const interval = setInterval(() => {
         if (document.visibilityState === 'visible') {

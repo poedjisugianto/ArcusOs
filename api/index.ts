@@ -826,13 +826,13 @@ async function preheatEventsCache() {
 
 // Memory cache for individual event details to save quota on live views
 const eventDetailsCache: Record<string, { data: any, timestamp: number }> = {};
-const DETAIL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache for details
+const DETAIL_CACHE_TTL = 30 * 1000; // 30 seconds (Near LIVE but still protects server)
 
 app.get("/api/event-details/:id", async (req, res) => {
   const eventId = req.params.id;
   const now = Date.now();
 
-  // Return cached if fresh
+  // Return cached if fresh (under 30 seconds)
   if (eventDetailsCache[eventId] && (now - eventDetailsCache[eventId].timestamp < DETAIL_CACHE_TTL)) {
     return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'cache' });
   }
@@ -844,9 +844,10 @@ app.get("/api/event-details/:id", async (req, res) => {
     const eventDoc = await db.collection('events').doc(eventId).get();
     if (!eventDoc.exists) return res.status(404).json({ error: "Event not found" });
     
-    const eventData = eventDoc.data();
-    
-    // 2. Fetch subcollections in parallel to save time
+    const data = eventDoc.data();
+    const eventData = data.data || data;
+
+    // 2. Fetch subcollections
     const [submissionsSnap, shardsSnap] = await Promise.all([
       db.collection('events').doc(eventId).collection('submissions').limit(2000).get(),
       db.collection('events').doc(eventId).collection('shards').limit(500).get()
@@ -859,7 +860,7 @@ app.get("/api/event-details/:id", async (req, res) => {
     shardsSnap.forEach((d: any) => shards.push({ id: d.id, ...d.data() }));
 
     const fullData = {
-      event: { id: eventDoc.id, ...eventData },
+      event: { id: eventDoc.id, ...data, data: eventData },
       submissions,
       shards
     };
@@ -871,17 +872,17 @@ app.get("/api/event-details/:id", async (req, res) => {
   } catch (err: any) {
     console.error(`[DETAIL-FETCH-ERROR] ${eventId}:`, err.message);
     
-    // Fallback to stale cache on error
+    // Fallback on error
     if (eventDetailsCache[eventId]) {
       return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'error-fallback' });
     }
     
-    res.status(500).json({ error: "Failed to fetch event details. Quota likely exceeded." });
+    res.status(500).json({ error: "Sistem sibuk, silakan coba lagi." });
   }
 });
 
-// Preheat on startup and every 30 mins
+// Preheat on startup and every 5 mins (Increased frequency)
 preheatEventsCache();
-setInterval(preheatEventsCache, 1800000);
+setInterval(preheatEventsCache, 300000); // 5 minutes 
 
 export default app;

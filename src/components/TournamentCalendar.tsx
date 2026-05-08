@@ -11,7 +11,7 @@ interface Props {
   onViewInfo: (id: string) => void;
 }
 
-export default function TournamentCalendar({ events, onViewInfo }: Props) {
+export default function TournamentCalendar({ events = [], onViewInfo }: Props) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -34,7 +34,8 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
   const days = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
   const getEventsForDay = (day: number) => {
-    return events.filter(event => {
+    return (events || []).filter(event => {
+      if (!event) return false;
       const dateStr = event.settings?.eventDate;
       if (!dateStr || !isValidDate(dateStr)) return false;
       const eventDate = new Date(dateStr);
@@ -44,7 +45,8 @@ export default function TournamentCalendar({ events, onViewInfo }: Props) {
     });
   };
 
-  const monthlyEvents = events.filter(e => {
+  const monthlyEvents = (events || []).filter(e => {
+    if (!e) return false;
     const dStr = e.settings?.eventDate;
     if (!dStr || !isValidDate(dStr)) return false;
     const d = new Date(dStr);

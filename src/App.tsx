@@ -263,8 +263,8 @@ export function App() {
         (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null)).catch(() => null)
       ];
 
-      // 3. Fetch Profiles (Only if Admin AND in Super Admin view)
-      const needsFullProfiles = canFetchProfiles && view === 'SUPER_ADMIN';
+      // 3. Fetch Profiles (Only if Admin AND in management view)
+      const needsFullProfiles = canFetchProfiles && (view === 'SUPER_ADMIN' || view === 'MEMBER_DASHBOARD' || view === 'EVENT_ADMIN');
 
       if (needsFullProfiles) {
         fetchJobs.push(
@@ -414,8 +414,8 @@ export function App() {
                 const le = updatedEvents[localIndex];
                 // Only overwrite if cloud data is actually newer or has more content 
                 // Or if we are explicitly doing a manual refresh
-                const cloudContentHash = ce.registrations?.length + ce.archers?.length + ce.scores?.length;
-                const localContentHash = le.registrations?.length + le.archers?.length + le.scores?.length;
+                const cloudContentHash = (ce.registrations?.length || 0) + (ce.archers?.length || 0) + (ce.scores?.length || 0);
+                const localContentHash = (le.registrations?.length || 0) + (le.archers?.length || 0) + (le.scores?.length || 0);
                 
                 if (manual || cloudContentHash >= localContentHash) {
                   updatedEvents[localIndex] = ce;
@@ -425,7 +425,8 @@ export function App() {
           } else {
             // MERGE LOGIC: Keep local events if they have more registrations or are "newer"
             cloudEventsModified.forEach(ce => {
-              const localIndex = updatedEvents.findIndex(le => le.id === ce.id);
+              if (!ce) return;
+              const localIndex = updatedEvents.findIndex(le => le && le.id === ce.id);
               if (localIndex === -1) {
                 updatedEvents.push(ce);
               } else {
@@ -447,19 +448,19 @@ export function App() {
         return {
           ...prev,
           globalSettings: cloudSettings || prev.globalSettings,
-          events: updatedEvents,
+          events: (updatedEvents || []).filter(Boolean),
           users: (cloudUsers && cloudUsers.length > 0) ? 
             (isSingleProfile ? 
               // MERGE: Update only the profile we fetched (current user)
-              prev.users.map(u => {
+              (prev.users || []).filter(Boolean).map(u => {
                 const updated = (cloudUsers || []).find(cu => cu && cu.id === u.id);
                 return updated || u;
-              }).concat((cloudUsers || []).filter(cu => cu && !prev.users.some(u => u.id === cu.id)))
+              }).concat((cloudUsers || []).filter(cu => cu && cu.id && !prev.users.some(u => u && u.id === cu.id)))
               : cloudUsers // REPLACE: Full list from Super Admin view
-            ) : prev.users,
+            ) : (prev.users || []).filter(Boolean),
           currentUser: (isSingleProfile && cloudUsers && cloudUsers.length > 0) ? 
-            (cloudUsers.find(cu => cu.id === prev.currentUser?.id) || prev.currentUser) : 
-            (cloudUsers && prev.currentUser ? (cloudUsers.find(cu => cu.id === prev.currentUser?.id) || prev.currentUser) : prev.currentUser),
+            (cloudUsers.find(cu => cu && cu.id === prev.currentUser?.id) || prev.currentUser) : 
+            (cloudUsers && prev.currentUser ? (cloudUsers.find(cu => cu && cu.id === prev.currentUser?.id) || prev.currentUser) : prev.currentUser),
           isDataLoaded: true
         };
       });
@@ -539,7 +540,9 @@ export function App() {
           if (eventSnap.exists()) {
             console.log("Deep link data found in Firestore.");
             const eventRecord = eventSnap.data();
-            const targetEvent = eventRecord.data as ArcheryEvent;
+            if (!eventRecord) throw new Error("Document data is empty");
+            // Support both wrapped { data: ... } and unwrapped formats
+            const targetEvent = (eventRecord.data || eventRecord) as ArcheryEvent;
             
             // Inject into state and activate
             setAppState(prev => {
@@ -636,7 +639,7 @@ export function App() {
     }
   };
 
-  const activeEvent = appState.events.find(e => e.id === appState.activeEventId);
+  const activeEvent = (appState.events || []).find(e => e && e.id === appState.activeEventId);
 
   useEffect(() => {
     // Only save to localStorage after initial cloud fetch to avoid overwriting cloud with stale local data
@@ -1722,7 +1725,7 @@ export function App() {
             onMarkNotifRead={() => setAppState(prev => ({ ...prev, notifications: prev.notifications.map(n => ({ ...n, read: true })) }))} 
             globalSettings={appState.globalSettings} 
             onLogout={handleLogout}
-            events={appState.events.filter(e => e.settings?.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin)} 
+            events={(appState.events || []).filter(e => e && (e.settings?.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin))} 
             onCreateEvent={async (n, isFree, desc) => { 
               const activationCode = Math.floor(1000 + Math.random() * 9000).toString();
               const e: ArcheryEvent = { 

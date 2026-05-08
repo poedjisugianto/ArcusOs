@@ -118,7 +118,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const calculateEventFees = (event: ArcheryEvent) => {
     if (event.settings?.isFreeEvent || event.settings?.isPractice) return 0;
     const participants = Array.from(
-      new Map([...(event.registrations || []), ...(event.archers || [])].map(p => [p.id, p])).values()
+      new Map([...(event.registrations || []), ...(event.archers || [])].filter(Boolean).map(p => [p.id, p])).values()
     );
     return participants.reduce((acc, curr) => {
       if (!curr) return acc;
@@ -309,7 +309,8 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     }
   }, [billingStep, billingPaymentStatus]);
 
-  const unpaidEvents = events.filter(e => {
+  const unpaidEvents = (events || []).filter(e => {
+    if (!e) return false;
     const totalFee = calculateEventFees(e);
     return !e.settings?.platformFeePaidToOwner && totalFee > 0 && !e.settings?.isPractice;
   });
@@ -819,7 +820,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                             <Users className={`w-4 h-4 ${event.settings?.isPractice ? 'text-teal-500' : 'text-arcus-red'}`} />
-                            {event.archers.length} Archer <span className="hidden sm:inline">Terdaftar</span>
+                            {(event.archers || []).length} Archer <span className="hidden sm:inline">Terdaftar</span>
                           </div>
                           {event.settings?.location && (
                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">

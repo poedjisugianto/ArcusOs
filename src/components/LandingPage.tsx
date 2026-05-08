@@ -57,6 +57,7 @@ export default function LandingPage({
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
   
   const activeEvents = (events || [])
+    .filter(Boolean)
     .map(e => {
       const raw = e as any;
       // Handle both Firestore doc objects (with .data()) and plain objects from API

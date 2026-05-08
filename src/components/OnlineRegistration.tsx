@@ -157,6 +157,29 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
       return;
     }
     
+    // Check for duplicates in current event data
+    const isDuplicate = (name: string, cat: string) => {
+      const lowerName = name.toLowerCase().trim();
+      return (
+        (event.registrations || []).some(r => r.name.toLowerCase().trim() === lowerName && r.category === cat) ||
+        (event.archers || []).some(a => a.name.toLowerCase().trim() === lowerName && a.category === cat) ||
+        (event.officials || []).some(o => o.name.toLowerCase().trim() === lowerName && o.category === cat)
+      );
+    };
+
+    if (regMode === 'INDIVIDUAL') {
+      if (isDuplicate(formData.name, formData.regType === 'OFFICIAL' ? 'OFFICIAL' : formData.category)) {
+        toast.error("Nama ini sudah terdaftar di kategori tersebut.");
+        return;
+      }
+    } else {
+      const duplicateMember = collectiveMembers.find(m => isDuplicate(m.name, m.category));
+      if (duplicateMember) {
+        toast.error(`Anggota "${duplicateMember.name}" sudah terdaftar di kategori ${duplicateMember.category}.`);
+        return;
+      }
+    }
+    
     if (formData.paymentType === 'MANUAL' && !formData.paymentProof) {
       toast.error("Silakan unggah bukti pembayaran terlebih dahulu");
       return;

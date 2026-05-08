@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Search, Trash2, ArrowLeft, 
-  X, Check, UserPlus, Printer, Users as UsersIcon, Image as ImageIcon
+  X, Check, UserPlus, Printer, Users as UsersIcon, Image as ImageIcon, FileDown
 } from 'lucide-react';
 import { Archer, CategoryType, TournamentSettings, GlobalSettings } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -32,6 +32,44 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
     window.print();
   };
 
+  const handleExportCSV = () => {
+    try {
+      const dataToExport = filtered;
+      if (dataToExport.length === 0) {
+        alert("Tidak ada data untuk diekspor");
+        return;
+      }
+
+      const headers = ["Nama", "Klub", "Kontak", "Email", "Status"];
+      const csvRows = [];
+      csvRows.push(headers.join(","));
+
+      for (const o of dataToExport) {
+        const row = [
+          `"${o.name}"`,
+          `"${o.club}"`,
+          `"${o.phone || '-'}"`,
+          `"${o.email || '-'}"`,
+          `"${o.status}"`
+        ];
+        csvRows.push(row.join(","));
+      }
+
+      const csvContent = csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Data_Official_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err: any) {
+      alert("Gagal mengekspor data: " + err.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-[#FBFBFD] p-4 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -56,6 +94,13 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
           >
             <Printer className="w-3.5 h-3.5" />
             Cetak Daftar
+          </button>
+          <button 
+            onClick={handleExportCSV}
+            className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            Ekspor CSV
           </button>
         </div>
       </div>

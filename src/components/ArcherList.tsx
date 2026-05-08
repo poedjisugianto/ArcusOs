@@ -220,6 +220,50 @@ const ArcherList: React.FC<Props> = ({
     }, 500);
   };
 
+  const handleExportCSV = () => {
+    try {
+      const dataToExport = filtered;
+      if (dataToExport.length === 0) {
+        toast.error("Tidak ada data untuk diekspor");
+        return;
+      }
+
+      const headers = ["Nama", "Klub", "Kategori", "Nomor Bantalan", "Posisi", "Gelombang", "PIN", "Email", "Telepon", "Status"];
+      const csvRows = [];
+      csvRows.push(headers.join(","));
+
+      for (const a of dataToExport) {
+        const row = [
+          `"${a.name}"`,
+          `"${a.club}"`,
+          `"${CATEGORY_LABELS[a.category as CategoryType] || a.category}"`,
+          `"${a.targetNo || '-'}"`,
+          `"${a.position || '-'}"`,
+          `"${a.wave || '-'}"`,
+          `"${a.pin || '-'}"`,
+          `"${a.email || '-'}"`,
+          `"${a.phone || '-'}"`,
+          `"${a.status}"`
+        ];
+        csvRows.push(row.join(","));
+      }
+
+      const csvContent = csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Data_Peserta_${eventId}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`Berhasil mengekspor ${dataToExport.length} data peserta`);
+    } catch (err: any) {
+      toast.error("Gagal mengekspor data: " + err.message);
+    }
+  };
+
   const clubs = useMemo(() => {
     const uniqueClubs = Array.from(new Set(archers.map((a) => a.club))).sort();
     return ["ALL", ...uniqueClubs];
@@ -328,6 +372,13 @@ const ArcherList: React.FC<Props> = ({
             >
               <Printer className="w-3.5 h-3.5" />
               Cetak Daftar
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              Ekspor CSV
             </button>
             {showPrintOptions && (
               <>

@@ -152,6 +152,7 @@ export function App() {
 
     const user = userOverride !== undefined ? userOverride : appState.currentUser;
     const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
+    const canFetchProfiles = isPrivileged;
     const isPublicView = !user || (!isPrivileged && view === 'LANDING');
 
     try {
@@ -262,15 +263,20 @@ export function App() {
         (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null)).catch(() => null)
       ];
 
-      // 3. Fetch Profiles (Only if Admin)
-      const canFetchProfiles = !!(user?.isSuperAdmin || 
-                                user?.role === UserRole.SUPERADMIN ||
-                                user?.email === 'admin@arcus.id' ||
-                                user?.email === 'poedji.sugianto@gmail.com');
+      // 3. Fetch Profiles (Only if Admin AND in Super Admin view or management view)
+      const needsFullProfiles = canFetchProfiles && (view === 'SUPERADMIN' || view === 'ADMIN_PANEL');
 
-      if (canFetchProfiles) {
+      if (needsFullProfiles) {
         fetchJobs.push(
           safeGetDocs(collection(db, 'profiles')).catch(() => null)
+        );
+      } else if (user?.id) {
+        // Just fetch own profile if not in management view
+        fetchJobs.push(
+          safeGetDoc(doc(db, 'profiles', user.id)).then(snap => ({
+            docs: snap?.exists() ? [snap] : [],
+            __is_single_profile: true
+          })).catch(() => null)
         );
       }
 
@@ -361,8 +367,10 @@ export function App() {
       }
 
       let cloudUsers: any[] | null = null;
+      let isSingleProfile = false;
       if (profilesSnap?.docs) {
         cloudUsers = profilesSnap.docs.map((doc: any) => doc.data().data);
+        isSingleProfile = !!profilesSnap.__is_single_profile;
       }
       
       // Heuristic: Ensure we always have the most up-to-date registrations by merging submissions
@@ -435,7 +443,15 @@ export function App() {
           ...prev,
           globalSettings: cloudSettings || prev.globalSettings,
           events: updatedEvents,
-          users: (cloudUsers && cloudUsers.length > 0) ? cloudUsers : prev.users,
+          users: (cloudUsers && cloudUsers.length > 0) ? 
+            (isSingleProfile ? 
+              // MERGE: Update only the profile we fetched (current user)
+              prev.users.map(u => {
+                const updated = cloudUsers!.find(cu => cu.id === u.id);
+                return updated || u;
+              }).concat(cloudUsers!.filter(cu => !prev.users.some(u => u.id === cu.id)))
+              : cloudUsers // REPLACE: Full list from Super Admin view
+            ) : prev.users,
           isDataLoaded: true
         };
       });

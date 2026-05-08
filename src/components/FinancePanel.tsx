@@ -41,14 +41,34 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
     ].map(p => [p.id, p])).values()
   );
   
-  // Only show pnding registrations that are truly not verified yet
-  // We filter out any IDs that exist in archers/officials as APPROVED or simply have APPROVED status in unique list
-  const pendingRegistrations = uniqueParticipants.filter(p => 
-    p.status !== 'APPROVED' && 
-    p.status !== 'CONFIRMED' &&
-    !((event.archers || []).some(a => a.id === p.id && a.status === 'APPROVED')) &&
-    !((event.officials || []).some(o => o.id === p.id && o.status === 'APPROVED'))
-  );
+  // Only show pending registrations that are truly not verified yet
+  const pendingRegistrations = uniqueParticipants.filter(p => {
+    // 1. Basic status check (already approved in its own data)
+    if (p.status === 'APPROVED' || p.status === 'CONFIRMED' || p.status === 'PAID') return false;
+    
+    // 2. Cross-reference check with main participant lists (Archers and Officials)
+    const lowerName = (p.name || '').toLowerCase().trim();
+    
+    // Check if this same person is already an approved Archer
+    const isAlreadyApprovedArcher = (event.archers || []).some(a => 
+      (a.status === 'APPROVED' || a.status === 'CONFIRMED') && (
+        a.id === p.id || 
+        (a.name.toLowerCase().trim() === lowerName && a.category === p.category)
+      )
+    );
+    if (isAlreadyApprovedArcher) return false;
+
+    // Check if this same person is already an approved Official
+    const isAlreadyApprovedOfficial = (event.officials || []).some(o => 
+      (o.status === 'APPROVED' || o.status === 'CONFIRMED') && (
+        o.id === p.id || 
+        (o.name.toLowerCase().trim() === lowerName && p.category === 'OFFICIAL')
+      )
+    );
+    if (isAlreadyApprovedOfficial) return false;
+
+    return true;
+  });
 
   const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);
   
@@ -266,7 +286,7 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
                   </td>
                 </tr>
               ))}
-              {event.registrations.filter(reg => reg.status !== 'APPROVED').length === 0 && (
+              {pendingRegistrations.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-24 text-center">
                      <Receipt className="w-12 h-12 mx-auto text-slate-100 mb-4" />

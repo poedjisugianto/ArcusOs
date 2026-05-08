@@ -24,7 +24,17 @@ service cloud.firestore {
         request.auth.token.email == 'poedji.sugianto@gmail.com' ||
         request.auth.token.email == 'admin@arcus.id' ||
         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'ADMIN', 'superadmin'])
+         (get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'ADMIN', 'superadmin', 'SUPER_ADMIN'] ||
+          (get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'ADMIN', 'superadmin', 'SUPER_ADMIN'])))
+      );
+    }
+
+    function isEventOwner(eventId) {
+      let eventData = get(/databases/$(database)/documents/events/$(eventId)).data;
+      return isSignedIn() && (
+        eventData.userId == request.auth.uid || 
+        eventData.ownerId == request.auth.uid || 
+        (eventData.data != null && (eventData.data.userId == request.auth.uid || eventData.data.ownerId == request.auth.uid))
       );
     }
 
@@ -42,15 +52,15 @@ service cloud.firestore {
 
     function isPublicRegistration() {
       // Allow public update of registrations array IF it's a valid increment
-      return incoming().diff(existing()).affectedKeys().hasOnly(['data', 'updatedAt']) &&
-             incoming().data.registrations.size() > existing().data.registrations.size();
+      return incoming().diff(existing()).affectedKeys().hasAny(['data', 'updatedAt']) &&
+             (incoming().data.registrations.size() >= existing().data.registrations.size());
     }
 
     // --- Profiles ---
     match /profiles/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn(); // Allow profile creation on first login
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
@@ -59,11 +69,8 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true; 
       allow create: if isSignedIn();
-      allow update: if isAdmin() || 
-                      (isSignedIn() && (resource == null || existing().userId == request.auth.uid || existing().ownerId == request.auth.uid)) ||
-                      isPublicRegistration();
-      allow delete: if isAdmin() || 
-                      (isSignedIn() && (existing().userId == request.auth.uid || existing().ownerId == request.auth.uid));
+      allow update: if isAdmin() || isEventOwner(eventId) || isPublicRegistration();
+      allow delete: if isAdmin() || isEventOwner(eventId);
 
       match /submissions/{subId} {
         allow read, create: if true;

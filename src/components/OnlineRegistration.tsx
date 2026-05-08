@@ -271,6 +271,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     if (formData.paymentType === 'GATEWAY') {
       setIsSubmitting(true);
       try {
+        console.log("Initiating payment gateway for:", totalAmount);
         const res = await fetch('/api/payment/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -279,26 +280,50 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
             method: 'GATEWAY',
             provider: globalSettings.paymentGatewayProvider || 'MIDTRANS',
             customerDetails: { name: formData.name || formData.club, email: formData.email },
-            itemDetails: registrations.map(r => ({ id: r.category, price: r.totalPaid, quantity: 1, name: `Reg ${r.name} - ${r.category}` }))
+            itemDetails: registrations.map(r => ({ id: r.category || 'REG', price: r.totalPaid, quantity: 1, name: `Reg ${r.name} - ${r.category}` }))
           })
         });
+        
+        if (!res.ok) throw new Error("Gagal membuat transaksi pembayaran");
+        
         const data = await res.json();
+        
         // @ts-ignore
         if (data.success && data.token && window.snap) {
+          console.log("Snap token received, opening popup");
           // @ts-ignore
           window.snap.pay(data.token, {
-            onSuccess: () => { onRegister(registrations.map(r => ({ ...r, status: 'APPROVED' }))); setStep(3); },
-            onPending: () => { onRegister(registrations); setStep(3); },
-            onError: () => toast.error("Pembayaran Gagal"),
+            onSuccess: (result: any) => { 
+              console.log("Payment success", result);
+              onRegister(registrations.map(r => ({ ...r, status: 'APPROVED', paymentId: result.transaction_id }))); 
+              setStep(3); 
+            },
+            onPending: (result: any) => { 
+              console.log("Payment pending", result);
+              onRegister(registrations.map(r => ({ ...r, status: 'PENDING', paymentId: result.transaction_id }))); 
+              setStep(3); 
+            },
+            onError: (result: any) => {
+              console.error("Payment error", result);
+              toast.error("Pembayaran Gagal. Silakan coba lagi.");
+            },
+            onClose: () => {
+              console.log("Payment popup closed");
+              setIsSubmitting(false);
+            }
           });
         } else {
-          toast.info("Gunakan simulasi pendaftaran massal");
-          setSimulatedQR("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=COLLECTIVE");
-          setIsSimulatingPayment(true);
+          console.warn("Snap is missing or success=false, failing back to simulation or error");
+          if (!window.snap) {
+            toast.error("Sistem pembayaran (Snap) belum siap. Silakan refresh halaman.");
+          } else {
+            toast.error("Gagal mendapatkan token pendaftaran.");
+          }
+          setIsSubmitting(false);
         }
       } catch (err) {
-        toast.error("Gateway error. Cek koneksi.");
-      } finally {
+        console.error("Payment registration error:", err);
+        toast.error("Terjadi kesalahan sistem pendaftaran. Gunakan Transfer Manual jika masalah berlanjut.");
         setIsSubmitting(false);
       }
     } else {
@@ -596,7 +621,31 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           <div className="bg-white p-8 rounded-3xl w-full max-w-sm text-center space-y-6 shadow-2xl">
             <h3 className="text-2xl font-black font-oswald italic">SIMULASI PEMBAYARAN</h3>
             <img src={simulatedQR || ""} alt="QR" className="w-48 h-48 mx-auto border-4 border-slate-100 rounded-2xl" />
-            <button onClick={() => completeSimulation({ id: 'sim_' + Date.now(), registrationNo: 'SIM-123', name: formData.name, email: formData.email, club: formData.club, category: formData.category, totalPaid: 0, platformFee: 0, status: 'APPROVED', paymentType: 'GATEWAY', timestamp: Date.now() })} className="w-full py-4 bg-emerald-500 text-white rounded-xl font-black uppercase">Berhasil (Mock)</button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const newReg = { 
+                          id: 'sim_' + Date.now(), 
+                          registrationNo: 'SIM-' + Math.floor(1000 + Math.random() * 9000), 
+                          name: formData.name || 'SIMULASI USER', 
+                          email: formData.email, 
+                          club: formData.club, 
+                          category: formData.category || 'UMUM', 
+                          totalPaid: 0, 
+                          platformFee: 0, 
+                          status: 'APPROVED', 
+                          paymentType: 'GATEWAY' as const, 
+                          timestamp: Date.now() 
+                        };
+                        await completeSimulation(newReg);
+                      } catch (e) {
+                        toast.error("Gagal simpan simulasi");
+                      }
+                    }} 
+                    className="w-full py-4 bg-emerald-500 text-white rounded-xl font-black uppercase"
+                  >
+                    Berhasil (Mock)
+                  </button>
             <button onClick={() => setIsSimulatingPayment(false)} className="text-slate-400 text-xs font-bold uppercase">Batal</button>
           </div>
         </div>

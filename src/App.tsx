@@ -2200,63 +2200,53 @@ export function App() {
             const response = await fetch('/api/register-participant', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+              body: JSON.stringify({ 
                 eventId: activeEvent.id,
                 registrations: regs,
                 archers: newArchers,
-                officials: officialRegs
+                officials: officialRegs 
               })
             });
-            
+
             const result = await response.json();
-            if (!result.success) throw new Error(result.error);
+            if (response.ok && result.success) {
+              // Successfully registered in cloud, now refresh local state
+              await fetchCloudData(true);
+              pushNotification("Pendaftaran Berhasil", `${regs.length} peserta telah terdaftar di cloud.`, "SUCCESS");
 
-            pushNotification("Pendaftaran Berhasil", `${regs.length} pendaftaran cloud sukses!`, "SUCCESS");
-            
-            setAppState(prev => {
-              const event = prev.events.find(e => e.id === (activeEvent as any).id);
-              if (!event) return prev;
-              const updatedEvent: ArcheryEvent = { 
-                ...event, 
-                registrations: [...(event.registrations || []), ...regs],
-                archers: [...(event.archers || []), ...newArchers],
-                officials: [...(event.officials || []), ...officialRegs],
-                localUpdatedAt: new Date().toISOString()
-              };
-              const newState = {
-                ...prev,
-                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
-              };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-              return newState;
-            });
+              // Send emails if not too many
+              if (regs.length <= 5) {
+                for (const r of regs) {
+                  const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
+                  const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent?.settings?.tournamentName}` : `Pendaftaran Diterima: ${activeEvent?.settings?.tournamentName}`;
+                  const message = isAutoConfirm 
+                    ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent?.settings?.tournamentName}".\n\nPendaftaran Anda telah VERIFIKASI.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent?.id}&view=entry-list\n\nSelamat bertanding!`
+                    : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
 
-            if (regs.length <= 5) {
-              for (const r of regs) {
-                const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
-                const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent?.settings?.tournamentName}` : `Pendaftaran Diterima: ${activeEvent?.settings?.tournamentName}`;
-                const message = isAutoConfirm 
-                  ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent?.settings?.tournamentName}".\n\nPendaftaran Anda telah VERIFIKASI.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent?.id}&view=entry-list\n\nSelamat bertanding!`
-                  : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
-
-                try {
-                  const emailRes = await fetch('/api/send-email-otp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: r.email, subject, message })
-                  });
-                  const emailData = await emailRes.json();
-                  if (!emailData.success) console.warn("Email individual failed", emailData.message);
-                } catch (e) {
-                  console.warn("Email fetch failed", e);
+                  try {
+                    await fetch('/api/send-email-otp', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: r.email, subject, message })
+                    });
+                  } catch (e) {
+                    console.warn("Email individual failed", e);
+                  }
                 }
               }
+            } else {
+              console.error("Registration API failure:", result);
+              registerLocallyOnly();
+              const errorMsg = result.message || result.error || "Gagal sinkron pendaftaran ke cloud.";
+              pushNotification("Gagal Sinkron", errorMsg, "WARNING");
             }
-          } catch (error: any) {
-            console.error("Online registration error:", error);
-            if (error.message?.toLowerCase().includes('quota') || error.code === 'resource-exhausted') {
+          } catch (err: any) {
+            console.error("Online registration error:", err);
+            if (err.message?.toLowerCase().includes('quota') || err.code === 'resource-exhausted') {
               setQuotaExceeded(true);
-              pushNotification("Server Penuh", "Batas harian server tercapai. Pendaftaran disimpan LOKAL dan akan disinkronkan otomatis besok pagi.", "WARNING");
+              pushNotification("Server Penuh", "Batas harian server tercapai. Pendaftaran disimpan LOKAL.", "WARNING");
+            } else {
+              pushNotification("Koneksi Bermasalah", "Data disimpan lokal karena gangguan koneksi.", "WARNING");
             }
             registerLocallyOnly();
           }

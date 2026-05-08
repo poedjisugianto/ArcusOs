@@ -246,6 +246,27 @@ export function App() {
               .catch(() => null)
           : (isPrivileged ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
         ).catch(() => null),
+
+        // 3. Optimized Event Details (ARCHERS / SCORES / SHARDS)
+        // This is the CRITICAL fix for Quota during live tournament results
+        ((isPublicView && appState.activeEventId)
+          ? fetch(`/api/event-details/${appState.activeEventId}`)
+              .then(res => res.json())
+              .then(res => {
+                  if (res.success && res.data) {
+                    const { event, submissions, shards } = res.data;
+                    // Format into a shape that the state-merging logic understands
+                    return { 
+                      __is_api_cache: true,
+                      submissions: { docs: (submissions || []).map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
+                      shards: { docs: (shards || []).map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
+                      event: { id: event.id, data: () => ({ ...event.data, id: event.id }), exists: true }
+                    };
+                  }
+                  return null;
+              })
+              .catch(() => null)
+          : Promise.resolve(null)),
         
         // 4. Fetch Submissions (ONLY for privileged/non-public views)
         (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)),
@@ -274,9 +295,18 @@ export function App() {
       const results = await Promise.all(fetchJobs);
       const configSnap = results[0];
       const eventsSnap = results[1];
-      const submissionsSnap = results[2];
-      const shardsSnap = results[3];
-      const profilesSnap = results.length > 4 ? results[4] : null;
+      const apiCacheDetails = results[2]; // The new cached details from /api/event-details
+      
+      // For public views, we prefer apiCacheDetails. For organizers, we use the SDK results.
+      let submissionsSnap = results[3];
+      let shardsSnap = results[4];
+      const profilesSnap = results.length > 5 ? results[5] : null;
+
+      // If we are in public view and obtained data from API cache, use it as the source of truth
+      if (isPublicView && apiCacheDetails?.__is_api_cache) {
+        submissionsSnap = apiCacheDetails.submissions;
+        shardsSnap = apiCacheDetails.shards;
+      }
 
       const cloudSettings = (configSnap?.exists?.() && configSnap.data()) ? configSnap.data()?.data : null;
       
@@ -895,10 +925,13 @@ export function App() {
     // Only subscribe for these high-priority roles/modes
     if (!isAdminView && !isScoringView && !isTVMode) return;
     
+    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
+    const isPublicView = !appState.currentUser || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
+    if (isPublicView) return; // Do not use onSnapshot for public guests (save quota)
+
     let isMounted = true;
     let unsub: () => void = () => {};
 
-    // Small delay to prevent hammer-subscribing during navigation transitions
     const subTimeout = setTimeout(() => {
       if (!isMounted) return;
       
@@ -960,6 +993,10 @@ export function App() {
     // Only subscribe in views that need live updates
     const liveViews = ['LIVE', 'PUBLIC_LIVE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'ARCHERS', 'FINANCE'];
     if (!liveViews.includes(view)) return;
+
+    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
+    const isPublicView = !appState.currentUser || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
+    if (isPublicView) return; // Do not use onSnapshot for public guests (save quota)
 
     const event = appState.events.find(e => e.id === appState.activeEventId);
     if (!event || !event.isSharded) return;
@@ -1032,6 +1069,10 @@ export function App() {
   // Global Config Subscription
   useEffect(() => {
     if (!db) return;
+    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
+    const isPublicView = !appState.currentUser || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
+    if (isPublicView) return; // Disable live config updates for guests
+
     const unsubConfig = onSnapshot(doc(db, 'systemConfigs', 'global'), (docSnap) => {
       if (docSnap.exists() && !hasPendingChanges) {
         const cloudSettings = docSnap.data().data as GlobalSettings;
@@ -1138,25 +1179,19 @@ export function App() {
   useEffect(() => {
     if (!db || !isOnline || quotaExceeded) return;
     
-    const isPublicMobileLive = view === 'PUBLIC_LIVE' && window.innerWidth < 1024;
+    const isPublicTournamentView = view.startsWith('PUBLIC_') || view === 'REGISTER_PARTICIPANT';
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
     
-    if (isPublicMobileLive || adminViews.includes(view)) {
+    if (isPublicTournamentView || adminViews.includes(view)) {
       // Significantly increase polling intervals to save quota
-      // Mobile Public: 3 minutes per update
-      // Admin/Live: 60 seconds
-      const pollInterval = isPublicMobileLive ? 180000 : 60000;
+      // Public Views: 5 minutes per update (Served from Cache)
+      // Admin/Live: 2 minutes
+      const pollInterval = isPublicTournamentView ? 300000 : 120000;
       
       const interval = setInterval(() => {
         if (document.visibilityState === 'visible') {
-           // Extra check to see if we really need to poll (e.g. if we don't have onSnapshot active)
-           const isHighPriority = view === 'LIVE' || view === 'OPERATOR_CENTER' || view === 'EVENT_ADMIN';
-           const needsPolling = isPublicMobileLive || view === 'OFFICIALS' || (isHighPriority && window.innerWidth < 1024);
-           
-           if (needsPolling) {
-             console.log(`Auto-polling cloud updates (${view}) - Safe Interval...`);
-             fetchCloudData().catch(err => console.error("Polling fetch error:", err));
-           }
+           console.log(`Auto-polling cloud updates (${view}) - Pulse sync...`);
+           fetchCloudData().catch(err => console.error("Pulse sync error:", err));
         }
       }, pollInterval); 
       return () => clearInterval(interval);

@@ -824,6 +824,62 @@ async function preheatEventsCache() {
   }
 }
 
+// Memory cache for individual event details to save quota on live views
+const eventDetailsCache: Record<string, { data: any, timestamp: number }> = {};
+const DETAIL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache for details
+
+app.get("/api/event-details/:id", async (req, res) => {
+  const eventId = req.params.id;
+  const now = Date.now();
+
+  // Return cached if fresh
+  if (eventDetailsCache[eventId] && (now - eventDetailsCache[eventId].timestamp < DETAIL_CACHE_TTL)) {
+    return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'cache' });
+  }
+
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+
+  try {
+    // 1. Fetch main event doc
+    const eventDoc = await db.collection('events').doc(eventId).get();
+    if (!eventDoc.exists) return res.status(404).json({ error: "Event not found" });
+    
+    const eventData = eventDoc.data();
+    
+    // 2. Fetch subcollections in parallel to save time
+    const [submissionsSnap, shardsSnap] = await Promise.all([
+      db.collection('events').doc(eventId).collection('submissions').limit(2000).get(),
+      db.collection('events').doc(eventId).collection('shards').limit(500).get()
+    ]);
+
+    const submissions: any[] = [];
+    submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
+
+    const shards: any[] = [];
+    shardsSnap.forEach((d: any) => shards.push({ id: d.id, ...d.data() }));
+
+    const fullData = {
+      event: { id: eventDoc.id, ...eventData },
+      submissions,
+      shards
+    };
+
+    // Update Cache
+    eventDetailsCache[eventId] = { data: fullData, timestamp: now };
+
+    res.json({ success: true, data: fullData, source: 'live' });
+  } catch (err: any) {
+    console.error(`[DETAIL-FETCH-ERROR] ${eventId}:`, err.message);
+    
+    // Fallback to stale cache on error
+    if (eventDetailsCache[eventId]) {
+      return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'error-fallback' });
+    }
+    
+    res.status(500).json({ error: "Failed to fetch event details. Quota likely exceeded." });
+  }
+});
+
 // Preheat on startup and every 30 mins
 preheatEventsCache();
 setInterval(preheatEventsCache, 1800000);

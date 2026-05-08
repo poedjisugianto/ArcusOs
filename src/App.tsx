@@ -84,7 +84,8 @@ export function App() {
       practiceRetentionDays: 7,
       paymentGatewayProvider: 'NONE',
       paymentGatewayIsProduction: false,
-      platformFeePercentage: 0
+      platformFeePercentage: 0,
+      productionUrl: ''
     };
 
     try {
@@ -593,8 +594,19 @@ export function App() {
       if (user) {
         handleBackgroundLogin(user);
       } else {
-        setAppState(prev => ({ ...prev, currentUser: null, activeEventId: null }));
-        setView('LANDING');
+        // Reset current user state
+        setAppState(prev => ({ ...prev, currentUser: null }));
+        
+        // Navigation: Only reset to LANDING if in a private/auth-required view
+        // Don't reset view if user is currently viewing a public event or deep link
+        const privateViews: View[] = ['SUPER_ADMIN', 'MEMBER_DASHBOARD', 'EVENT_ADMIN', 'LOGIN', 'REGISTER'];
+        setView(prevView => {
+          if (privateViews.includes(prevView)) {
+            setAppState(prev => ({ ...prev, activeEventId: null }));
+            return 'LANDING';
+          }
+          return prevView;
+        });
       }
     });
 
@@ -1237,12 +1249,17 @@ export function App() {
     const event = appState.events.find(e => e.id === id);
     const eventName = name || event?.settings?.tournamentName || 'Tournament';
     
-    // Gunakan origin jika bukan localhost, jika localhost coba gunakan Fallback Production URL jika ada
+    // Urutan prioritas link: 
+    // 1. Production URL (dari settings) 
+    // 2. Current Origin (jika bukan local)
+    // 3. Fallback Alias (jika local)
     const currentOrigin = window.location.origin;
     const isLocal = currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1');
-    const baseUrl = isLocal 
-      ? 'https://arcus-digital.arcus.field' // Nama alias jika lokal (informasi saja)
-      : currentOrigin;
+    const settingsUrl = appState.globalSettings.productionUrl?.trim();
+    
+    const baseUrl = (settingsUrl && settingsUrl.startsWith('http')) 
+      ? settingsUrl.replace(/\/$/, '') 
+      : (isLocal ? 'https://arcus-digital.arcus.field' : currentOrigin);
 
     setShareData({
       isOpen: true,
@@ -1251,8 +1268,8 @@ export function App() {
       registerUrl: `${baseUrl}?register=${id}`
     });
 
-    if (isLocal) {
-      pushNotification("Lokal Detected", "Link berbagi menggunakan alamat lokal. Pastikan sinkronisasi cloud aktif agar orang lain bisa melihat data ini.", "INFO");
+    if (isLocal && !settingsUrl) {
+      pushNotification("Lokal Detected", "Berbagi dari localhost mungkin tidak bisa dibuka orang lain. Masukkan link produksi di Pengaturan Super Admin.", "WARNING");
     }
   };
 

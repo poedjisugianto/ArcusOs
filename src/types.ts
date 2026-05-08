@@ -66,6 +66,7 @@ export interface GlobalSettings {
   paymentGatewayServerKey?: string;
   paymentGatewayClientKey?: string;
   platformFeePercentage: number;
+  productionUrl?: string;
 }
 
 export interface AppNotification {

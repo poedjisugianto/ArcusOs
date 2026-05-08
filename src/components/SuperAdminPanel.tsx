@@ -348,6 +348,19 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
                      <input type="number" value={localSettings.feeKids} onChange={e => setLocalSettings({...localSettings, feeKids: parseInt(e.target.value) || 0})} className="w-full p-4 bg-slate-50 border rounded-2xl font-black" />
                   </div>
                </div>
+               <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase text-slate-400">Production URL (Link Berbagi)</label>
+                  <input 
+                    type="url" 
+                    placeholder="Contoh: https://arcus-archery.id" 
+                    value={localSettings.productionUrl || ''} 
+                    onChange={e => setLocalSettings({...localSettings, productionUrl: e.target.value})} 
+                    className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm" 
+                  />
+                  <p className="text-[8px] font-bold text-slate-400 uppercase leading-relaxed">
+                    URL ini akan digunakan sebagai dasar link pendaftaran dan info turnamen saat dibagikan. Jika kosong, sistem akan menggunakan domain saat ini.
+                  </p>
+               </div>
             </div>
             <div className="space-y-6">
                <h4 className="font-black text-xs uppercase text-slate-400 border-b pb-2">Rekening Settlement Pusat</h4>

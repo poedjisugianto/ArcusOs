@@ -219,9 +219,9 @@ export function App() {
                       setAppState(prev => ({ ...prev, events: data.events }));
                     }
                     
-                    // Reassuring status for visitors
+                    // Status koneksi untuk pengunjung
                     setSyncStatus({ 
-                      source: 'Sistem Cloud Terhubung', 
+                      source: 'Data Cloud Aktif (Real-time)', 
                       time: new Date().toLocaleTimeString('id-ID')
                     });
 
@@ -549,35 +549,39 @@ export function App() {
       try {
         const idToFetch = eventId || registerId;
         if (idToFetch) {
-          console.log("Deep link validation starting for:", idToFetch);
-          const eventSnap = await getDoc(doc(db, 'events', idToFetch));
+          console.log("Validasi link via API Cloud Arcus:", idToFetch);
+          
+          // Shortcut: Gunakan API Backend yang lebih stabil daripada SDK Client saat kuota kritis
+          const response = await fetch(`/api/event-details/${idToFetch}`);
+          const resJson = await response.json();
 
-          if (eventSnap.exists()) {
-            console.log("Deep link data found in Firestore.");
-            const eventRecord = eventSnap.data();
-            if (!eventRecord) throw new Error("Document data is empty");
-            // Support both wrapped { data: ... } and unwrapped formats
-            const targetEvent = (eventRecord.data || eventRecord) as ArcheryEvent;
+          if (resJson.success && resJson.data) {
+            console.log("Data turnamen ditemukan (Live).");
+            const { event, submissions, shards } = resJson.data;
+            const targetEvent = (event.data || event) as ArcheryEvent;
+            targetEvent.id = event.id; // Pastikan ID konsisten
             
-            // Inject into state and activate
+            // Masukkan data ke State utama
             setAppState(prev => {
               const exists = prev.events.some(e => e.id === targetEvent.id);
               return { 
                 ...prev, 
                 events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
-                activeEventId: targetEvent.id
+                activeEventId: targetEvent.id,
+                submissions: submissions || prev.submissions,
+                shards: shards || prev.shards
               };
             });
 
-            // Navigate based on view
+            // Langsung arahkan ke halaman yang sesuai
             if (registerId) setView('REGISTER_PARTICIPANT');
             else if (viewParam === 'live') setView('PUBLIC_LIVE');
             else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
             else setView('PUBLIC_EVENT_INFO');
             
           } else {
-            console.warn("Shared event not found in cloud:", idToFetch);
-            pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan di awan. Pastikan penyelenggara sudah mengaktifkan turnamen.", "WARNING");
+            console.warn("Turnamen tidak ditemukan di Cloud:", idToFetch);
+            pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan. Silakan cek link kembali.", "WARNING");
           }
         }
       } catch (err) {
@@ -1175,20 +1179,15 @@ export function App() {
     const isPublicTournamentView = view.startsWith('PUBLIC_') || view === 'REGISTER_PARTICIPANT';
     const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
     
-    if (isPublicTournamentView || adminViews.includes(view)) {
-      // Significantly increase polling intervals
-      // Public Views: 60 seconds per update (Served from Fresh API Cache)
-      // Admin/Live: 60 seconds
-      const pollInterval = 60000;
-      
-      const interval = setInterval(() => {
-        if (document.visibilityState === 'visible') {
-           console.log(`Auto-polling cloud updates (${view}) - Pulse sync...`);
-           fetchCloudData().catch(err => console.error("Pulse sync error:", err));
-        }
-      }, pollInterval); 
-      return () => clearInterval(interval);
-    }
+    // Sinkronisasi otomatis untuk semua view penting
+    const pollInterval = 30000;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+         console.log(`Sinkronisasi data cloud (${view})...`);
+         fetchCloudData().catch(err => console.error("Gagal sinkronisasi:", err));
+      }
+    }, pollInterval); 
+    return () => clearInterval(interval);
   }, [view, isOnline, quotaExceeded]);
 
   const handleInstallClick = async () => {

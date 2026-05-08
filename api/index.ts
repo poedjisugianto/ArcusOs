@@ -552,175 +552,53 @@ app.get("/api/db-test", async (req, res) => {
   }
 });
 
-// Global Cache for Public Events with High Resiliency
-const EVENT_CACHE_FILE = path.join(process.cwd(), 'cached_public_events.json');
-let cachedPublicEvents: any[] | null = null;
-let lastPublicEventsUpdate = 0;
-const PUBLIC_EVENTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes cache to strictly save quota
-const BROWSER_CACHE_TTL = 600; // 10 minutes browser cache
-
-// Server-side cache for Global Settings to avoid excessive reads
-let cachedGlobalSettings: any = null;
-let lastGlobalSettingsUpdate = 0;
-const SETTINGS_CACHE_TTL = 300 * 1000; // 5 minutes
-
-// Initialize cache from disk on startup
-try {
-  if (fs.existsSync(EVENT_CACHE_FILE)) {
-    const savedData = JSON.parse(fs.readFileSync(EVENT_CACHE_FILE, 'utf8'));
-    cachedPublicEvents = savedData.events;
-    lastPublicEventsUpdate = savedData.timestamp;
-    console.log("[CACHE] Initialized from disk: " + (cachedPublicEvents?.length || 0) + " events.");
-  }
-} catch (err) {
-  console.warn("Failed to load cached events from disk:", (err as Error).message);
-}
-
+// --- PRODUCTION API FOR EVENT DISCOVERY ---
+// Fetch public events directly from Firestore without "faking" or stale caching.
 app.get("/api/public-events", async (req, res) => {
-  // Set Cache-Control to tell browsers and proxies to cache this for 10 minutes
-  // Reduces server hits drastically for public visitors
-  res.setHeader('Cache-Control', `public, max-age=${BROWSER_CACHE_TTL}, stale-while-revalidate=300`);
+  res.setHeader('Cache-Control', 'public, max-age=5'); // Sangat singkat agar data segar
+
+  if (!db) return res.status(500).json({ error: "Cloud Server tidak aktif" });
 
   try {
-    const now = Date.now();
-    // Use cache if fresh
-    if (cachedPublicEvents && cachedPublicEvents.length > 0 && (now - lastPublicEventsUpdate < PUBLIC_EVENTS_CACHE_TTL)) {
-      return res.json({ success: true, events: cachedPublicEvents, source: 'cache' });
-    }
+    // Ambil langsung dari Firestore
+    const snapshot = await db.collection('events').limit(100).get();
 
-    let events: any[] = [];
-    let fetchSuccessful = false;
-    let isQuotaExceeded = false;
-    
-    // Primary: REST API 
-    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=50`;
-    
-    try {
-      const response = await axios.get(url, { timeout: 6000 });
-      if (response.data && response.data.documents) {
-        response.data.documents.forEach((doc: any) => {
-          const dataFromRest = transformRestFields(doc.fields);
-          if (dataFromRest) {
-            const id = doc.name.split('/').pop();
-            events.push({ id, ...dataFromRest });
-          }
-        });
-        fetchSuccessful = true;
+    const events: any[] = [];
+    snapshot.forEach((doc: any) => {
+      const data = doc.data();
+      const eventData = data.data || data;
+      // Ambil status dari berbagai kemungkinan field agar tidak luput
+      const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+      
+      // Tampilkan semua kecuali yang dihapus atau draft
+      if (status !== 'DELETED' && status !== 'DRAFT') {
+         events.push({
+           id: doc.id,
+           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
+           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
+           settings: {
+             ...(eventData.settings || {}),
+             tournamentName: eventData.settings?.tournamentName || eventData.tournamentName || "Tournament Arcus",
+             location: eventData.settings?.location || eventData.location || "Lokasi",
+             eventDate: eventData.settings?.eventDate || eventData.eventDate || "TBA"
+           }
+         });
       }
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error?.message || err.message || "";
-      if (errorMsg.includes("Quota") || errorMsg.includes("limit exceeded") || err.response?.status === 429) {
-        isQuotaExceeded = true;
-        console.error("[REST-API] QUOTA EXCEEDED. Falling back to persistent cache.");
-      } else {
-        console.error("[REST-API] Error:", errorMsg);
-      }
-    }
+    });
 
-    // Secondary: Admin SDK Fallback (Only if REST failed and not a persistent quota issue)
-    if (db && !fetchSuccessful && !isQuotaExceeded) {
-      try {
-        const snapshot = await db.collection('events').limit(30).get();
-        const adminEvents: any[] = [];
-        snapshot.forEach((doc: any) => {
-          adminEvents.push({ id: doc.id, ...doc.data() });
-        });
-        
-        if (adminEvents.length > 0) {
-           events = adminEvents;
-           fetchSuccessful = true;
-        }
-      } catch (err: any) {
-        const errorMsg = err.message || "";
-        if (errorMsg.includes("Quota") || errorMsg.includes("exhausted")) {
-           isQuotaExceeded = true;
-        }
-        console.error("[ADMIN-SDK] Error:", errorMsg);
-      }
-    }
-
-    // If we have new data, process and cache it
-    if (events.length > 0) {
-      const finalEvents = events.map(e => {
-        const eventData = e.data || e;
-        const id = e.id || eventData.id;
-        
-        let status = (e.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-        // Be extremely lenient: if it's not draft/deleted, and contains active-like words, show it
-        if (status === 'PUBLISHED' || status === 'READY' || status === 'OPEN' || status === 'ONGOING') {
-          status = 'ACTIVE';
-        }
-        
-        const settings = eventData.settings || e.settings || {};
-        const name = settings.tournamentName || eventData.tournamentName || e.tournamentName || "Tournament Arcus";
-
-        return {
-          id,
-          status,
-          createdAt: e.createdAt || eventData.createdAt || new Date().toISOString(),
-          userId: e.userId || eventData.userId || e.ownerId || eventData.ownerId,
-          settings: {
-            ...settings,
-            tournamentName: name,
-            location: settings.location || eventData.location || "Lokasi",
-            eventDate: settings.eventDate || eventData.eventDate || "TBA"
-          },
-          archers: eventData.archers || [],
-          registrations: eventData.registrations || [],
-          isPublic: e.isPublic !== false && eventData.isPublic !== false
-        };
-      }).filter(ev => ev.status !== 'DRAFT' && ev.status !== 'DELETED');
-
-      // Update Cache
-      if (finalEvents.length > 0) {
-        try {
-          const cacheData = { events: finalEvents, timestamp: Date.now() };
-          fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
-          cachedPublicEvents = finalEvents;
-          lastPublicEventsUpdate = cacheData.timestamp;
-        } catch (cacheErr) {
-          console.warn("[CACHE] Disk write error:", cacheErr);
-        }
-      }
-
-      return res.json({ 
-        success: true, 
-        events: finalEvents, 
-        source: 'live',
-        count: finalEvents.length
-      });
-    }
-
-    // EMERGENCY FALLBACK: ALWAYS serve cache if Google is down or hit quota
-    if (cachedPublicEvents) {
-      console.log(`[SAFE-MODE] Serving ${cachedPublicEvents.length} events from persistent cache.`);
-      return res.json({
-        success: true,
-        events: cachedPublicEvents,
-        source: isQuotaExceeded ? 'quota-fallback-cache' : 'empty-db-fallback-cache',
-        isStale: true
-      });
-    }
-
-    return res.json({ success: true, events: [], source: 'not-found' });
-  } catch (error: any) {
-    console.error("Critical Public Events Failure:", error.message);
-    
-    // Last resort: try to serve from cache on error
-    if (cachedPublicEvents && cachedPublicEvents.length > 0) {
-      console.log(`[API-ERROR-FALLBACK] Serving ${cachedPublicEvents.length} events from cache due to crash.`);
-      return res.json({
-        success: true,
-        events: cachedPublicEvents,
-        source: 'error-cache'
-      });
-    }
-    
-    res.status(500).json({ success: false, error: "Database temporarily unavailable" });
+    return res.json({ 
+       success: true, 
+       events, 
+       source: 'live-cloud',
+       timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error("[LIVE-FETCH-ERROR]:", err.message);
+    res.status(500).json({ error: "Gagal mengambil data cloud." });
   }
 });
 
-// API Route for registering participants (Online Registration - Supports Multi-register/Collective)
+// API Route for registering participants (Online Registration)
 app.post("/api/register-participant", async (req, res) => {
   const { eventId, registrations, archers, officials = [] } = req.body;
 
@@ -780,78 +658,6 @@ app.post("/api/register-participant", async (req, res) => {
   }
 });
 
-// Memory cache for events list
-let cachedEvents: any[] | null = null;
-let lastEventsUpdate = 0;
-const EVENTS_CACHE_TTL = 60 * 1000; // 60 seconds
-
-app.get("/api/public-events", async (req, res) => {
-  const now = Date.now();
-  
-  // Return cached if fresh
-  if (cachedEvents && (now - lastEventsUpdate < EVENTS_CACHE_TTL)) {
-    return res.json({ events: cachedEvents, source: 'cache', timestamp: lastEventsUpdate });
-  }
-
-  if (!db) return res.status(500).json({ error: "DB not initialized" });
-
-  try {
-    const snapshot = await db.collection('events').where('isPublic', '!=', false).limit(50).get();
-    const events: any[] = [];
-    snapshot.forEach((doc: any) => {
-      const data = doc.data();
-      const eventData = data.data || data;
-      const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-      
-      if (status !== 'DRAFT' && status !== 'DELETED') {
-         events.push({
-           id: doc.id,
-           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
-           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
-           settings: {
-             ...(eventData.settings || {}),
-             tournamentName: eventData.settings?.tournamentName || eventData.tournamentName || "Tournament Arcus",
-             location: eventData.settings?.location || eventData.location || "Lokasi",
-             eventDate: eventData.settings?.eventDate || eventData.eventDate || "TBA"
-           }
-         });
-      }
-    });
-
-    cachedEvents = events;
-    lastEventsUpdate = now;
-    res.json({ events, source: 'live', timestamp: now });
-  } catch (err: any) {
-    if (cachedEvents) return res.json({ events: cachedEvents, source: 'fallback' });
-    res.status(500).json({ error: "Quota Exceeded or DB Error" });
-  }
-});
-
-// Periodic Cache Refresher (Keep for Express environments, but prioritize active check above)
-async function preheatEventsCache() {
-  if (!db) return;
-  try {
-    const snapshot = await db.collection('events').limit(50).get();
-    const events: any[] = [];
-    snapshot.forEach((doc: any) => {
-      const data = doc.data();
-      const eventData = data.data || data;
-      const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-      if (status !== 'DRAFT' && status !== 'DELETED') {
-         events.push({
-           id: doc.id,
-           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
-           settings: eventData.settings || {}
-         });
-      }
-    });
-    if (events.length > 0) {
-      cachedEvents = events;
-      lastEventsUpdate = Date.now();
-    }
-  } catch (err: any) {}
-}
-
 // Memory cache for individual event details to save quota on live views
 const eventDetailsCache: Record<string, { data: any, timestamp: number }> = {};
 const DETAIL_CACHE_TTL = 30 * 1000; // 30 seconds (Near LIVE but still protects server)
@@ -909,8 +715,5 @@ app.get("/api/event-details/:id", async (req, res) => {
   }
 });
 
-// Preheat on startup and every 5 mins (Increased frequency)
-preheatEventsCache();
-setInterval(preheatEventsCache, 300000); // 5 minutes 
-
+// Final cleanup: No background preheating
 export default app;

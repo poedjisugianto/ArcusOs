@@ -27,11 +27,7 @@ interface Props {
 
 export default function OnlineRegistration({ event, globalSettings, onRegister, onBack, onViewParticipants }: Props) {
   const [regMode, setRegMode] = useState<'INDIVIDUAL' | 'COLLECTIVE'>('INDIVIDUAL');
-  const [step, setStep] = useState(() => {
-    const saved = localStorage.getItem(`reg_step_${event.id}`);
-    const parsed = saved ? parseInt(saved) : 1;
-    return isNaN(parsed) ? 1 : parsed;
-  });
+  const [step, setStep] = useState(1);
   
   const isRegistrationClosed = (event.settings?.registrationDeadline && isValidDate(event.settings?.registrationDeadline)) 
     ? new Date() > new Date(event.settings?.registrationDeadline) 
@@ -50,26 +46,12 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     paymentType: 'MANUAL' | 'GATEWAY';
     selectedPaymentMethodId: string;
     regType: 'ARCHER' | 'OFFICIAL';
-  }>(() => {
-    const saved = localStorage.getItem(`reg_draft_${event.id}`);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) { console.error("Reg draft parse failed", e); }
-    }
-    return {
-      name: '', email: '', phone: '', club: '', category: '', paymentProof: '',
-      paymentType: 'MANUAL', selectedPaymentMethodId: '', regType: 'ARCHER'
-    };
+  }>({
+    name: '', email: '', phone: '', club: '', category: '', paymentProof: '',
+    paymentType: 'MANUAL', selectedPaymentMethodId: '', regType: 'ARCHER'
   });
 
-  useEffect(() => {
-    localStorage.setItem(`reg_draft_${event.id}`, JSON.stringify(formData));
-  }, [formData, event.id]);
-
-  useEffect(() => {
-    localStorage.setItem(`reg_step_${event.id}`, step.toString());
-  }, [step, event.id]);
+  // Removed localStorage sync to prevent "stale" form data complaints
 
   useEffect(() => {
     if (globalSettings.paymentGatewayProvider === 'MIDTRANS') {
@@ -147,8 +129,6 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   };
 
   const resetRegistration = () => {
-    localStorage.removeItem(`reg_draft_${event.id}`);
-    localStorage.removeItem(`reg_step_${event.id}`);
     setFormData({
       name: '', email: '', phone: '', club: '', category: '', paymentProof: '',
       paymentType: 'MANUAL', selectedPaymentMethodId: '', regType: 'ARCHER'
@@ -348,15 +328,20 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         setIsSubmitting(false);
       }
     } else {
-      setIsSubmitting(true);
-      try {
-        await onRegister(registrations);
-        setStep(3);
-      } catch (err) {
-        toast.error("Gagal sinkron cloud. Data tersimpan lokal.");
-      } finally {
-        setIsSubmitting(false);
-      }
+    setIsSubmitting(true);
+    try {
+      // Refresh event context before registering to ensure data is absolute live
+      const freshRes = await fetch(`/api/event-details/${event.id}`);
+      const freshData = await freshRes.json();
+      if (!freshData.success) throw new Error("Gagal verifikasi data cloud.");
+
+      await onRegister(registrations);
+      setStep(3);
+    } catch (err) {
+      toast.error("Gagal sinkron cloud. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
+    }
     }
   };
 

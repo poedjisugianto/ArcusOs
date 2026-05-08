@@ -41,7 +41,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
               <ArcusLogo className="w-7 h-7 md:w-10 md:h-10" />
               <div className="flex flex-col">
                 <h2 className="text-[10px] md:text-xl font-black font-oswald uppercase italic leading-none tracking-tighter text-slate-900">Informasi Event</h2>
-                <span className="text-[5px] md:text-[8px] font-black text-arcus-red uppercase tracking-[0.2em]">Tournament OS</span>
+                <span className="text-[5px] md:text-[8px] font-black text-arcus-red uppercase tracking-[0.2em]">{event.settings?.tournamentName || 'Arcus Digital'}</span>
               </div>
             </div>
           </div>
@@ -98,7 +98,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                     </div>
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Tanggal</p>
-                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">24 - 26 Maret 2026</p>
+                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">{event.settings?.eventDate || 'Belum Ditentukan'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -107,7 +107,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                     </div>
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Lokasi</p>
-                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">Stadion Panahan Internasional</p>
+                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">{event.settings?.location || 'Lokasi Belum Ditentukan'}</p>
                     </div>
                   </div>
                 </div>

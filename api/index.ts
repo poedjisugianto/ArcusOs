@@ -91,6 +91,11 @@ function transformRestFields(fields: any) {
 // Hard Fallback Data removed to ensure only real user data is shown.
 const HARD_FALLBACK_API_RESPONSE: any[] = [];
 
+// Internal Caching for Global Settings
+let cachedGlobalSettings: any = null;
+let lastGlobalSettingsUpdate = 0;
+const SETTINGS_CACHE_TTL = 60 * 1000; // 60 seconds
+
 // Helper to get global settings from Firestore
 const getGlobalSettings = async () => {
   const now = Date.now();
@@ -567,21 +572,14 @@ app.get("/api/public-events", async (req, res) => {
     snapshot.forEach((doc: any) => {
       const data = doc.data();
       const eventData = data.data || data;
-      // Ambil status dari berbagai kemungkinan field agar tidak luput
       const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
       
-      // Tampilkan semua kecuali yang dihapus atau draft
       if (status !== 'DELETED' && status !== 'DRAFT') {
          events.push({
            id: doc.id,
            status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
            createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
-           settings: {
-             ...(eventData.settings || {}),
-             tournamentName: eventData.settings?.tournamentName || eventData.tournamentName || "Tournament Arcus",
-             location: eventData.settings?.location || eventData.location || "Lokasi",
-             eventDate: eventData.settings?.eventDate || eventData.eventDate || "TBA"
-           }
+           settings: eventData.settings || {} // Gunakan data asli apa adanya tanpa fallback string palsu
          });
       }
     });

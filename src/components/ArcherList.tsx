@@ -22,6 +22,7 @@ import {
   CategoryType,
   TournamentSettings,
   GlobalSettings,
+  RegistrationStatus
 } from "../types";
 import { CATEGORY_LABELS } from "../constants";
 import ScoringSheet from "./ScoringSheet";
@@ -110,7 +111,7 @@ const ArcherList: React.FC<Props> = ({
       club: newArcher.club,
       category: newArcher.category,
       phone: newArcher.phone || "-",
-      status: "APPROVED",
+      status: RegistrationStatus.APPROVED,
       paymentType: "MANUAL",
       platformFee: platformFee,
       totalPaid: 0,

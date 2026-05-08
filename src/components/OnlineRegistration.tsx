@@ -293,12 +293,12 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           window.snap.pay(data.token, {
             onSuccess: (result: any) => { 
               console.log("Payment success", result);
-              onRegister(registrations.map(r => ({ ...r, status: 'APPROVED', paymentId: result.transaction_id }))); 
+              onRegister(registrations.map(r => ({ ...r, status: RegistrationStatus.APPROVED, paymentId: result.transaction_id }))); 
               setStep(3); 
             },
             onPending: (result: any) => { 
               console.log("Payment pending", result);
-              onRegister(registrations.map(r => ({ ...r, status: 'PENDING', paymentId: result.transaction_id }))); 
+              onRegister(registrations.map(r => ({ ...r, status: RegistrationStatus.PENDING, paymentId: result.transaction_id }))); 
               setStep(3); 
             },
             onError: (result: any) => {
@@ -639,7 +639,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                           category: formData.category || 'UMUM', 
                           totalPaid: 0, 
                           platformFee: 0, 
-                          status: 'APPROVED', 
+                          status: RegistrationStatus.APPROVED, 
                           paymentType: 'GATEWAY' as const, 
                           timestamp: Date.now() 
                         };

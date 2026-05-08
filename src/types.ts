@@ -252,6 +252,8 @@ export interface AppState {
   notifications: AppNotification[];
   isDataLoaded?: boolean;
   activeScorer?: any;
+  submissions?: any[];
+  shards?: any[];
   drafts?: {
     scoring?: Record<string, (number | 'X')[]>; // key: archerId_endIndex
     adminSettings?: Record<string, TournamentSettings>; // key: eventId

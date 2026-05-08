@@ -9,7 +9,7 @@ import {
   AlertTriangle, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole, TournamentSettings } from './types';
+import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole, TournamentSettings, RegistrationStatus } from './types';
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -2134,14 +2134,14 @@ export function App() {
             const existingOfficial = (activeEvent.officials || []).find(o => o.id === regId);
             
             let updatePayload: Partial<ArcheryEvent> = {
-              registrations: activeEvent.registrations.map(r => r.id === regId ? { ...r, status: 'APPROVED' } : r)
+              registrations: activeEvent.registrations.map(r => r.id === regId ? { ...r, status: RegistrationStatus.APPROVED } : r)
             };
 
             if (isOfficial) {
               // Add/Update in officials
-              const newOfficial = { ...reg, status: 'APPROVED' };
+              const newOfficial = { ...reg, status: RegistrationStatus.APPROVED };
               if (existingOfficial) {
-                updatePayload.officials = (activeEvent.officials || []).map(o => o.id === regId ? { ...o, status: 'APPROVED' } : o);
+                updatePayload.officials = (activeEvent.officials || []).map(o => o.id === regId ? { ...o, status: RegistrationStatus.APPROVED } : o);
               } else {
                 updatePayload.officials = [...(activeEvent.officials || []), newOfficial as any];
               }
@@ -2152,10 +2152,10 @@ export function App() {
             } else {
               // Add/Update in archers
               if (existingArcher) {
-                updatePayload.archers = activeEvent.archers.map(a => a.id === regId ? { ...a, status: 'APPROVED' } : a);
+                updatePayload.archers = activeEvent.archers.map(a => a.id === regId ? { ...a, status: RegistrationStatus.APPROVED } : a);
               } else {
                 const finalPin = Math.floor(1000 + Math.random() * 9000).toString();
-                const newArcher: Archer = { ...reg, status: 'APPROVED', targetNo: 0, position: 'A', wave: 1, pin: finalPin }; 
+                const newArcher: Archer = { ...reg, status: RegistrationStatus.APPROVED, targetNo: 0, position: 'A', wave: 1, pin: finalPin }; 
                 updatePayload.archers = [...activeEvent.archers, newArcher];
               }
               // Remove from officials if mistaken

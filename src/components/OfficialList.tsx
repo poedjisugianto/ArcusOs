@@ -3,7 +3,7 @@ import {
   Search, Trash2, ArrowLeft, 
   X, Check, UserPlus, Printer, Users as UsersIcon, Image as ImageIcon, FileDown
 } from 'lucide-react';
-import { Archer, CategoryType, TournamentSettings, GlobalSettings } from '../types';
+import { Archer, CategoryType, TournamentSettings, GlobalSettings, RegistrationStatus } from '../types';
 import { CATEGORY_LABELS } from '../constants';
 
 interface Props {
@@ -159,7 +159,7 @@ const OfficialList: React.FC<Props> = ({ officials, onUpdate, onRemove, onGoToId
                     <div className="flex items-center justify-end gap-2">
                        {o.status !== 'APPROVED' && (
                          <button 
-                           onClick={() => onUpdate({ ...o, status: 'APPROVED' })}
+                           onClick={() => onUpdate({ ...o, status: RegistrationStatus.APPROVED })}
                            className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
                            title="Validasi Akreditasi"
                          >

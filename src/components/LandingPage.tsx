@@ -72,9 +72,9 @@ export default function LandingPage({
 
       // Deep search for settings
       const settings = baseData.settings || raw.settings || {};
-      const tournamentName = settings.tournamentName || baseData.tournamentName || raw.tournamentName || baseData.name || "Tournament Arcus";
-      const location = settings.location || baseData.location || "Lokasi";
-      const eventDate = settings.eventDate || baseData.eventDate || "TBA";
+      const tournamentName = settings.tournamentName || baseData.tournamentName || raw.tournamentName || baseData.name || "Turnamen Archery";
+      const location = settings.location || baseData.location || "Lokasi Belum Diatur";
+      const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
 
       return {
         ...baseData,
@@ -340,7 +340,7 @@ export default function LandingPage({
                       </h3>
                       
                       <p className="text-slate-500 text-xs font-medium mb-8 line-clamp-2 italic leading-relaxed opacity-70">
-                        {event.settings?.description || 'Turnamen panahan prestasi yang dikelola oleh ekosistem ARCUS DIGITAL.'}
+                        {event.settings?.description || ''}
                       </p>
 
                       <div className="space-y-4 mb-10 pb-6 border-b border-slate-50">

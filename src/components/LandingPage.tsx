@@ -65,7 +65,10 @@ export default function LandingPage({
       
       // Normalize status string (trim and uppercase)
       let statusStr = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
-      if (statusStr === 'PUBLISHED' || statusStr === 'READY') statusStr = 'ACTIVE';
+      // Be lenient with status strings to ensure tournaments show up if not drafts
+      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(statusStr)) {
+        statusStr = 'ACTIVE';
+      }
 
       // Deep search for settings
       const settings = baseData.settings || raw.settings || {};

@@ -780,4 +780,52 @@ app.post("/api/register-participant", async (req, res) => {
   }
 });
 
+// Periodic Cache Refresher (Preheat)
+async function preheatEventsCache() {
+  if (!db) return;
+  console.log("[CACHE-PREHEAT] Starting automatic fetch...");
+  try {
+    const snapshot = await db.collection('events').limit(50).get();
+    const events: any[] = [];
+    snapshot.forEach((doc: any) => {
+      const data = doc.data();
+      const eventData = data.data || data;
+      const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+      
+      // Validation for "ACTIVE" status using broad mapping
+      if (status !== 'DRAFT' && status !== 'DELETED') {
+         events.push({
+           id: doc.id,
+           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
+           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
+           userId: data.userId || eventData.userId || data.ownerId || eventData.ownerId,
+           settings: {
+             ...(eventData.settings || {}),
+             tournamentName: eventData.settings?.tournamentName || eventData.tournamentName || "Tournament Arcus",
+             location: eventData.settings?.location || eventData.location || "Lokasi",
+             eventDate: eventData.settings?.eventDate || eventData.eventDate || "TBA"
+           },
+           archers: eventData.archers || [],
+           registrations: eventData.registrations || [],
+           isPublic: data.isPublic !== false && eventData.isPublic !== false
+         });
+      }
+    });
+
+    if (events.length > 0) {
+      const cacheData = { events, timestamp: Date.now() };
+      fs.writeFileSync(EVENT_CACHE_FILE, JSON.stringify(cacheData));
+      cachedPublicEvents = events;
+      lastPublicEventsUpdate = cacheData.timestamp;
+      console.log(`[CACHE-PREHEAT] Success: ${events.length} events cached. Next refresh in 30 mins.`);
+    }
+  } catch (err: any) {
+    console.warn("[CACHE-PREHEAT] Error:", err.message);
+  }
+}
+
+// Preheat on startup and every 30 mins
+preheatEventsCache();
+setInterval(preheatEventsCache, 1800000);
+
 export default app;

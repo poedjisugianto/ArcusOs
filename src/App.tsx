@@ -151,12 +151,13 @@ export function App() {
     }
 
     const user = userOverride !== undefined ? userOverride : appState.currentUser;
-    const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN || user?.email === 'poedji.sugianto@gmail.com');
+    const isPrivileged = !!(user?.isSuperAdmin || user?.role === 'SUPERADMIN' || user?.email === 'poedji.sugianto@gmail.com');
     const canFetchProfiles = isPrivileged;
-    const isPublicView = !user || (!isPrivileged && view === 'LANDING');
+    const isPublicView = !user || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
 
     try {
       isSyncingFromCloud.current = true;
+      setIsSyncing(true);
       
       // Helper to fetch documents with timeout and silent failure for guests
       const safeGetDocs = async (collRef: any, queryRef?: any) => {
@@ -197,7 +198,7 @@ export function App() {
           .catch(() => safeGetDoc(doc(db, 'systemConfigs', 'global'))),
         
         // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
-        ((view === 'LANDING' || view.startsWith('PUBLIC_')) 
+        ((view === 'LANDING' || isPublicView) 
           ? fetch('/api/public-events') 
               .then(async res => {
                 const contentType = res.headers.get("content-type");
@@ -206,17 +207,30 @@ export function App() {
                   try {
                     return JSON.parse(text);
                   } catch (e) {
-                    console.error("JSON Parse Error:", e);
                     return null;
                   }
                 }
-                throw new Error(`Non-JSON response`);
+                return null;
               })
               .then(data => {
                 if (data && data.events) {
                     if (data.events.length > 0) {
                       setAppState(prev => ({ ...prev, events: data.events }));
                     }
+                    
+                    // Show a reassuring message if we are using the fallback cache
+                    if (data.source === 'quota-fallback-cache') {
+                      setSyncStatus({ 
+                        source: 'Mode Hemat Quota (Aktif)', 
+                        time: new Date().toLocaleTimeString('id-ID')
+                      });
+                    } else {
+                      setSyncStatus({ 
+                        source: 'Sistem Cloud Terhubung', 
+                        time: new Date().toLocaleTimeString('id-ID')
+                      });
+                    }
+
                     return { 
                       docs: (data.events || []).map((e: any) => ({ 
                          id: e.id, 
@@ -228,10 +242,7 @@ export function App() {
                 }
                 return null;
               })
-              .catch(() => {
-                if (!isPublicView) return safeGetDocs(collection(db, 'events'));
-                return null;
-              })
+              .catch(() => null)
           : (isPrivileged ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
         ).catch(() => null),
         
@@ -451,13 +462,13 @@ export function App() {
       const errStr = err.message || JSON.stringify(err);
       if (errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
         setQuotaExceeded(true);
-        // Silent fallback for public users - don't notify if not admin
-        const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === UserRole.SUPERADMIN);
+        // Inform user about background caching instead of just "Quota"
+        const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
         if (isPrivileged && manual) {
-           pushNotification("Quota Note", "Batas server tercapai. Menampilkan data dari cache.", "WARNING");
+           pushNotification("Mode Hemat Quota", "Menggunakan sistem cache karena batas database tercapai.", "WARNING");
         }
       } else {
-        if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke server.", "WARNING");
+        if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke sistem cloud.", "WARNING");
       }
       setAppState(prev => ({ ...prev, isDataLoaded: true }));
     } finally {
@@ -1456,19 +1467,22 @@ export function App() {
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
       <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
-      {/* Minimal Sync Indicator - Only for Organizers */}
+      {/* Professional Sync Status - Only for Organizers */}
       {appState.currentUser && (
-        <div className="fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between pointer-events-none opacity-40 hover:opacity-100 transition-opacity print:hidden">
+        <div className="fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between pointer-events-none transition-opacity print:hidden">
           <div className="flex items-center gap-2">
             <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-arcus-red animate-pulse' : (db ? 'bg-emerald-500' : 'bg-slate-300')}`} />
             <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
-              {isSyncing ? 'Synchronizing' : (db ? 'Connected' : 'Offline Mode')}
+              {isSyncing ? 'Cloud Syncing' : (db ? 'Cloud Ready' : 'Offline Mode')}
             </span>
           </div>
           <div className="flex items-center gap-3">
-              <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
-                {appState.currentUser.email}
-              </span>
+              <div className="px-2 py-0.5 bg-slate-900/5 rounded-full flex items-center gap-1.5">
+                <div className="w-1 h-1 bg-slate-300 rounded-full" />
+                <span className="text-[7px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  User: {appState.currentUser.name || appState.currentUser.email}
+                </span>
+              </div>
           </div>
         </div>
       )}

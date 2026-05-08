@@ -263,8 +263,8 @@ export function App() {
         (appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null)).catch(() => null)
       ];
 
-      // 3. Fetch Profiles (Only if Admin AND in Super Admin view or management view)
-      const needsFullProfiles = canFetchProfiles && (view === 'SUPERADMIN' || view === 'ADMIN_PANEL');
+      // 3. Fetch Profiles (Only if Admin AND in Super Admin view)
+      const needsFullProfiles = canFetchProfiles && view === 'SUPER_ADMIN';
 
       if (needsFullProfiles) {
         fetchJobs.push(
@@ -369,7 +369,12 @@ export function App() {
       let cloudUsers: any[] | null = null;
       let isSingleProfile = false;
       if (profilesSnap?.docs) {
-        cloudUsers = profilesSnap.docs.map((doc: any) => doc.data().data);
+        cloudUsers = profilesSnap.docs.map((doc: any) => {
+          const d = doc.data();
+          if (!d) return null;
+          // Support both legacy wrapped { data: ... } and modern unwrapped formats
+          return d.data || d;
+        }).filter(Boolean);
         isSingleProfile = !!profilesSnap.__is_single_profile;
       }
       
@@ -447,11 +452,14 @@ export function App() {
             (isSingleProfile ? 
               // MERGE: Update only the profile we fetched (current user)
               prev.users.map(u => {
-                const updated = cloudUsers!.find(cu => cu.id === u.id);
+                const updated = (cloudUsers || []).find(cu => cu && cu.id === u.id);
                 return updated || u;
-              }).concat(cloudUsers!.filter(cu => !prev.users.some(u => u.id === cu.id)))
+              }).concat((cloudUsers || []).filter(cu => cu && !prev.users.some(u => u.id === cu.id)))
               : cloudUsers // REPLACE: Full list from Super Admin view
             ) : prev.users,
+          currentUser: (isSingleProfile && cloudUsers && cloudUsers.length > 0) ? 
+            (cloudUsers.find(cu => cu.id === prev.currentUser?.id) || prev.currentUser) : 
+            (cloudUsers && prev.currentUser ? (cloudUsers.find(cu => cu.id === prev.currentUser?.id) || prev.currentUser) : prev.currentUser),
           isDataLoaded: true
         };
       });

@@ -79,32 +79,33 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'NAME_ASC'>('NEWEST');
 
   const filteredEvents = useMemo(() => {
-    let result = events.filter(e => {
-      const matchesSearch = (e.settings?.tournamentName || '').toLowerCase().includes((eventSearch || '').toLowerCase()) ||
-        (e.settings?.location || '').toLowerCase().includes((eventSearch || '').toLowerCase());
+    const safeEvents = Array.isArray(events) ? events : [];
+    let result = safeEvents.filter(e => {
+      const matchesSearch = (e?.settings?.tournamentName || '').toLowerCase().includes((eventSearch || '').toLowerCase()) ||
+        (e?.settings?.location || '').toLowerCase().includes((eventSearch || '').toLowerCase());
       
-      const matchesStatus = statusFilter === 'ALL' || e.status === statusFilter;
+      const matchesStatus = statusFilter === 'ALL' || e?.status === statusFilter;
       
-      const isPractice = e.settings?.isPractice;
+      const isPractice = e?.settings?.isPractice;
       const matchesType = typeFilter === 'ALL' || 
         (typeFilter === 'PRACTICE' && isPractice) || 
         (typeFilter === 'TOURNAMENT' && !isPractice);
 
       const matchesPayment = paymentStatusFilter === 'ALL' || 
-        (paymentStatusFilter === 'PAID' && e.settings?.platformFeePaidToOwner) || 
-        (paymentStatusFilter === 'UNPAID' && !e.settings?.platformFeePaidToOwner && !e.settings?.isPractice);
+        (paymentStatusFilter === 'PAID' && e?.settings?.platformFeePaidToOwner) || 
+        (paymentStatusFilter === 'UNPAID' && !e?.settings?.platformFeePaidToOwner && !e?.settings?.isPractice);
         
       return matchesSearch && matchesStatus && matchesType && matchesPayment;
     });
 
     // Sorting
     return result.sort((a, b) => {
-      if (sortBy === 'NEWEST') return (b.settings?.createdAt || 0) - (a.settings?.createdAt || 0);
-      if (sortBy === 'OLDEST') return (a.settings?.createdAt || 0) - (b.settings?.createdAt || 0);
-      if (sortBy === 'NAME_ASC') return (a.settings?.tournamentName || '').localeCompare(b.settings?.tournamentName || '');
+      if (sortBy === 'NEWEST') return (b?.settings?.createdAt || 0) - (a?.settings?.createdAt || 0);
+      if (sortBy === 'OLDEST') return (a?.settings?.createdAt || 0) - (b?.settings?.createdAt || 0);
+      if (sortBy === 'NAME_ASC') return (a?.settings?.tournamentName || '').localeCompare(b?.settings?.tournamentName || '');
       return 0;
     });
-  }, [events, eventSearch, statusFilter, typeFilter, sortBy]);
+  }, [events, eventSearch, statusFilter, typeFilter, sortBy, paymentStatusFilter]);
 
   const isKidsCategory = (cat: string) => {
     return [
@@ -324,9 +325,10 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   };
 
   const getExpirationStatus = (event: ArcheryEvent) => {
+    if (!event) return null;
     const createdAt = event.settings?.createdAt || Date.now();
     const ageInDays = (Date.now() - createdAt) / (1000 * 60 * 60 * 24);
-    const retentionLimit = event.settings?.isPractice ? globalSettings.practiceRetentionDays : globalSettings.dataRetentionDays;
+    const retentionLimit = (event.settings?.isPractice ? globalSettings?.practiceRetentionDays : globalSettings?.dataRetentionDays) || 90;
     const remainingDays = Math.ceil(retentionLimit - ageInDays);
     
     if (remainingDays <= 3) {

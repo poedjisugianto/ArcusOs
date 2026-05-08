@@ -18,33 +18,36 @@ interface Props {
   onManageEvent: (id: string) => void;
 }
 
-const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
+const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent }) => {
   const stats = useMemo(() => {
-    const totalEvents = events.length;
-    const totalArchers = events.reduce((acc, e) => 
-      acc + (e.archers || []).filter(a => a.category !== CategoryType.OFFICIAL).length, 0
+    const safeEvents = Array.isArray(events) ? events : [];
+    const totalEvents = safeEvents.length;
+    const totalArchers = safeEvents.reduce((acc, e) => 
+      acc + (e?.archers || []).filter(a => a && a.category !== CategoryType.OFFICIAL).length, 0
     );
-    const totalOfficials = events.reduce((acc, e) => {
-      const fromArchers = (e.archers || []).filter(a => a.category === CategoryType.OFFICIAL).length;
-      const fromOfficials = (e.officials || []).length;
+    const totalOfficials = safeEvents.reduce((acc, e) => {
+      const fromArchers = (e?.archers || []).filter(a => a && a.category === CategoryType.OFFICIAL).length;
+      const fromOfficials = (e?.officials || []).length;
       return acc + fromArchers + fromOfficials;
     }, 0);
     const totalPeople = totalArchers + totalOfficials;
 
-    const totalRevenue = events.reduce((acc, e) => {
-      const archerRevenue = (e.archers || []).reduce((a, arc) => a + (arc.totalPaid || 0), 0);
-      const officialRevenue = (e.officials || []).reduce((a, off) => a + (off.totalPaid || 0), 0);
+    const totalRevenue = safeEvents.reduce((acc, e) => {
+      const archerRevenue = (e?.archers || []).reduce((a, arc) => a + (arc?.totalPaid || 0), 0);
+      const officialRevenue = (e?.officials || []).reduce((a, off) => a + (off?.totalPaid || 0), 0);
       return acc + archerRevenue + officialRevenue;
     }, 0);
-    const activeEvents = events.filter(e => e.status === 'ONGOING').length;
-    const upcomingEvents = events.filter(e => e.status === 'UPCOMING').length;
-    const completedEvents = events.filter(e => e.status === 'COMPLETED').length;
+    const activeEvents = safeEvents.filter(e => e?.status === 'ONGOING').length;
+    const upcomingEvents = safeEvents.filter(e => e?.status === 'UPCOMING').length;
+    const completedEvents = safeEvents.filter(e => e?.status === 'COMPLETED').length;
 
     // Chart data: Archers per event
-    const archerData = events.slice(0, 5).map(e => ({
-      name: (e.settings?.tournamentName || 'UNNAMED').length > 15 ? (e.settings?.tournamentName || 'UNNAMED').substring(0, 12) + '...' : (e.settings?.tournamentName || 'UNNAMED'),
-      archers: (e.archers || []).length,
-      id: e.id
+    const archerData = safeEvents.slice(0, 5).map(e => ({
+      name: (e?.settings?.tournamentName || 'UNNAMED').length > 15 
+        ? (e?.settings?.tournamentName || 'UNNAMED').substring(0, 12) + '...' 
+        : (e?.settings?.tournamentName || 'UNNAMED'),
+      archers: (e?.archers || []).length,
+      id: e?.id
     }));
 
     // Status distribution
@@ -52,7 +55,7 @@ const AdminDashboard: React.FC<Props> = ({ user, events, onManageEvent }) => {
       { name: 'Ongoing', value: activeEvents, color: '#10b981' },
       { name: 'Upcoming', value: upcomingEvents, color: '#3b82f6' },
       { name: 'Completed', value: completedEvents, color: '#64748b' },
-      { name: 'Draft', value: events.filter(e => e.status === 'DRAFT').length, color: '#f59e0b' }
+      { name: 'Draft', value: safeEvents.filter(e => e?.status === 'DRAFT').length, color: '#f59e0b' }
     ].filter(s => s.value > 0);
 
     return { 

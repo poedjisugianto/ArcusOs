@@ -64,8 +64,11 @@ export function App() {
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [liveBoardTVMode, setLiveBoardTVMode] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
-  const [isBlazePlan, setIsBlazePlan] = useState(true); // Default to true as user upgraded
+  const [isBlazePlan, setIsBlazePlan] = useState(true); 
   const [syncStatus, setSyncStatus] = useState<{ source: string, time: string } | null>(null);
+  
+  // Anti-loop protection for sync
+  const errorCount = React.useRef(0);
   const isSyncingFromCloud = React.useRef(false);
   const isCurrentlySyncing = React.useRef(false);
   const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -495,9 +498,9 @@ export function App() {
       if (errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
         setQuotaExceeded(true);
         // Inform user about background caching instead of just "Quota"
-        const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
+    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
         if (isPrivileged && manual) {
-           pushNotification("Mode Hemat Quota", "Menggunakan sistem cache karena batas database tercapai.", "WARNING");
+           pushNotification("Optimasi Data Aktif", "Menggunakan sistem jalur cadangan untuk menghemat sumber daya cloud.", "INFO");
         }
       } else {
         if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke sistem cloud.", "WARNING");
@@ -902,11 +905,22 @@ export function App() {
       if (manual) pushNotification("Sinkronisasi Selesai", "Data telah aman di cloud.", "SUCCESS");
     } catch (err: any) { 
       console.error("Sync error", err); 
-      if (err.message?.includes('resource-exhausted') || err.message?.includes('Quota exceeded')) {
+      errorCount.current++;
+      
+      const isQuotaError = err.message?.includes('resource-exhausted') || err.message?.includes('Quota exceeded');
+      
+      if (isQuotaError && !isBlazePlan) {
         setQuotaExceeded(true);
-        if (manual) pushNotification("Quota Cloud Habis", "Limit gratis harian Firestore tercapai. Data Anda tetap tersimpan di browser ini, namun sinkronisasi cloud dihentikan sementara.", "WARNING");
-      } else if (manual) {
+        if (manual) pushNotification("Limit Tercapai", "Batas harian sistem tercapai. Data tetap tersimpan lokal.", "WARNING");
+      } else if (errorCount.current > 3 && manual) {
+        pushNotification("Koneksi Tidak Stabil", "Beberapa upaya sinkronisasi gagal. Kami akan mencoba lagi di latar belakang.", "WARNING");
+      } else if (manual && !isQuotaError) {
         pushNotification("Gagal Sinkron", err.message, "WARNING");
+      }
+      
+      // If payment required or other persistent quota error on Blaze
+      if (isQuotaError && isBlazePlan && errorCount.current > 10) {
+        pushNotification("Kendala Layanan Cloud", "Sistem mendeteksi limitasi teknis. Mohon hubungi support atau cek konfigurasi Blaze Anda.", "WARNING");
       }
       // If permission error, clear pending changes so we don't loop forever
       if (err.message?.includes('permission')) {

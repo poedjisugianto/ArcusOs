@@ -415,20 +415,31 @@ export function App() {
           
           // 2. Merge Archers
           const existingArcherIds = new Set(ce.archers?.map((a: any) => a.id) || []);
-          const newArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL' && !existingArcherIds.has(s.id));
+          const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL' && !existingArcherIds.has(s.id));
           
           // 3. Merge Officials
           const existingOfficialIds = new Set(ce.officials?.map((o: any) => o.id) || []);
-          const newOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL' && !existingOfficialIds.has(s.id));
+          const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL' && !existingOfficialIds.has(s.id));
 
-          if (newRegistrations.length > 0 || newArchers.length > 0 || newOfficials.length > 0) {
-            console.log(`[REALTIME-SYNC] Merged for ${ce.id}: +${newRegistrations.length} Regs, +${newArchers.length} Archers, +${newOfficials.length} Officials`);
+          if (newRegistrations.length > 0 || cloudArchers.length > 0 || cloudOfficials.length > 0) {
+            console.log(`[REALTIME-SYNC] Merged for ${ce.id}: +${newRegistrations.length} Regs, +${cloudArchers.length} Archers, +${cloudOfficials.length} Officials`);
+            
+            // Gabungkan data dan pastikan tidak ada duplikat berdasar ID
+            const allArchers = [...(ce.archers || []), ...cloudArchers];
+            const uniqueArchers = Array.from(new Map(allArchers.map(a => [a.id, a])).values());
+            
+            const allOfficials = [...(ce.officials || []), ...cloudOfficials];
+            const uniqueOfficials = Array.from(new Map(allOfficials.map(o => [o.id, o])).values());
+
+            const allRegs = [...(ce.registrations || []), ...newRegistrations];
+            const uniqueRegs = Array.from(new Map(allRegs.map(r => [r.id, r])).values());
+
             return {
               ...ce,
-              registrations: [...(ce.registrations || []), ...newRegistrations],
-              archers: [...(ce.archers || []), ...newArchers],
-              officials: [...(ce.officials || []), ...newOfficials],
-              registrationCount: Math.max(ce.registrationCount || 0, (ce.registrations?.length || 0) + newRegistrations.length)
+              registrations: uniqueRegs,
+              archers: uniqueArchers,
+              officials: uniqueOfficials,
+              registrationCount: Math.max(ce.registrationCount || 0, uniqueArchers.length)
             };
           }
         }
@@ -470,13 +481,14 @@ export function App() {
                 updatedEvents.push(ce);
               } else {
                 const le = updatedEvents[localIndex];
-                // Heuristic: If cloud event has fewer registrations than local, it's probably stale
-                const cloudRegs = ce.registrations?.length || 0;
-                const localRegs = le.registrations?.length || 0;
+                // Heuristic: Sekarang kita juga cek registrationCount dari cloud
+                const cloudRegs = ce.registrationCount || ce.registrations?.length || 0;
+                const localRegs = le.registrationCount || le.registrations?.length || 0;
                 const cloudArchers = ce.archers?.length || 0;
                 const localArchers = le.archers?.length || 0;
 
-                if (cloudRegs >= localRegs && cloudArchers >= localArchers) {
+                // Jika cloud punya info terbaru (atau kita sedang manual), paksa update
+                if (manual || cloudRegs >= localRegs) {
                   updatedEvents[localIndex] = ce;
                 }
               }

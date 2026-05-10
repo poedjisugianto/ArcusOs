@@ -350,7 +350,9 @@ export default function LandingPage({
                           <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
                             <Users className="w-4 h-4" />
                           </div>
-                          <span className="text-[10px] font-black uppercase tracking-widest truncate">{Math.max((event.archers || []).length, (event as any).registrationCount || 0)} ARCHER TERDAFTAR</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest truncate">
+                            {(event as any).registrationCount || (event.archers || []).length || 0} ARCHER TERDAFTAR
+                          </span>
                         </div>
                         <div className="flex items-center gap-4 text-slate-600">
                           <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">

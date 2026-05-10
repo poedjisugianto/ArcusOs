@@ -579,6 +579,7 @@ app.get("/api/public-events", async (req, res) => {
          events.push({
            ...(data.data || data), 
            id: doc.id,
+           registrationCount: data.data?.registrationCount || data.registrationCount || 0,
            status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
            createdAt: data.createdAt || eventData.createdAt || new Date().toISOString()
          });

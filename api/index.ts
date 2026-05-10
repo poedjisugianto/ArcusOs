@@ -575,8 +575,9 @@ app.get("/api/public-events", async (req, res) => {
       const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
       
       if (status !== 'DELETED' && status !== 'DRAFT') {
+         // Kirim struktur yang sudah dinormalisasi (flat) agar frontend tidak bingung
          events.push({
-           ...data,
+           ...(data.data || data), 
            id: doc.id,
            status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
            createdAt: data.createdAt || eventData.createdAt || new Date().toISOString()

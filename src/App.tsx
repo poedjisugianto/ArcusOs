@@ -210,11 +210,14 @@ export function App() {
                   const data = await res.json();
                   if (data && data.events) {
                     return { 
-                      docs: (data.events || []).map((e: any) => ({ 
-                         id: e.id, 
-                         data: () => ({ ...e.data, id: e.id }),
-                         exists: () => true 
-                      })), 
+                      docs: (data.events || []).map((e: any) => {
+                         const eventInfo = e.data || e;
+                         return { 
+                          id: e.id, 
+                          data: () => ({ ...eventInfo, id: e.id }),
+                          exists: () => true 
+                        };
+                      }), 
                       __type: 'custom_array' 
                     };
                   }
@@ -400,7 +403,10 @@ export function App() {
         if (submissionsSnap?.docs && ce.id === appState.activeEventId) {
           const rawSubmissions = submissionsSnap.docs.map((sd: any) => {
             const d = sd.data();
-            return { ...(d.archerData || d.officialData || d), id: d.id || sd.id, _raw: d };
+            // Handle multiple data formats (nested or flat)
+            const base = d.archerData || d.officialData || d.data || d;
+            const regType = d.regType || base.regType || (d.isOfficial ? 'OFFICIAL' : 'ARCHER');
+            return { ...base, id: d.id || sd.id, regType, _raw: d };
           });
           
           // 1. Merge Registrations
@@ -409,14 +415,14 @@ export function App() {
           
           // 2. Merge Archers
           const existingArcherIds = new Set(ce.archers?.map((a: any) => a.id) || []);
-          const newArchers = rawSubmissions.filter(s => !s.isOfficial && s._raw?.regType !== 'OFFICIAL' && !existingArcherIds.has(s.id));
+          const newArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL' && !existingArcherIds.has(s.id));
           
           // 3. Merge Officials
           const existingOfficialIds = new Set(ce.officials?.map((o: any) => o.id) || []);
-          const newOfficials = rawSubmissions.filter(s => (s.isOfficial || s._raw?.regType === 'OFFICIAL') && !existingOfficialIds.has(s.id));
+          const newOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL' && !existingOfficialIds.has(s.id));
 
           if (newRegistrations.length > 0 || newArchers.length > 0 || newOfficials.length > 0) {
-            console.log(`[DATA-SYNC] Merging into Event ${ce.id}: +${newRegistrations.length} Regs, +${newArchers.length} Archers, +${newOfficials.length} Officials`);
+            console.log(`[REALTIME-SYNC] Merged for ${ce.id}: +${newRegistrations.length} Regs, +${newArchers.length} Archers, +${newOfficials.length} Officials`);
             return {
               ...ce,
               registrations: [...(ce.registrations || []), ...newRegistrations],

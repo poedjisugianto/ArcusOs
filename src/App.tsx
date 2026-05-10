@@ -192,7 +192,7 @@ export function App() {
 
       const fetchJobs: Promise<any>[] = [
         // 1. Fetch System Config (Optimized with Server Cache)
-        fetch('/api/settings')
+        fetch(`/api/settings?t=${Date.now()}`)
           .then(res => res.json())
           .then(data => ({
             exists: () => true,
@@ -203,31 +203,12 @@ export function App() {
         
         // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         ((view === 'LANDING' || isPublicView) 
-          ? fetch('/api/public-events') 
+          ? fetch(`/api/public-events?t=${Date.now()}`) 
               .then(async res => {
                 const contentType = res.headers.get("content-type");
-                const text = await res.text();
                 if (contentType && contentType.includes("application/json")) {
-                  try {
-                    return JSON.parse(text);
-                  } catch (e) {
-                    return null;
-                  }
-                }
-                return null;
-              })
-              .then(data => {
-                if (data && data.events) {
-                    if (data.events.length > 0) {
-                      setAppState(prev => ({ ...prev, events: data.events }));
-                    }
-                    
-                    // Status koneksi untuk pengunjung
-                    setSyncStatus({ 
-                      source: 'Data Cloud Aktif (Real-time)', 
-                      time: new Date().toLocaleTimeString('id-ID')
-                    });
-
+                  const data = await res.json();
+                  if (data && data.events) {
                     return { 
                       docs: (data.events || []).map((e: any) => ({ 
                          id: e.id, 
@@ -236,6 +217,7 @@ export function App() {
                       })), 
                       __type: 'custom_array' 
                     };
+                  }
                 }
                 return null;
               })
@@ -245,8 +227,8 @@ export function App() {
 
         // 3. Optimized Event Details (ARCHERS / SCORES / SHARDS)
         // This is the CRITICAL fix for Quota during live tournament results
-        ((isPublicView && appState.activeEventId)
-          ? fetch(`/api/event-details/${appState.activeEventId}`)
+        (appState.activeEventId
+          ? fetch(`/api/event-details/${appState.activeEventId}?t=${Date.now()}`)
               .then(res => res.json())
               .then(res => {
                   if (res.success && res.data) {
@@ -254,7 +236,15 @@ export function App() {
                     // Format into a shape that the state-merging logic understands
                     return { 
                       __is_api_cache: true,
-                      submissions: { docs: (submissions || []).map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
+                      submissions: { docs: (submissions || []).map((s: any) => ({ 
+                        id: s.id, 
+                        data: () => {
+                           // Ensure we unwrap archerData if present from API
+                           const base = s.archerData || s.officialData || s;
+                           return { ...base, id: s.id, status: s.status || base.status };
+                        }, 
+                        exists: true 
+                      })) },
                       shards: { docs: (shards || []).map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
                       event: { id: event.id, data: () => ({ ...event.data, id: event.id }), exists: true }
                     };
@@ -264,10 +254,10 @@ export function App() {
               .catch(() => null)
           : Promise.resolve(null)),
         
-        // 4. Fetch Submissions (ONLY for privileged/non-public views)
+        // 4. Fetch Submissions (ONLY for privileged/non-public views as backup)
         (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)),
         
-        // 5. Fetch Shards (ONLY for privileged/non-public views)
+        // 5. Fetch Shards (ONLY for privileged/non-public views as backup)
         (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null))
       ];
 

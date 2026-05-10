@@ -4,7 +4,7 @@ import axios from "axios";
 import nodemailer from "nodemailer";
 import midtransClient from "midtrans-client";
 import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -611,39 +611,34 @@ app.post("/api/register-participant", async (req, res) => {
   try {
     const eventRef = db.collection('events').doc(eventId);
     
-    await db.runTransaction(async (transaction) => {
-      const eventSnap = await transaction.get(eventRef);
-      
-      if (!eventSnap.exists) {
-        throw new Error("Event not found");
-      }
-
-      const eventRecord = eventSnap.data()!;
-      const eventData = eventRecord.data || {};
-      
-      // Update registrations, archers, and officials arrays
-      const updatedRegistrations = [...(eventData.registrations || []), ...registrations];
-      const updatedArchers = [...(eventData.archers || []), ...archers];
-      const updatedOfficials = [...(eventData.officials || []), ...officials];
-
-      console.log(`[REGISTRATION-BATCH] Event: ${eventId}, Added: ${registrations.length}, Archers: ${archers.length}, Officials: ${officials.length}`);
-
-      const updatedData = {
-        ...eventData,
-        registrations: updatedRegistrations,
-        archers: updatedArchers,
-        officials: updatedOfficials
-      };
-
-      transaction.update(eventRef, { 
-        data: updatedData, 
-        updatedAt: new Date().toISOString() 
-      });
+    // Use a batch to write submissions AND update the main event metadata
+    const batch = db.batch();
+    
+    // 1. Write each registration and participant to the subcollection
+    registrations.forEach((reg: any, index: number) => {
+      const subRef = eventRef.collection('submissions').doc(reg.id || `reg_${Date.now()}_${index}`);
+      batch.set(subRef, {
+        ...reg,
+        archerData: archers.find((a: any) => a.id === reg.id) || null,
+        officialData: (officials || []).find((o: any) => o.id === reg.id) || null,
+        serverTimestamp: new Date().toISOString()
+      }, { merge: true });
     });
+
+    // 2. Update the main event metadata (counts and timestamps)
+    // We don't push the full array to the main document to avoid the 1MB limit!
+    // Instead, we just store the count and the last updated time.
+    batch.update(eventRef, {
+      "data.registrationCount": FieldValue.increment(registrations.length),
+      "data.lastRegistrationAt": new Date().toISOString(),
+      "updatedAt": new Date().toISOString()
+    });
+
+    await batch.commit();
 
     res.json({ 
       success: true, 
-      message: `${registrations.length} participant(s) registered successfully`,
+      message: `${registrations.length} participant(s) registered successfully in cloud subcollections`,
       count: registrations.length
     });
   } catch (error: any) {

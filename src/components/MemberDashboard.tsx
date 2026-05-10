@@ -820,7 +820,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                             <Users className={`w-4 h-4 ${event.settings?.isPractice ? 'text-teal-500' : 'text-arcus-red'}`} />
-                            {(event.archers || []).length} Archer <span className="hidden sm:inline">Terdaftar</span>
+                            {Math.max((event.archers || []).length, (event as any).registrationCount || 0)} Archer <span className="hidden sm:inline">Terdaftar</span>
                           </div>
                           {event.settings?.location && (
                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">

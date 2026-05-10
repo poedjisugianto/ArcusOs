@@ -36,6 +36,8 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   const [collectiveMembers, setCollectiveMembers] = useState<{name: string, category: string}[]>([]);
   const [newMember, setNewMember] = useState({ name: '', category: '' });
 
+  const isGatewayEnabled = event.settings?.enableGateway !== false;
+
   const [formData, setFormData] = useState<{
     name: string;
     email: string;
@@ -48,7 +50,8 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
     regType: 'ARCHER' | 'OFFICIAL';
   }>({
     name: '', email: '', phone: '', club: '', category: '', paymentProof: '',
-    paymentType: 'MANUAL', selectedPaymentMethodId: '', regType: 'ARCHER'
+    paymentType: isGatewayEnabled ? 'GATEWAY' : 'MANUAL', 
+    selectedPaymentMethodId: '', regType: 'ARCHER'
   });
 
   // Removed localStorage sync to prevent "stale" form data complaints
@@ -558,10 +561,20 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
 
             {step === 2 && (
               <div className="bg-white p-4 md:p-6 rounded-[2rem] shadow-xl space-y-5">
-                <div className="flex bg-slate-100 p-1 rounded-xl">
-                  <button onClick={() => setFormData({...formData, paymentType: 'MANUAL'})} className={`flex-1 py-2.5 rounded-lg font-black text-[9px] transition-all ${formData.paymentType === 'MANUAL' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400'}`}>TRANSFER MANUAL</button>
-                  <button onClick={() => setFormData({...formData, paymentType: 'GATEWAY'})} className={`flex-1 py-2.5 rounded-lg font-black text-[9px] transition-all ${formData.paymentType === 'GATEWAY' ? 'bg-arcus-red text-white shadow-md' : 'text-slate-400'}`}>PAYMENT GATEWAY</button>
-                </div>
+                {isGatewayEnabled ? (
+                  <div className="flex bg-slate-100 p-1 rounded-xl">
+                    <button onClick={() => setFormData({...formData, paymentType: 'MANUAL'})} className={`flex-1 py-2.5 rounded-lg font-black text-[9px] transition-all ${formData.paymentType === 'MANUAL' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400'}`}>TRANSFER MANUAL</button>
+                    <button onClick={() => setFormData({...formData, paymentType: 'GATEWAY'})} className={`flex-1 py-2.5 rounded-lg font-black text-[9px] transition-all ${formData.paymentType === 'GATEWAY' ? 'bg-arcus-red text-white shadow-md' : 'text-slate-400'}`}>PAYMENT GATEWAY</button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-center space-y-2">
+                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center mx-auto text-slate-400">
+                      <Landmark className="w-5 h-5" />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-900 uppercase italic">Pembayaran via Transfer Bank</p>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase leading-none">Pembayaran instan sedang tidak aktif untuk turnamen ini</p>
+                  </div>
+                )}
 
                 {formData.paymentType === 'MANUAL' ? (
                   <div className="space-y-4">

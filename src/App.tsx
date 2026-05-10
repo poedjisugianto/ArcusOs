@@ -203,7 +203,7 @@ export function App() {
         
         // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         ((view === 'LANDING' || isPublicView) 
-          ? fetch(`/api/public-events?t=${Date.now()}`) 
+          ? fetch(`/api/public-events?t=${Date.now()}`, { cache: 'no-store' }) 
               .then(async res => {
                 const contentType = res.headers.get("content-type");
                 if (contentType && contentType.includes("application/json")) {
@@ -212,8 +212,8 @@ export function App() {
                     return { 
                       docs: (data.events || []).map((e: any) => ({ 
                          id: e.id, 
-                         data: () => ({ ...e }),
-                         exists: true 
+                         data: () => ({ ...e.data, id: e.id }),
+                         exists: () => true 
                       })), 
                       __type: 'custom_array' 
                     };
@@ -228,7 +228,7 @@ export function App() {
         // 3. Optimized Event Details (ARCHERS / SCORES / SHARDS)
         // This is the CRITICAL fix for Quota during live tournament results
         (appState.activeEventId
-          ? fetch(`/api/event-details/${appState.activeEventId}?t=${Date.now()}`)
+          ? fetch(`/api/event-details/${appState.activeEventId}?t=${Date.now()}`, { cache: 'no-store' })
               .then(res => res.json())
               .then(res => {
                   if (res.success && res.data) {
@@ -398,14 +398,31 @@ export function App() {
       // for the active event even as a privileged user.
       const cloudEventsModified = cloudEvents ? cloudEvents.map(ce => {
         if (submissionsSnap?.docs && ce.id === appState.activeEventId) {
-          const submissions = submissionsSnap.docs.map((sd: any) => sd.data());
-          const existingIds = new Set(ce.registrations?.map((r: any) => r.id) || []);
-          const newRegistrations = submissions.filter((s: any) => !existingIds.has(s.id));
-          if (newRegistrations.length > 0) {
-            console.log(`Merging ${newRegistrations.length} submissions into event ${ce.id}`);
+          const rawSubmissions = submissionsSnap.docs.map((sd: any) => {
+            const d = sd.data();
+            return { ...(d.archerData || d.officialData || d), id: d.id || sd.id, _raw: d };
+          });
+          
+          // 1. Merge Registrations
+          const existingRegIds = new Set(ce.registrations?.map((r: any) => r.id) || []);
+          const newRegistrations = rawSubmissions.filter(s => !existingRegIds.has(s.id));
+          
+          // 2. Merge Archers
+          const existingArcherIds = new Set(ce.archers?.map((a: any) => a.id) || []);
+          const newArchers = rawSubmissions.filter(s => !s.isOfficial && s._raw?.regType !== 'OFFICIAL' && !existingArcherIds.has(s.id));
+          
+          // 3. Merge Officials
+          const existingOfficialIds = new Set(ce.officials?.map((o: any) => o.id) || []);
+          const newOfficials = rawSubmissions.filter(s => (s.isOfficial || s._raw?.regType === 'OFFICIAL') && !existingOfficialIds.has(s.id));
+
+          if (newRegistrations.length > 0 || newArchers.length > 0 || newOfficials.length > 0) {
+            console.log(`[DATA-SYNC] Merging into Event ${ce.id}: +${newRegistrations.length} Regs, +${newArchers.length} Archers, +${newOfficials.length} Officials`);
             return {
               ...ce,
-              registrations: [...(ce.registrations || []), ...newRegistrations]
+              registrations: [...(ce.registrations || []), ...newRegistrations],
+              archers: [...(ce.archers || []), ...newArchers],
+              officials: [...(ce.officials || []), ...newOfficials],
+              registrationCount: Math.max(ce.registrationCount || 0, (ce.registrations?.length || 0) + newRegistrations.length)
             };
           }
         }

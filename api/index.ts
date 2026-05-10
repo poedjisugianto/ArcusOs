@@ -576,10 +576,10 @@ app.get("/api/public-events", async (req, res) => {
       
       if (status !== 'DELETED' && status !== 'DRAFT') {
          events.push({
+           ...data,
            id: doc.id,
            status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
-           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString(),
-           settings: eventData.settings || {} // Gunakan data asli apa adanya tanpa fallback string palsu
+           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString()
          });
       }
     });
@@ -635,6 +635,11 @@ app.post("/api/register-participant", async (req, res) => {
     });
 
     await batch.commit();
+
+    // Invalidate memory cache for this event so subsequent fetches get fresh data
+    if (eventDetailsCache[eventId]) {
+      delete eventDetailsCache[eventId];
+    }
 
     res.json({ 
       success: true, 

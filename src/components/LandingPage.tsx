@@ -75,6 +75,7 @@ export default function LandingPage({
       const tournamentName = settings.tournamentName || baseData.tournamentName || raw.tournamentName || baseData.name || "Turnamen Archery";
       const location = settings.location || baseData.location || "Lokasi Belum Diatur";
       const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
+      const executionTime = settings.executionTime || baseData.executionTime || "";
 
       return {
         ...baseData,
@@ -85,6 +86,7 @@ export default function LandingPage({
           tournamentName,
           location,
           eventDate,
+          executionTime,
           status: statusStr // Safety
         }
       };
@@ -354,7 +356,12 @@ export default function LandingPage({
                           <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
                             <Clock className="w-4 h-4" />
                           </div>
-                          <span className="text-[10px] font-black uppercase tracking-widest">{event.settings?.eventDate || 'Tanggal Pending'}</span>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black uppercase tracking-widest">{event.settings?.eventDate || 'Tanggal Pending'}</span>
+                            {event.settings?.executionTime && (
+                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{event.settings.executionTime}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 

@@ -3,7 +3,7 @@ import {
   Calendar, MapPin, Users, Trophy, Target, 
   ChevronRight, ArrowLeft, Share2, Download, 
   ShieldCheck, Info, Clock, Award, CheckCircle2,
-  ExternalLink
+  ExternalLink, Smartphone
 } from 'lucide-react';
 import { ArcheryEvent, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -91,7 +91,7 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                 <h1 className="text-2xl md:text-5xl font-black font-oswald uppercase italic leading-tight mb-6 md:mb-8 tracking-tight text-slate-900">
                   {event.settings?.tournamentName || 'Untitled Event'}
                 </h1>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center">
                       <Calendar className="w-5 h-5 text-arcus-red" />
@@ -103,11 +103,20 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-arcus-red" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Waktu</p>
+                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">{event.settings?.executionTime || '08:00 - Selesai'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center">
                       <MapPin className="w-5 h-5 text-arcus-red" />
                     </div>
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Lokasi</p>
-                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide">{event.settings?.location || 'Lokasi Belum Ditentukan'}</p>
+                      <p className="text-sm font-bold text-slate-900 uppercase tracking-wide truncate max-w-[120px]">{event.settings?.location || 'Lokasi Belum Ditentukan'}</p>
                     </div>
                   </div>
                 </div>
@@ -270,6 +279,17 @@ export default function EventInfo({ event, onBack, onRegister, onShare, onViewPa
                   >
                     <Download className="w-5 h-5" />
                     Download THB
+                  </a>
+                )}
+                {event.settings?.waGroupLink && (
+                  <a 
+                    href={event.settings?.waGroupLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-5 bg-emerald-500 text-white rounded-[2rem] font-black font-oswald uppercase italic text-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 shadow-sm"
+                  >
+                    <Smartphone className="w-5 h-5" />
+                    Grup WA Peserta
                   </a>
                 )}
               </div>

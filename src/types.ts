@@ -200,6 +200,7 @@ export interface TournamentSettings {
   platformFeePaidToOwner?: boolean;
   location?: string;
   eventDate?: string;
+  executionTime?: string;
   isFreeEvent?: boolean;
   isActivated?: boolean;
   isConfirmed?: boolean;

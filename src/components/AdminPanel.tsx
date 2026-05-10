@@ -154,8 +154,6 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
       if (!localSettings?.description) missingFields.push('Keterangan');
       if (!localSettings?.location) missingFields.push('Lokasi');
       if (!localSettings?.eventDate) missingFields.push('Tanggal');
-      if (!localSettings?.pamphletUrl) missingFields.push('Link Pamflet');
-      if (!localSettings?.thbUrl) missingFields.push('Link THB');
       if ((localSettings?.paymentMethods || []).length === 0) missingFields.push('Metode Pembayaran');
 
       if (missingFields.length > 0) {
@@ -393,15 +391,20 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
                       />
                     </label>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <label className="block group">
                         <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Lokasi</span>
-                        <input type="text" placeholder="Lokasi..." value={localSettings.location} onChange={e => updateSettings({ location: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
+                        <input type="text" placeholder="Stadion..." value={localSettings.location} onChange={e => updateSettings({ location: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
 
                       <label className="block group">
                         <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 italic">Tanggal</span>
-                        <input type="text" placeholder="Tanggal..." value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
+                        <input type="text" placeholder="DD - DD MM YYYY" value={localSettings.eventDate} onChange={e => updateSettings({ eventDate: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
+                      </label>
+
+                      <label className="block group">
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 font-sans">Jam Pelaksanaan</span>
+                        <input type="text" placeholder="08:00 - Selesai" value={localSettings.executionTime || ''} onChange={e => updateSettings({ executionTime: e.target.value })} className="block mt-1 w-full rounded-lg border-slate-200 p-3 border font-bold outline-none focus:border-arcus-red text-slate-900" />
                       </label>
                     </div>
 

@@ -832,6 +832,16 @@ export function App() {
 
             const val = strippedEvent[key];
             if (val) {
+              // PROTECT Server-Managed fields from being stomped by stale client state
+              if (key === 'registrationCount' || key === 'archers') {
+                // If it's archers array, we only shard if it's huge, 
+                // but registrationCount we should probably let the server own if it's a simple number
+                if (key === 'registrationCount') {
+                   delete strippedEvent[key];
+                   return;
+                }
+              }
+
               const str = (typeof val === 'string') ? val : JSON.stringify(val);
               if (str.length > SHARD_THRESHOLD) { 
                 shardsMap[key] = shardData(val);
@@ -978,7 +988,7 @@ export function App() {
 
     const subTimeout = setTimeout(() => {
       if (!isMounted) return;
-      
+
       unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
         if (!isMounted) return;
         if (docSnap.exists()) {
@@ -990,13 +1000,21 @@ export function App() {
             const cloudEventRaw = docSnap.data();
             const cloudEventData = cloudEventRaw.data as ArcheryEvent;
             const cloudStatus = cloudEventRaw.status;
+            const cloudRegCount = cloudEventRaw.registrationCount || cloudEventData?.registrationCount || 0;
             
             isSyncingFromCloud.current = true;
             setAppState(prev => ({
               ...prev,
               events: prev.events.map(e => {
                 if (e.id === appState.activeEventId) {
-                  const merged = { ...e, ...cloudEventData, id: e.id, status: cloudStatus, isSharded: !!cloudEventRaw.isSharded };
+                  const merged = { 
+                    ...e, 
+                    ...cloudEventData, 
+                    id: e.id, 
+                    status: cloudStatus, 
+                    registrationCount: cloudRegCount,
+                    isSharded: !!cloudEventRaw.isSharded 
+                  };
                   // If sharded, preserve arrays if they are missing in cloudEventData
                   if (cloudEventRaw.isSharded) {
                     const arrays = ['archers', 'registrations', 'scores', 'scoreLogs', 'matches'];
@@ -1021,12 +1039,47 @@ export function App() {
           setQuotaExceeded(true);
         }
       });
+
+      // ADD REAL-TIME SUBMISSIONS LISTENER
+      (window as any)._unsubSubmissions = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snap) => {
+        if (!isMounted || snap.metadata.hasPendingWrites) return;
+        
+        console.log(`[REALTIME-SYNC] Submissions updated: ${snap.size} docs`);
+        const cloudSubmissions = snap.docs.map(d => ({
+          ...d.data(),
+          id: d.id
+        }));
+
+        setAppState(prev => {
+          const event = prev.events.find(e => e.id === appState.activeEventId);
+          if (!event) return prev;
+
+          // Merge archival data (shards) with live submissions
+          const existingIds = new Set(cloudSubmissions.map(s => s.id));
+          const archivalArchers = (event.archers || []).filter(a => !existingIds.has(a.id));
+          const archivalOfficials = (event.officials || []).filter(o => !existingIds.has(o.id));
+
+          const allArchers = [...archivalArchers, ...cloudSubmissions.filter((s: any) => s.regType !== 'OFFICIAL' && s.category !== 'OFFICIAL').map((s: any) => s.archerData || s)];
+          const allOfficials = [...archivalOfficials, ...cloudSubmissions.filter((s: any) => s.regType === 'OFFICIAL' || s.category === 'OFFICIAL').map((s: any) => s.officialData || s)];
+          
+          return {
+            ...prev,
+            events: prev.events.map(e => e.id === appState.activeEventId ? {
+              ...e,
+              archers: Array.from(new Map(allArchers.map(a => [a.id, a])).values()),
+              officials: Array.from(new Map(allOfficials.map(o => [o.id, o])).values()),
+              registrationCount: Math.max(e.registrationCount || 0, allArchers.length)
+            } : e)
+          };
+        });
+      }, (err) => console.warn("Submissions sync error:", err));
     }, 500);
 
     return () => {
       isMounted = false;
       clearTimeout(subTimeout);
       unsub();
+      if ((window as any)._unsubSubmissions) (window as any)._unsubSubmissions();
     };
   }, [db, appState.activeEventId, view, hasPendingChanges, appState.isDataLoaded]);
 

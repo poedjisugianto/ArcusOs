@@ -576,10 +576,11 @@ app.get("/api/public-events", async (req, res) => {
       
       if (status !== 'DELETED' && status !== 'DRAFT') {
          // Kirim struktur yang sudah dinormalisasi (flat) agar frontend tidak bingung
+         const regCount = data.registrationCount || data.data?.registrationCount || 0;
          events.push({
            ...(data.data || data), 
            id: doc.id,
-           registrationCount: data.data?.registrationCount || data.registrationCount || 0,
+           registrationCount: regCount,
            status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
            createdAt: data.createdAt || eventData.createdAt || new Date().toISOString()
          });
@@ -631,8 +632,10 @@ app.post("/api/register-participant", async (req, res) => {
     // We don't push the full array to the main document to avoid the 1MB limit!
     // Instead, we just store the count and the last updated time.
     batch.update(eventRef, {
+      "registrationCount": FieldValue.increment(registrations.length),
       "data.registrationCount": FieldValue.increment(registrations.length),
       "data.lastRegistrationAt": new Date().toISOString(),
+      "lastRegistrationAt": new Date().toISOString(),
       "updatedAt": new Date().toISOString()
     });
 

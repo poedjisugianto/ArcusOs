@@ -23,12 +23,12 @@ const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent }) =
     const safeEvents = Array.isArray(events) ? events : [];
     const totalEvents = safeEvents.length;
     const totalArchers = safeEvents.reduce((acc, e) => 
-      acc + (e?.archers || []).filter(a => a && a.category !== CategoryType.OFFICIAL).length, 0
+      acc + Math.max((e?.archers || []).filter(a => a && a.category !== CategoryType.OFFICIAL).length, (e as any).registrationCount || 0), 0
     );
     const totalOfficials = safeEvents.reduce((acc, e) => {
       const fromArchers = (e?.archers || []).filter(a => a && a.category === CategoryType.OFFICIAL).length;
       const fromOfficials = (e?.officials || []).length;
-      return acc + fromArchers + fromOfficials;
+      return acc + Math.max(fromArchers + fromOfficials, (e as any).officialCount || 0);
     }, 0);
     const totalPeople = totalArchers + totalOfficials;
 
@@ -46,7 +46,7 @@ const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent }) =
       name: (e?.settings?.tournamentName || 'UNNAMED').length > 15 
         ? (e?.settings?.tournamentName || 'UNNAMED').substring(0, 12) + '...' 
         : (e?.settings?.tournamentName || 'UNNAMED'),
-      archers: (e?.archers || []).length,
+      archers: Math.max((e?.archers || []).length, (e as any).registrationCount || 0),
       id: e?.id
     }));
 

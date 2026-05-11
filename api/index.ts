@@ -565,12 +565,23 @@ app.get("/api/public-events", async (req, res) => {
   if (!db) return res.status(500).json({ error: "Cloud Server tidak aktif" });
 
   try {
-    // Ambil langsung dari Firestore - Urutkan berdasarkan waktu pembuatan terbaru
-    // Kita gunakan data.settings.createdAt karena disitulah App.tsx menyimpan waktu pembuatan
-    const snapshot = await db.collection('events')
-      .orderBy('updatedAt', 'desc') // Gunakan updatedAt sebagai fallback utama karena selalu ada saat save
-      .limit(100)
-      .get();
+    // 1. Try Admin SDK First with aggressive filtering
+    // Attempt filtered query first. Note: requires composite index in Firestore.
+    let snapshot;
+    try {
+      snapshot = await db.collection('events')
+        .where('status', 'not-in', ['DRAFT', 'DELETED'])
+        .orderBy('status')
+        .orderBy('updatedAt', 'desc')
+        .limit(250)
+        .get();
+    } catch (e) {
+      // Fallback if index not ready
+      snapshot = await db.collection('events')
+        .orderBy('updatedAt', 'desc')
+        .limit(400)
+        .get();
+    }
 
     const events: any[] = [];
     snapshot.forEach((doc: any) => {
@@ -579,7 +590,6 @@ app.get("/api/public-events", async (req, res) => {
       const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
       
       if (status !== 'DELETED' && status !== 'DRAFT') {
-         // Kirim struktur yang sudah dinormalisasi (flat) agar frontend tidak bingung
          const regCount = data.registrationCount || data.data?.registrationCount || 0;
          events.push({
            ...(data.data || data), 
@@ -594,14 +604,49 @@ app.get("/api/public-events", async (req, res) => {
     return res.json({ 
        success: true, 
        events, 
-       source: 'live-cloud',
+       source: 'live-cloud-admin',
        timestamp: new Date().toISOString()
     });
   } catch (err: any) {
-    console.error("[LIVE-FETCH-ERROR]:", err.message);
+    console.warn("[ADMIN-SDK] Public events fetch warning:", err.message);
     
-    // Jika gagal karena index belum ada (Firestore butuh index untuk orderBy)
-    // Fallback ke fetch tanpa order agar setidaknya ada data muncul
+    // 2. Try REST API Fallback
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
+      const response = await axios.get(url, { timeout: 5000 });
+      
+      if (response.data && response.data.documents) {
+        const events: any[] = [];
+        response.data.documents.forEach((doc: any) => {
+          const transformed = transformRestFields(doc.fields);
+          const eventData = transformed.data || transformed;
+          const status = (transformed.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+          const docId = doc.name.split('/').pop();
+          
+          if (status !== 'DELETED' && status !== 'DRAFT') {
+            const regCount = transformed.registrationCount || eventData.registrationCount || 0;
+            events.push({
+              ...eventData,
+              id: docId,
+              registrationCount: regCount,
+              status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(status) ? 'ACTIVE' : status,
+              createdAt: transformed.createdAt || eventData.createdAt || eventData.settings?.createdAt || transformed.updatedAt || new Date().toISOString()
+            });
+          }
+        });
+
+        return res.json({ 
+          success: true, 
+          events: events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), 
+          source: 'live-cloud-rest',
+          timestamp: new Date().toISOString() 
+        });
+      }
+    } catch (restErr: any) {
+       console.error("[REST-API] Public events fetch error:", restErr.response?.data || restErr.message);
+    }
+
+    // 3. Last Resort: SDK without sort
     try {
       const fallbackSnap = await db.collection('events').limit(100).get();
       const fallbackEvents: any[] = [];
@@ -703,26 +748,76 @@ app.get("/api/event-details/:id", async (req, res) => {
   if (!db) return res.status(500).json({ error: "Sistem Cloud tidak siap" });
 
   try {
-    const eventDoc = await db.collection('events').doc(eventId).get();
-    if (!eventDoc.exists) return res.status(404).json({ error: "Turnamen dihapus atau tidak ada" });
+    let data: any = null;
+    let submissions: any[] = [];
+    let shards: any[] = [];
+    let source = 'live-cloud-admin';
+
+    // 1. Try Admin SDK First
+    if (db) {
+      try {
+        const eventDoc = await db.collection('events').doc(eventId).get();
+        if (eventDoc.exists) {
+          data = eventDoc.data();
+          
+          const [submissionsSnap, shardsSnap] = await Promise.all([
+            db.collection('events').doc(eventId).collection('submissions').limit(5000).get(),
+            db.collection('events').doc(eventId).collection('shards').limit(1000).get()
+          ]);
+
+          submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
+          shardsSnap.forEach((d: any) => shards.push({ id: d.id, ...d.data() }));
+        }
+      } catch (adminErr: any) {
+        console.warn(`[ADMIN-SDK] Detail fetch warning for ${eventId}:`, adminErr.message);
+      }
+    }
+
+    // 2. Fallback to REST API if Admin failed or returned nothing
+    if (!data) {
+      source = 'live-cloud-rest';
+      const baseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events/${eventId}`;
+      const queryParams = `?key=${firebaseConfig.apiKey}`;
+      
+      try {
+        const [eventRes, submissionsRes, shardsRes] = await Promise.all([
+          axios.get(`${baseUrl}${queryParams}`, { timeout: 5000 }),
+          axios.get(`${baseUrl}/submissions${queryParams}&pageSize=1000`, { timeout: 5000 }).catch(() => ({ data: { documents: [] } })),
+          axios.get(`${baseUrl}/shards${queryParams}&pageSize=1000`, { timeout: 5000 }).catch(() => ({ data: { documents: [] } }))
+        ]);
+
+        if (eventRes.data && eventRes.data.fields) {
+          data = transformRestFields(eventRes.data.fields);
+          
+          if (submissionsRes.data && submissionsRes.data.documents) {
+            submissions = submissionsRes.data.documents.map((doc: any) => ({
+              id: doc.name.split('/').pop(),
+              ...transformRestFields(doc.fields)
+            }));
+          }
+
+          if (shardsRes.data && shardsRes.data.documents) {
+            shards = shardsRes.data.documents.map((doc: any) => ({
+              id: doc.name.split('/').pop(),
+              ...transformRestFields(doc.fields)
+            }));
+          }
+        }
+      } catch (restErr: any) {
+         console.error(`[REST-API] Detail fetch error for ${eventId}:`, restErr.response?.data || restErr.message);
+      }
+    }
+
+    if (!data) {
+      if (eventDetailsCache[eventId]) {
+        return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'error-cache-fallback' });
+      }
+      return res.status(404).json({ error: "Turnamen tidak ditemukan atau akses ditolak." });
+    }
     
-    const data = eventDoc.data();
     const eventData = data.data || data;
-
-    // Ambil data archer dan skor secara LIVE
-    const [submissionsSnap, shardsSnap] = await Promise.all([
-      db.collection('events').doc(eventId).collection('submissions').limit(5000).get(),
-      db.collection('events').doc(eventId).collection('shards').limit(1000).get()
-    ]);
-
-    const submissions: any[] = [];
-    submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
-
-    const shards: any[] = [];
-    shardsSnap.forEach((d: any) => shards.push({ id: d.id, ...d.data() }));
-
     const fullData = {
-      event: { id: eventDoc.id, ...data, data: eventData },
+      event: { id: eventId, ...data, data: eventData },
       submissions,
       shards
     };
@@ -730,9 +825,9 @@ app.get("/api/event-details/:id", async (req, res) => {
     // Update Cache
     eventDetailsCache[eventId] = { data: fullData, timestamp: now };
 
-    res.json({ success: true, data: fullData, source: 'live' });
+    res.json({ success: true, data: fullData, source });
   } catch (err: any) {
-    console.error(`[DETAIL-FETCH-ERROR] ${eventId}:`, err.message);
+    console.error(`[DETAIL-FETCH-CRITICAL] ${eventId}:`, err.message);
     
     // Fallback on error
     if (eventDetailsCache[eventId]) {

@@ -242,6 +242,8 @@ export interface ArcheryEvent {
   ownerId?: string;
   localUpdatedAt?: string;
   isSharded?: boolean;
+  registrationCount?: number;
+  officialCount?: number;
 }
 
 export interface AppState {

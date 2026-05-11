@@ -12,6 +12,7 @@ import {
   Share2,
   CalendarDays,
   LayoutGrid,
+  RefreshCw,
   AlertTriangle
 } from 'lucide-react';
 import { ArcheryEvent, User } from '../types';
@@ -59,25 +60,23 @@ export default function LandingPage({
   const activeEvents = (events || [])
     .map(e => {
       const raw = e as any;
-      // Extract data safely from various possible Firestore-like or plain structures
       const baseData = (typeof raw.data === 'function') ? raw.data() : (raw.data || raw);
       const id = raw.id || baseData.id || (raw.ref?.id);
       
-      // Normalize status string (trim and uppercase)
-      let statusStr = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
-      // Be lenient with status strings to ensure tournaments show up if not drafts
-      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusStr)) {
+      const statusStrRaw = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
+      let statusStr = statusStrRaw;
+      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusStrRaw)) {
         statusStr = 'ACTIVE';
       }
 
-      // Deep search for settings
       const settings = baseData.settings || raw.settings || {};
       const tournamentName = settings.tournamentName || baseData.tournamentName || raw.tournamentName || baseData.name || "Turnamen Archery";
       const location = settings.location || baseData.location || "Lokasi Belum Diatur";
       const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
       const executionTime = settings.executionTime || baseData.executionTime || "";
       
-      // Get creation time for sorting
+      const registrationDeadline = settings.registrationDeadline;
+      const isRegistrationClosed = registrationDeadline ? new Date(registrationDeadline) < new Date() : false;
       const createdAt = baseData.createdAt || baseData.settings?.createdAt || raw.updatedAt || 0;
 
       return {
@@ -85,22 +84,31 @@ export default function LandingPage({
         id,
         status: statusStr,
         createdAt,
+        isRegistrationClosed,
         settings: {
           ...settings,
           tournamentName,
           location,
           eventDate,
           executionTime,
-          status: statusStr // Safety
+          status: statusStr
         }
       };
     })
     .filter(ev => ev.id && ev.status !== 'DRAFT' && ev.status !== 'DELETED')
     .sort((a, b) => {
-      // Sort by createdAt descending
+      // Prioritize ACTIVE/UPCOMING status
+      if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+      if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
+      
+      // Secondary: Sort by creation date descending (newest first)
       const timeA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt).getTime() || 0;
       const timeB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt).getTime() || 0;
-      return timeB - timeA;
+      
+      if (timeA !== timeB) return timeB - timeA;
+      
+      // Tertiary: Alphabetical
+      return (a.settings?.tournamentName || "").localeCompare(b.settings?.tournamentName || "");
     });
 
   return (
@@ -279,25 +287,35 @@ export default function LandingPage({
               </div>
             </div>
             
-            <div className="flex flex-col md:items-end gap-4">
-              <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                  <button 
-                    onClick={() => setViewMode('GRID')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${viewMode === 'GRID' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 hover:bg-white'}`}
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    Grid View
-                  </button>
-                  <button 
-                    onClick={() => setViewMode('CALENDAR')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${viewMode === 'CALENDAR' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 hover:bg-white'}`}
-                  >
-                    <CalendarDays className="w-3.5 h-3.5" />
-                    Calendar View
-                  </button>
+            <div className="flex flex-col md:items-end gap-3">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => onRefresh && onRefresh()}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2.5 px-5 py-2.5 bg-white border border-slate-100 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red hover:border-arcus-red transition-all active:scale-95 shadow-sm group"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-arcus-red' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                  {isSyncing ? 'Memperbarui...' : 'Segarkan Data'}
+                </button>
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button 
+                      onClick={() => setViewMode('GRID')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${viewMode === 'GRID' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 hover:bg-white'}`}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      Grid
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('CALENDAR')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${viewMode === 'CALENDAR' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900 hover:bg-white'}`}
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      Calendar
+                    </button>
+                </div>
               </div>
               <p className="max-w-xs text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose md:text-right">
-                Turnamen yang sedang berlangsung dan membutuhkan pantauan skor real-time.
+                Menampilkan turnamen terbaru yang diaktivasi oleh penyelenggara.
               </p>
             </div>
           </div>
@@ -356,6 +374,21 @@ export default function LandingPage({
                       </p>
 
                       <div className="space-y-4 mb-10 pb-6 border-b border-slate-50">
+                        {/* Registration Status */}
+                        <div className="flex items-center gap-4 text-slate-600">
+                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${event.isRegistrationClosed ? 'bg-red-50 text-red-400' : 'bg-emerald-50 text-emerald-500'}`}>
+                              <Zap className="w-4 h-4" />
+                           </div>
+                           <div className="flex flex-col">
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${event.isRegistrationClosed ? 'text-red-500' : 'text-emerald-500'}`}>
+                                 {event.isRegistrationClosed ? 'Pendaftaran Ditutup' : 'Pendaftaran Dibuka'}
+                              </span>
+                              {event.settings?.registrationDeadline && !event.isRegistrationClosed && (
+                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Hingga: {event.settings.registrationDeadline}</span>
+                              )}
+                           </div>
+                        </div>
+
                         <div className="flex items-center gap-4 text-slate-600">
                           <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
                             <Users className="w-4 h-4" />
@@ -385,13 +418,19 @@ export default function LandingPage({
 
                       <button 
                         onClick={() => {
+                          if (event.isRegistrationClosed) return;
                           console.log("Register clicked for event:", event.id);
                           onRegister(event.id);
                         }}
-                        className="w-full py-4 bg-arcus-red text-white flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-200 active:scale-95 mb-3"
+                        disabled={event.isRegistrationClosed}
+                        className={`w-full py-4 flex items-center justify-center gap-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl active:scale-95 mb-3 ${
+                          event.isRegistrationClosed 
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none' 
+                            : 'bg-arcus-red text-white hover:bg-red-600 shadow-red-200'
+                        }`}
                       >
                         <Plus className="w-4 h-4" />
-                        DAFTAR SEKARANG
+                        {event.isRegistrationClosed ? 'PENDAFTARAN DITUTUP' : 'DAFTAR SEKARANG'}
                       </button>
 
                       <button 

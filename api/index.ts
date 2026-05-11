@@ -565,8 +565,12 @@ app.get("/api/public-events", async (req, res) => {
   if (!db) return res.status(500).json({ error: "Cloud Server tidak aktif" });
 
   try {
-    // Ambil langsung dari Firestore
-    const snapshot = await db.collection('events').limit(100).get();
+    // Ambil langsung dari Firestore - Urutkan berdasarkan waktu pembuatan terbaru
+    // Kita gunakan data.settings.createdAt karena disitulah App.tsx menyimpan waktu pembuatan
+    const snapshot = await db.collection('events')
+      .orderBy('updatedAt', 'desc') // Gunakan updatedAt sebagai fallback utama karena selalu ada saat save
+      .limit(100)
+      .get();
 
     const events: any[] = [];
     snapshot.forEach((doc: any) => {
@@ -581,8 +585,8 @@ app.get("/api/public-events", async (req, res) => {
            ...(data.data || data), 
            id: doc.id,
            registrationCount: regCount,
-           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(status) ? 'ACTIVE' : status,
-           createdAt: data.createdAt || eventData.createdAt || new Date().toISOString()
+           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(status) ? 'ACTIVE' : status,
+           createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
          });
       }
     });
@@ -595,7 +599,29 @@ app.get("/api/public-events", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[LIVE-FETCH-ERROR]:", err.message);
-    res.status(500).json({ error: "Gagal mengambil data cloud." });
+    
+    // Jika gagal karena index belum ada (Firestore butuh index untuk orderBy)
+    // Fallback ke fetch tanpa order agar setidaknya ada data muncul
+    try {
+      const fallbackSnap = await db.collection('events').limit(100).get();
+      const fallbackEvents: any[] = [];
+      fallbackSnap.forEach((doc: any) => {
+        const data = doc.data();
+        const eventData = data.data || data;
+        const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+        if (status !== 'DELETED' && status !== 'DRAFT') {
+           fallbackEvents.push({
+             ...(data.data || data), 
+             id: doc.id,
+             status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(status) ? 'ACTIVE' : status,
+             createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
+           });
+        }
+      });
+      return res.json({ success: true, events: fallbackEvents, source: 'cloud-no-sort', timestamp: new Date().toISOString() });
+    } catch (innerErr: any) {
+      res.status(500).json({ error: "Gagal mengambil data cloud." });
+    }
   }
 });
 

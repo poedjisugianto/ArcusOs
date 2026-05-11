@@ -66,7 +66,7 @@ export default function LandingPage({
       // Normalize status string (trim and uppercase)
       let statusStr = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
       // Be lenient with status strings to ensure tournaments show up if not drafts
-      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE'].includes(statusStr)) {
+      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusStr)) {
         statusStr = 'ACTIVE';
       }
 
@@ -76,11 +76,15 @@ export default function LandingPage({
       const location = settings.location || baseData.location || "Lokasi Belum Diatur";
       const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
       const executionTime = settings.executionTime || baseData.executionTime || "";
+      
+      // Get creation time for sorting
+      const createdAt = baseData.createdAt || baseData.settings?.createdAt || raw.updatedAt || 0;
 
       return {
         ...baseData,
         id,
         status: statusStr,
+        createdAt,
         settings: {
           ...settings,
           tournamentName,
@@ -91,7 +95,13 @@ export default function LandingPage({
         }
       };
     })
-    .filter(ev => ev.id && ev.status !== 'DRAFT' && ev.status !== 'DELETED');
+    .filter(ev => ev.id && ev.status !== 'DRAFT' && ev.status !== 'DELETED')
+    .sort((a, b) => {
+      // Sort by createdAt descending
+      const timeA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt).getTime() || 0;
+      const timeB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt).getTime() || 0;
+      return timeB - timeA;
+    });
 
   return (
     <div className="min-h-screen bg-[#FBFBFD] font-sans selection:bg-arcus-red selection:text-white overflow-x-hidden">

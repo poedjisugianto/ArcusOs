@@ -562,56 +562,56 @@ app.get("/api/db-test", async (req, res) => {
 app.get("/api/public-events", async (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=5'); // Sangat singkat agar data segar
 
-  if (!db) return res.status(500).json({ error: "Cloud Server tidak aktif" });
+  if (!db) {
+    console.error("[API/PUBLIC-EVENTS] Firestore DB not initialized.");
+    return res.status(500).json({ error: "Cloud Server tidak aktif", dbStatus: "not_initialized" });
+  }
+
+  console.log(`[API/PUBLIC-EVENTS] Fetching events... PID: ${effectiveProjectId}, DBID: ${dbId || "(default)"}`);
 
   try {
-    // 1. Try Admin SDK First with aggressive filtering
-    // Attempt filtered query first. Note: requires composite index in Firestore.
-    let snapshot;
-    try {
-      snapshot = await db.collection('events')
-        .where('status', 'not-in', ['DRAFT', 'DELETED'])
-        .orderBy('status')
-        .orderBy('updatedAt', 'desc')
-        .limit(250)
-        .get();
-    } catch (e) {
-      // Fallback if index not ready
-      snapshot = await db.collection('events')
-        .orderBy('updatedAt', 'desc')
-        .limit(400)
-        .get();
-    }
-
+    // 1. Scanning broad for guest devices
+    console.log("[API/PUBLIC-EVENTS] Scanning all event documents for public visibility...");
+    const snapshot = await db.collection('events').get();
+    
     const events: any[] = [];
     snapshot.forEach((doc: any) => {
-      const data = doc.data();
-      const eventData = data.data || data;
-      const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-      
-      if (status !== 'DELETED' && status !== 'DRAFT') {
-         const regCount = data.registrationCount || data.data?.registrationCount || 0;
-         events.push({
-           ...(data.data || data), 
-           id: doc.id,
-           registrationCount: regCount,
-           status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(status) ? 'ACTIVE' : status,
-           createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
-         });
+      try {
+        const data = doc.data();
+        const eventData = data.data || data;
+        const statusRaw = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+        const tournamentName = eventData.tournamentName || eventData.settings?.tournamentName || data.name || eventData.name;
+
+        if (statusRaw !== 'DELETED' && statusRaw !== 'DRAFT' && tournamentName) {
+           events.push({
+             ...(data.data || data), 
+             id: doc.id,
+             status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusRaw) ? 'ACTIVE' : statusRaw,
+             createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
+           });
+        }
+      } catch (e) {
+        console.error(`[API/PUBLIC-EVENTS] Skipping corrupt doc ${doc.id}`);
       }
     });
+
+    events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    console.log(`[API/PUBLIC-EVENTS] Returning ${events.length} clean event objects.`);
 
     return res.json({ 
        success: true, 
        events, 
-       source: 'live-cloud-admin',
+       count: events.length,
+       source: 'admin-sdk-full-scan',
        timestamp: new Date().toISOString()
     });
   } catch (err: any) {
-    console.warn("[ADMIN-SDK] Public events fetch warning:", err.message);
+    console.error("[API/PUBLIC-EVENTS] Admin SDK fetch CRITICAL ERROR:", err.message, err.stack);
     
     // 2. Try REST API Fallback
     try {
+      console.log("[API/PUBLIC-EVENTS] Attempting REST API fallback...");
       const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
       const response = await axios.get(url, { timeout: 5000 });
       
@@ -635,37 +635,48 @@ app.get("/api/public-events", async (req, res) => {
           }
         });
 
+        console.log(`[API/PUBLIC-EVENTS] Returning ${events.length} events (Source: REST API).`);
+
         return res.json({ 
           success: true, 
           events: events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), 
           source: 'live-cloud-rest',
+          count: events.length,
           timestamp: new Date().toISOString() 
         });
       }
     } catch (restErr: any) {
-       console.error("[REST-API] Public events fetch error:", restErr.response?.data || restErr.message);
+       console.error("[API/PUBLIC-EVENTS] REST API fallback failed:", restErr.response?.data || restErr.message);
     }
 
-    // 3. Last Resort: SDK without sort
+    // 3. Last Resort: SDK without sort or filter
     try {
-      const fallbackSnap = await db.collection('events').limit(100).get();
+      console.log("[API/PUBLIC-EVENTS] Last resort: Fetching all events to manually filter...");
+      const fallbackSnap = await db.collection('events').get();
       const fallbackEvents: any[] = [];
       fallbackSnap.forEach((doc: any) => {
-        const data = doc.data();
-        const eventData = data.data || data;
-        const status = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-        if (status !== 'DELETED' && status !== 'DRAFT') {
-           fallbackEvents.push({
-             ...(data.data || data), 
-             id: doc.id,
-             status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(status) ? 'ACTIVE' : status,
-             createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
-           });
+        try {
+          const data = doc.data();
+          const eventData = data.data || data;
+          const statusRaw = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
+          
+          if (statusRaw !== 'DELETED' && statusRaw !== 'DRAFT') {
+             fallbackEvents.push({
+               ...(data.data || data), 
+               id: doc.id,
+               status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusRaw) ? 'ACTIVE' : statusRaw,
+               createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
+             });
+          }
+        } catch (e) {
+          console.error(`[API/PUBLIC-EVENTS] Error processing doc ${doc.id}:`, e);
         }
       });
-      return res.json({ success: true, events: fallbackEvents, source: 'cloud-no-sort', timestamp: new Date().toISOString() });
+      console.log(`[API/PUBLIC-EVENTS] Returning ${fallbackEvents.length} events (Source: Last Resort Full Scan).`);
+      return res.json({ success: true, events: fallbackEvents, source: 'cloud-no-query', count: fallbackEvents.length, timestamp: new Date().toISOString() });
     } catch (innerErr: any) {
-      res.status(500).json({ error: "Gagal mengambil data cloud." });
+      console.error("[API/PUBLIC-EVENTS] FALLBACK FAILED COMPLETELY:", innerErr.message);
+      res.status(500).json({ error: "Gagal mengambil data cloud.", details: innerErr.message });
     }
   }
 });
@@ -740,12 +751,18 @@ app.get("/api/event-details/:id", async (req, res) => {
   const eventId = req.params.id;
   const now = Date.now();
 
+  console.log(`[API/EVENT-DETAILS] Fetching details for ${eventId}...`);
+
   // Kembalikan cache hanya jika di bawah 5 detik (untuk meredam benturan ratusan user di detik yang sama)
   if (eventDetailsCache[eventId] && (now - eventDetailsCache[eventId].timestamp < DETAIL_CACHE_TTL)) {
+    console.log(`[API/EVENT-DETAILS] Serving from cache for ${eventId}`);
     return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'cache' });
   }
 
-  if (!db) return res.status(500).json({ error: "Sistem Cloud tidak siap" });
+  if (!db) {
+    console.error("[API/EVENT-DETAILS] DB not initialized.");
+    return res.status(500).json({ error: "Sistem Cloud tidak siap" });
+  }
 
   try {
     let data: any = null;

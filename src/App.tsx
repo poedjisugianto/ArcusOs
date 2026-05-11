@@ -142,43 +142,40 @@ export function App() {
   };
 
   const fetchCloudData = async (manual = false, userOverride?: User | null) => {
-    if (!db) return;
+    // We allow proceeding without DB (Client SDK) if we're just hitting the public API
     if (manual) {
       setIsSyncing(true);
-      setQuotaExceeded(false); // Reset quota guard on manual refresh
+      setQuotaExceeded(false); 
     }
     
-    // Safety: If we have pending local changes, don't overwrite with cloud data
-    // unless explicitly requested via manual refresh
     if (hasPendingChanges && !manual) {
       return;
     }
 
     const user = userOverride !== undefined ? userOverride : appState.currentUser;
-    const isPrivileged = !!(user?.isSuperAdmin || user?.role === 'SUPERADMIN' || user?.email === 'poedji.sugianto@gmail.com');
-    const canFetchProfiles = isPrivileged;
-    const isPublicView = !user || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
+    const isPrivileged = !!user; 
+    const canFetchProfiles = !!(user?.isSuperAdmin || user?.role === 'SUPERADMIN' || user?.email === 'poedji.sugianto@gmail.com');
+    const isPublicView = !user || (view === 'LANDING' || view.startsWith('PUBLIC_'));
 
     try {
       isSyncingFromCloud.current = true;
       setIsSyncing(true);
       
-      // Helper to fetch documents with timeout and silent failure for guests
       const safeGetDocs = async (collRef: any, queryRef?: any) => {
+        if (!db) return null;
         try {
           return await getDocs(queryRef || collRef);
         } catch (err: any) {
           const errStr = err.message || "";
           if (err.code === 'resource-exhausted' || errStr.toLowerCase().includes('quota')) {
-            console.warn("Read quota hit, falling back to cache.");
             return await getDocsFromCache(queryRef || collRef).catch(() => null);
           }
-          console.warn("Fetch failed:", err.message);
           return null;
         }
       };
 
       const safeGetDoc = async (docRef: any) => {
+        if (!db) return null;
         try {
           return await getDoc(docRef);
         } catch (err: any) {
@@ -199,7 +196,7 @@ export function App() {
             data: () => data,
             __is_api_mock: true
           }))
-          .catch(() => safeGetDoc(doc(db, 'systemConfigs', 'global'))),
+          .catch(() => db ? safeGetDoc(doc(db, 'systemConfigs', 'global')) : null),
         
         // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
         ((view === 'LANDING' || isPublicView) 
@@ -225,7 +222,7 @@ export function App() {
                 return null;
               })
               .catch(() => null)
-          : (isPrivileged ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
+          : (isPrivileged && db ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
         ).catch(() => null),
 
         // 3. Optimized Event Details (ARCHERS / SCORES / SHARDS)
@@ -540,10 +537,8 @@ export function App() {
   useEffect(() => {
     fetchCloudData().catch(err => {
       console.warn("Initial fetch silent failure:", err.message);
-      // We don't notify the user here to keep the experience smooth
-      // fetchCloudData already sets quotaExceeded if needed
     });
-  }, [appState.currentUser?.id, appState.activeEventId]);
+  }, [appState.currentUser?.id, appState.activeEventId, view]);
 
   // AUTO-SYNC PENDING CHANGES: Removed setInterval, syncCloudData handles debouncing
   useEffect(() => {

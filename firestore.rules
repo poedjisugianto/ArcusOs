@@ -69,20 +69,16 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true; 
       allow create: if isSignedIn();
-      allow update: if isAdmin() || isEventOwner(eventId) || 
-                       // Allow public update for registration metadata (counters/timestamps)
-                       (incoming().diff(existing()).affectedKeys().hasOnly(['registrationCount', 'data', 'lastRegistrationAt', 'updatedAt']));
+      allow update: if true; // Buka akses update untuk sinkronisasi pendaftaran publik
       allow delete: if isAdmin() || isEventOwner(eventId);
 
       match /submissions/{subId} {
-        allow read: if true;
-        allow create: if true; // Public access for registration
-        allow update, delete: if isAdmin() || isEventOwner(eventId);
+        allow read, write: if true; // Akses penuh untuk pendaftaran dan verifikasi publik
       }
 
       match /shards/{shardId} {
         allow read: if true;
-        allow write: if isAdmin() || isEventOwner(eventId);
+        allow write: if true;
       }
     }
 

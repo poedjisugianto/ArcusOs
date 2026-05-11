@@ -138,6 +138,7 @@ export interface ParticipantRegistration {
   totalPaid?: number;
   platformFee?: number;
   paymentType?: string;
+  regType?: 'ARCHER' | 'OFFICIAL';
   _syncPending?: boolean;
 }
 

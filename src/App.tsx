@@ -399,43 +399,28 @@ export function App() {
             const d = sd.data();
             // Handle multiple data formats (nested or flat)
             const base = d.archerData || d.officialData || d.data || d;
-            const regType = d.regType || base.regType || (d.isOfficial ? 'OFFICIAL' : 'ARCHER');
+            const regType = d.regType || base.regType || (d.isOfficial ? 'OFFICIAL' : (base.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER'));
             return { ...base, id: d.id || sd.id, regType, _raw: d };
           });
           
-          // 1. Merge Registrations
-          const existingRegIds = new Set(ce.registrations?.map((r: any) => r.id) || []);
-          const newRegistrations = rawSubmissions.filter(s => !existingRegIds.has(s.id));
+          // Separate submissions by type
+          const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL');
+          const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL');
+
+          console.log(`[INITIAL-SYNC] Processing Submissions for ${ce.id}: ${cloudArchers.length} Archers, ${cloudOfficials.length} Officials`);
           
-          // 2. Merge Archers
-          const existingArcherIds = new Set(ce.archers?.map((a: any) => a.id) || []);
-          const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL' && !existingArcherIds.has(s.id));
-          
-          // 3. Merge Officials
-          const existingOfficialIds = new Set(ce.officials?.map((o: any) => o.id) || []);
-          const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL' && !existingOfficialIds.has(s.id));
+          // Merge with any existing/legacy data
+          const uniqueArchers = Array.from(new Map([...(ce.archers || []), ...cloudArchers].map(a => [a.id, a])).values());
+          const uniqueOfficials = Array.from(new Map([...(ce.officials || []), ...cloudOfficials].map(o => [o.id, o])).values());
+          const uniqueRegs = Array.from(new Map([...(ce.registrations || []), ...rawSubmissions].map(r => [r.id, r])).values());
 
-          if (newRegistrations.length > 0 || cloudArchers.length > 0 || cloudOfficials.length > 0) {
-            console.log(`[REALTIME-SYNC] Merged for ${ce.id}: +${newRegistrations.length} Regs, +${cloudArchers.length} Archers, +${cloudOfficials.length} Officials`);
-            
-            // Gabungkan data dan pastikan tidak ada duplikat berdasar ID
-            const allArchers = [...(ce.archers || []), ...cloudArchers];
-            const uniqueArchers = Array.from(new Map(allArchers.map(a => [a.id, a])).values());
-            
-            const allOfficials = [...(ce.officials || []), ...cloudOfficials];
-            const uniqueOfficials = Array.from(new Map(allOfficials.map(o => [o.id, o])).values());
-
-            const allRegs = [...(ce.registrations || []), ...newRegistrations];
-            const uniqueRegs = Array.from(new Map(allRegs.map(r => [r.id, r])).values());
-
-            return {
-              ...ce,
-              registrations: uniqueRegs,
-              archers: uniqueArchers,
-              officials: uniqueOfficials,
-              registrationCount: Math.max(ce.registrationCount || 0, uniqueArchers.length)
-            };
-          }
+          return {
+            ...ce,
+            registrations: uniqueRegs,
+            archers: uniqueArchers,
+            officials: uniqueOfficials,
+            registrationCount: uniqueRegs.length
+          };
         }
         return ce;
       }) : null;
@@ -554,24 +539,32 @@ export function App() {
 
     console.log(`[REALTIME] Starting listener for submissions in ${appState.activeEventId}`);
     const unsub = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snapshot) => {
-      // Logic for merging: 
-      // 1. We take everything from cloud.
-      // 2. If a local registration with _syncPending exists and is NOT in the cloud yet, we keep it locally too.
-      const cloudSubmissions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      const cloudSubmissions = snapshot.docs.map(doc => {
+        const d = doc.data() as any;
+        const base = d.archerData || d.officialData || d.data || d;
+        const regType = d.regType || base.regType || (d.isOfficial ? 'OFFICIAL' : (base.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER'));
+        return { ...base, id: d.id || doc.id, regType };
+      });
       
       setAppState(prev => {
         const event = prev.events.find(e => e.id === appState.activeEventId);
         if (!event) return prev;
 
-        // Find local ones that haven't reached cloud yet
+        // Find local pending registrations
         const localPending = (event.registrations || []).filter(r => r._syncPending && !cloudSubmissions.find(c => c.id === r.id));
         const mergedSubmissions = [...cloudSubmissions, ...localPending];
+
+        // Categorize for UI efficiency
+        const archers = mergedSubmissions.filter(s => s.regType !== 'OFFICIAL');
+        const officials = mergedSubmissions.filter(s => s.regType === 'OFFICIAL');
 
         return {
           ...prev,
           events: prev.events.map(e => e.id === appState.activeEventId ? {
             ...e,
             registrations: mergedSubmissions,
+            archers,
+            officials,
             registrationCount: mergedSubmissions.length,
             localUpdatedAt: new Date().toISOString()
           } : e)
@@ -2231,7 +2224,12 @@ export function App() {
                 const res = await fetch('/api/register-participant', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ eventId: activeEvent.id, registrations: regs, archers: [] })
+                  body: JSON.stringify({ 
+                    eventId: activeEvent.id, 
+                    registrations: regs, 
+                    archers: regs.filter(r => r.regType !== 'OFFICIAL' && r.category !== 'OFFICIAL'),
+                    officials: regs.filter(r => r.regType === 'OFFICIAL' || r.category === 'OFFICIAL')
+                  })
                 });
                 if (!res.ok) throw new Error();
               } catch {

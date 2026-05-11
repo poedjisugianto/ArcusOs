@@ -69,7 +69,9 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true; 
       allow create: if isSignedIn();
-      allow update: if isAdmin() || isEventOwner(eventId) || isSignedIn(); // Simplified for registration updates
+      allow update: if isAdmin() || isEventOwner(eventId) || 
+                       // Allow public update for registration metadata (counters/timestamps)
+                       (incoming().diff(existing()).affectedKeys().hasOnly(['registrationCount', 'data', 'lastRegistrationAt', 'updatedAt']));
       allow delete: if isAdmin() || isEventOwner(eventId);
 
       match /submissions/{subId} {

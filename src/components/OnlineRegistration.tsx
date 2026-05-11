@@ -206,6 +206,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         phone: formData.phone,
         club: formData.club,
         category: formData.regType === 'OFFICIAL' ? 'OFFICIAL' : formData.category,
+        regType: formData.regType,
         paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
         totalPaid,
         platformFee,
@@ -225,7 +226,8 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         const registrationNo = `ARC-KOL-${year}-${random}`;
         
         let totalPaid = 0;
-        if (member.category === CategoryType.OFFICIAL) {
+        const isOfficial = member.category === CategoryType.OFFICIAL || member.category === 'OFFICIAL';
+        if (isOfficial) {
           totalPaid = event.settings?.officialFee || 0;
         } else {
           const config = event.settings?.categoryConfigs?.[member.category as CategoryType];
@@ -247,6 +249,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
           phone: formData.phone, // Use club contact phone
           club: formData.club,
           category: member.category,
+          regType: (member.category === 'OFFICIAL' || member.category === CategoryType.OFFICIAL) ? 'OFFICIAL' : 'ARCHER',
           paymentProof: formData.paymentType === 'MANUAL' ? formData.paymentProof : undefined,
           totalPaid,
           platformFee,

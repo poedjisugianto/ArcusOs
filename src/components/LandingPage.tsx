@@ -69,43 +69,37 @@ export default function LandingPage({
     .map(e => {
       const raw = e as any;
       const baseData = (typeof raw.data === 'function') ? raw.data() : (raw.data || raw);
-      const id = raw.id || baseData.id || (raw.ref?.id);
+      const id = raw.id || baseData.id;
       
       const statusStrRaw = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
       let statusStr = statusStrRaw;
       
-      // MAPPING LONGGAR: Semua yang berpotensi aktif kita anggap ACTIVE
       if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING', 'A', '1'].includes(statusStrRaw)) {
         statusStr = 'ACTIVE';
       }
 
-      const settings = baseData.settings || raw.settings || {};
-      const tournamentName = settings.tournamentName || baseData.tournamentName || raw.tournamentName || baseData.name || "Turnamen Archery";
+      const settings = baseData.settings || raw.settings || baseData || {};
+      const tournamentName = raw.tournamentName || settings.tournamentName || baseData.tournamentName || baseData.name || "Tournament";
       const location = settings.location || baseData.location || "Lokasi Belum Diatur";
       const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
-      const executionTime = settings.executionTime || baseData.executionTime || "";
       
-      const registrationDeadline = settings.registrationDeadline;
-      const isRegistrationClosed = registrationDeadline ? new Date(registrationDeadline) < new Date() : false;
-      const createdAt = baseData.createdAt || baseData.settings?.createdAt || raw.updatedAt || 0;
+      const createdAt = raw.createdAt || baseData.createdAt || settings.createdAt || 0;
 
       return {
         ...baseData,
+        ...settings,
         id,
         status: statusStr,
         createdAt,
-        isRegistrationClosed,
         settings: {
           ...settings,
           tournamentName,
           location,
           eventDate,
-          executionTime,
           status: statusStr
         }
       };
     })
-    // FILTER SANGAT LONGGAR: Tampilkan semua kecuali yang dihapus (DELETED)
     .filter(ev => ev.id && ev.status !== 'DELETED')
     .sort((a, b) => {
       // Prioritize ACTIVE/UPCOMING status

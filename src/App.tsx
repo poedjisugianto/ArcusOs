@@ -208,17 +208,14 @@ export function App() {
                   return { 
                     docs: data.events.map((e: any) => ({
                       id: e.id, 
-                      data: () => ({ ...(e.data || e), id: e.id }),
+                      data: () => ({ ...e, id: e.id }), // Ensure ID is flattened
                       exists: () => true 
                     })), 
                     __type: 'custom_array' 
                   };
                 }
-                // If API is empty or failed, try direct client SDK read
-                console.log("[App/fetch] Public API empty/failed, falling back to direct Firestore read...");
-                if (db) {
-                   return safeGetDocs(collection(db, 'events'));
-                }
+                // If API returns no events, guests try to read directly from Firestore
+                if (db) return safeGetDocs(collection(db, 'events'));
                 return null;
               })
               .catch(() => db ? safeGetDocs(collection(db, 'events')) : null)

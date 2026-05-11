@@ -579,23 +579,20 @@ app.get("/api/public-events", async (req, res) => {
     const events: any[] = [];
     snapshot.forEach((doc: any) => {
       try {
-        const data = doc.data();
-        const eventData = data.data || data;
+        const rawData = doc.data();
+        const eventInfo = rawData.data || rawData;
+        const settings = eventInfo.settings || rawData.settings || {};
         
-        // Log sampel data pertama untuk debug jika events kosong
-        if (events.length === 0) {
-           console.log(`[API/PUBLIC-EVENTS] Sample doc found: ${doc.id}, Raw Status: ${data.status || 'N/A'}`);
-        }
+        const status = (rawData.status || eventInfo.status || settings.status || 'ACTIVE').toString().toUpperCase();
 
-        const statusRaw = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-        
-        // HANYA sembunyikan yang sudah dihapus (DELETED)
-        if (statusRaw !== 'DELETED') {
+        if (status !== 'DELETED') {
            events.push({
-             ...eventData, 
+             ...eventInfo,
+             ...settings,
              id: doc.id,
-             status: statusRaw,
-             createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
+             status: status,
+             tournamentName: eventInfo.tournamentName || settings.tournamentName || rawData.name || "Tournament",
+             createdAt: rawData.createdAt || eventInfo.createdAt || settings.createdAt || rawData.updatedAt || new Date().toISOString()
            });
         }
       } catch (e) {
@@ -603,20 +600,19 @@ app.get("/api/public-events", async (req, res) => {
       }
     });
 
-    // Urutkan berdasarkan tanggal terbaru
     events.sort((a,b) => {
        const tA = new Date(a.createdAt).getTime();
        const tB = new Date(b.createdAt).getTime();
        return (tB || 0) - (tA || 0);
     });
 
-    console.log(`[API/PUBLIC-EVENTS] Success: Returning ${events.length} public events to client.`);
+    console.log(`[API/PUBLIC-EVENTS] Success: Returning ${events.length} events (Source: Broad Scan).`);
 
     return res.json({ 
        success: true, 
        events, 
        count: events.length,
-       source: 'admin-sdk-full-scan-v5-verbose',
+       source: 'broad-scan-v7',
        timestamp: new Date().toISOString()
     });
   } catch (err: any) {

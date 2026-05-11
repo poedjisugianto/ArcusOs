@@ -758,12 +758,31 @@ app.get("/api/event-details/:id", async (req, res) => {
     const data = eventSnap.data();
     
     // 2. Fetch Submissions
-    const submissions: any[] = [];
-    const submissionsCol = collection(eventRef, 'submissions');
-    const q = query(submissionsCol, limit(5000));
-    const submissionsSnap = await getDocs(q);
-    
-    submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
+    let submissions: any[] = [];
+    try {
+      const submissionsCol = collection(eventRef, 'submissions');
+      // Limit to 5000 to avoid huge results
+      const q = query(submissionsCol, limit(5000));
+      const submissionsSnap = await getDocs(q);
+      submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
+    } catch (subErr: any) {
+      console.warn(`[API/EVENT-DETAILS] Submissions SDK fetch failed (${subErr.code}), trying REST fallback...`);
+      // REST fallback for submissions subcollection
+      const subUrl = `https://firestore.googleapis.com/v1/projects/${pid}/databases/${dbId}/documents/events/${eventId}/submissions?key=${firebaseConfig.apiKey}&pageSize=1000`;
+      try {
+        const subRes = await axios.get(subUrl, { timeout: 4000 });
+        if (subRes.data && subRes.data.documents) {
+          subRes.data.documents.forEach((d: any) => {
+            const transformed = transformRestFields(d.fields);
+            const docId = d.name.split('/').pop();
+            submissions.push({ ...transformed, id: docId });
+          });
+          console.log(`[API/EVENT-DETAILS] REST fallback success: fetched ${submissions.length} submissions`);
+        }
+      } catch (restErr: any) {
+        console.error(`[API/EVENT-DETAILS] All submissions fetch methods failed:`, restErr.message);
+      }
+    }
 
     const responseData = {
       ...data,

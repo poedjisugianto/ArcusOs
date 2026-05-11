@@ -229,21 +229,26 @@ export function App() {
               .then(res => res.json())
               .then(res => {
                   if (res.success && res.data) {
-                    const { event, submissions, shards } = res.data;
+                    // API returns the event object directly in res.data
+                    const event = res.data;
+                    const submissions = res.data.registrations || [];
+                    const shards = res.data.shards || [];
+                    
                     // Format into a shape that the state-merging logic understands
                     return { 
                       __is_api_cache: true,
-                      submissions: { docs: (submissions || []).map((s: any) => ({ 
-                        id: s.id, 
+                      submissions: { docs: submissions.map((s: any) => ({ 
+                        id: s.id || s.email, 
                         data: () => {
-                           // Ensure we unwrap archerData if present from API
-                           const base = s.archerData || s.officialData || s;
-                           return { ...base, id: s.id, status: s.status || base.status };
+                           // Ensure we unwrap data if present from API
+                           const base = s.archerData || s.officialData || s.data || s;
+                           const regType = s.regType || base.regType || (s.isOfficial ? 'OFFICIAL' : (base.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER'));
+                           return { ...base, id: s.id || s.email, regType, status: s.status || base.status };
                         }, 
                         exists: true 
                       })) },
-                      shards: { docs: (shards || []).map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
-                      event: { id: event.id, data: () => ({ ...event.data, id: event.id }), exists: true }
+                      shards: { docs: shards.map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
+                      event: { id: event.id, data: () => ({ ...event, id: event.id }), exists: true }
                     };
                   }
                   return null;
@@ -547,16 +552,26 @@ export function App() {
       });
       
       setAppState(prev => {
-        const event = prev.events.find(e => e.id === appState.activeEventId);
-        if (!event) return prev;
-
+        // If events list is empty, we can't find our target event yet.
+        // We'll update the global submissions list for now so it's available when events load.
+        const existingEvent = prev.events.find(e => e.id === appState.activeEventId);
+        
         // Find local pending registrations
-        const localPending = (event.registrations || []).filter(r => r._syncPending && !cloudSubmissions.find(c => c.id === r.id));
+        const localPending = existingEvent ? (existingEvent.registrations || []).filter(r => r._syncPending && !cloudSubmissions.find(c => c.id === r.id)) : [];
         const mergedSubmissions = [...cloudSubmissions, ...localPending];
 
         // Categorize for UI efficiency
-        const archers = mergedSubmissions.filter(s => s.regType !== 'OFFICIAL');
-        const officials = mergedSubmissions.filter(s => s.regType === 'OFFICIAL');
+        const archers = mergedSubmissions.filter(s => s.regType !== 'OFFICIAL') as any[];
+        const officials = mergedSubmissions.filter(s => s.regType === 'OFFICIAL') as any[];
+
+        if (!existingEvent) {
+          // If the event doesn't exist yet, we still record these submissions 
+          // to prevent them from being lost during the race condition
+          return {
+            ...prev,
+            submissions: mergedSubmissions // Use a temporary global submissions list if needed
+          };
+        }
 
         return {
           ...prev,
@@ -2218,6 +2233,29 @@ export function App() {
               const eventRef = doc(db, 'events', (activeEvent as any).id);
               batch.update(eventRef, { registrationCount: increment(regs.length) });
               await batch.commit();
+              
+              // Optimistic UI Update: Add to local state immediately
+              const optimisticRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING }));
+              setAppState(prev => {
+                const event = prev.events.find(e => e.id === (activeEvent as any).id);
+                if (!event) return prev;
+                
+                const mergedRegs = Array.from(new Map([...(event.registrations || []), ...optimisticRegs].map(r => [r.id, r])).values());
+                const archers = mergedRegs.filter(r => r.regType !== 'OFFICIAL') as any[];
+                const officials = mergedRegs.filter(r => r.regType === 'OFFICIAL') as any[];
+                
+                return {
+                  ...prev,
+                  events: prev.events.map(e => e.id === event.id ? { 
+                    ...e, 
+                    registrations: mergedRegs,
+                    archers,
+                    officials,
+                    registrationCount: mergedRegs.length
+                  } : e)
+                };
+              });
+
               pushNotification("Berhasil", "Pendaftaran terkirim.", "SUCCESS");
             } catch (err) {
               try {

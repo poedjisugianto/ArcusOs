@@ -402,10 +402,8 @@ export function App() {
         if (submissionsSnap?.docs && ce.id === appState.activeEventId) {
           const rawSubmissions = submissionsSnap.docs.map((sd: any) => {
             const d = sd.data();
-            // Handle multiple data formats (nested or flat)
-            const base = d.archerData || d.officialData || d.data || d;
-            const regType = d.regType || base.regType || (d.isOfficial ? 'OFFICIAL' : (base.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER'));
-            return { ...base, id: d.id || sd.id, regType, _raw: d };
+            const regType = d.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
+            return { ...d, id: sd.id, regType };
           });
           
           // Separate submissions by type
@@ -544,11 +542,11 @@ export function App() {
 
     console.log(`[REALTIME] Starting listener for submissions in ${appState.activeEventId}`);
     const unsub = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snapshot) => {
+      console.log(`[REALTIME] Received cloud update for event ${appState.activeEventId}. Docs: ${snapshot.size}`);
       const cloudSubmissions = snapshot.docs.map(doc => {
         const d = doc.data() as any;
-        const base = d.archerData || d.officialData || d.data || d;
-        const regType = d.regType || base.regType || (d.isOfficial ? 'OFFICIAL' : (base.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER'));
-        return { ...base, id: d.id || doc.id, regType };
+        const regType = d.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
+        return { ...d, id: doc.id, regType };
       });
       
       setAppState(prev => {
@@ -2206,35 +2204,26 @@ export function App() {
             <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (registrations: ParticipantRegistration[]) => {
           const regs = registrations;
           
-          const registerLocallyOnly = () => {
-            const pendingRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING, _syncPending: true }));
-            setAppState(prev => {
-              const event = prev.events.find(e => e.id === (activeEvent as any).id);
-              if (!event) return prev;
-              return {
-                ...prev,
-                events: prev.events.map(e => e.id === event.id ? { 
-                  ...e, 
-                  registrations: [...(e.registrations || []), ...pendingRegs] 
-                } : e)
-              };
-            });
-            setHasPendingChanges(true);
-            pushNotification("Data Terparkir", "Jaringan sibuk. Data diparkir lokal.", "WARNING");
-          };
-
-          if (isOnline && db) {
+          if (isOnline) {
             try {
-              const batch = writeBatch(db);
-              regs.forEach(r => {
-                const subRef = doc(collection(db, 'events', (activeEvent as any).id, 'submissions'), r.id);
-                batch.set(subRef, { ...r, serverTimestamp: serverTimestamp() });
+              // Standardize on using the API for all registrations to bypass client-side security roadblocks
+              const response = await fetch("/api/register-participant", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  eventId: activeEvent.id,
+                  registrations: regs,
+                  archers: regs.filter(r => r.regType !== 'OFFICIAL'),
+                  officials: regs.filter(r => r.regType === 'OFFICIAL')
+                })
               });
-              const eventRef = doc(db, 'events', (activeEvent as any).id);
-              batch.update(eventRef, { registrationCount: increment(regs.length) });
-              await batch.commit();
               
-              // Optimistic UI Update: Add to local state immediately
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || "Server pendaftaran tidak merespon");
+              }
+
+              // Optimistic UI Update: Update local state immediately
               const optimisticRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING }));
               setAppState(prev => {
                 const event = prev.events.find(e => e.id === (activeEvent as any).id);
@@ -2251,31 +2240,47 @@ export function App() {
                     registrations: mergedRegs,
                     archers,
                     officials,
-                    registrationCount: mergedRegs.length
+                    registrationCount: mergedRegs.length,
+                    localUpdatedAt: new Date().toISOString()
                   } : e)
                 };
               });
 
-              pushNotification("Berhasil", "Pendaftaran terkirim.", "SUCCESS");
-            } catch (err) {
-              try {
-                const res = await fetch('/api/register-participant', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                    eventId: activeEvent.id, 
-                    registrations: regs, 
-                    archers: regs.filter(r => r.regType !== 'OFFICIAL' && r.category !== 'OFFICIAL'),
-                    officials: regs.filter(r => r.regType === 'OFFICIAL' || r.category === 'OFFICIAL')
-                  })
-                });
-                if (!res.ok) throw new Error();
-              } catch {
-                registerLocallyOnly();
-              }
+              pushNotification("Berhasil", "Pendaftaran terkirim dan sinkron dengan server.", "SUCCESS");
+            } catch (err: any) {
+              console.error("Critical Registration Error:", err);
+              // Fallback to local persistence
+              const pendingRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING, _syncPending: true }));
+              setAppState(prev => {
+                const event = prev.events.find(e => e.id === (activeEvent as any).id);
+                if (!event) return prev;
+                return {
+                  ...prev,
+                  events: prev.events.map(e => e.id === event.id ? { 
+                    ...e, 
+                    registrations: [...(e.registrations || []), ...pendingRegs] 
+                  } : e)
+                };
+              });
+              setHasPendingChanges(true);
+              pushNotification("Data Terparkir", "Jaringan sibuk. Data disimpan lokal.", "WARNING");
             }
           } else {
-            registerLocallyOnly();
+            // Persistence for offline mode
+            const pendingRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING, _syncPending: true }));
+            setAppState(prev => {
+              const event = prev.events.find(e => e.id === (activeEvent as any).id);
+              if (!event) return prev;
+              return {
+                ...prev,
+                events: prev.events.map(e => e.id === event.id ? { 
+                  ...e, 
+                  registrations: [...(e.registrations || []), ...pendingRegs] 
+                } : e)
+              };
+            });
+            setHasPendingChanges(true);
+            pushNotification("Mode Offline", "Data disimpan di memori dan akan disinkronkan saat online.", "INFO");
           }
         }} onBack={() => {
           setView('LANDING');

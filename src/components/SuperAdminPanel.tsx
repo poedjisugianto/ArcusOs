@@ -4,7 +4,7 @@ import {
   Users, Calendar, DollarSign, Settings, 
   ShieldCheck, CheckCircle2, 
   AlertCircle, Save, ArrowLeft, Trash2, 
-  Search, Eye, ShieldAlert, Activity, Landmark, Check, Mail, Send
+  Search, Eye, ShieldAlert, Activity, Landmark, Check, Mail, Send, RefreshCw
 } from 'lucide-react';
 import { AppState, GlobalSettings, ArcheryEvent, User, AppNotification, CategoryType } from '../types';
 import { CATEGORY_LABELS } from '../constants';
@@ -244,6 +244,31 @@ const SuperAdminPanel: React.FC<Props> = ({ state, onUpdateSettings, onResetSyst
                           </button>
                         </td>
                         <td className="p-6 text-right space-x-2">
+                           <button 
+                             onClick={async () => {
+                               if (!confirm(`Reset data untuk "${event.settings?.tournamentName}"? Semua pendaftaran dan skor akan dihapus.`)) return;
+                               try {
+                                 const res = await fetch(`/api/reset-event/${event.id}`, {
+                                   method: 'POST',
+                                   headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ authEmail: state.currentUser?.email })
+                                 });
+                                 const data = await res.json();
+                                 if (data.success) {
+                                   alert("Reset berhasil. Silakan refresh halaman.");
+                                   window.location.reload();
+                                 } else {
+                                   alert("Gagal reset: " + data.error);
+                                 }
+                               } catch (err: any) {
+                                 alert("Error: " + err.message);
+                               }
+                             }}
+                             className="p-2 text-orange-400 hover:text-orange-600 transition-colors"
+                             title="Reset Data Event"
+                           >
+                             <RefreshCw className="w-5 h-5" />
+                           </button>
                            <button 
                             onClick={() => setConfirmDeleteEvent({ id: event.id, name: event.settings?.tournamentName || event.id })} 
                           className="p-2 hover:text-red-600 transition-colors"

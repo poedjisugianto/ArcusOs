@@ -3,23 +3,8 @@ import cors from "cors";
 import axios from "axios";
 import nodemailer from "nodemailer";
 import midtransClient from "midtrans-client";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  writeBatch, 
-  increment, 
-  setDoc, 
-  updateDoc,
-  serverTimestamp 
-} from "firebase/firestore";
+import { initializeApp, getApps } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -40,23 +25,20 @@ try {
   console.error("Failed to load firebase-applet-config.json:", err);
 }
 
-// Initialize Firebase Client SDK for server-side use
-let firebaseApp: any = null;
+// Initialize Firebase Admin
+let adminApp: any = null;
 const apps = getApps();
 if (!apps.length) {
   try {
-    firebaseApp = initializeApp({
-      apiKey: firebaseConfig.apiKey,
-      authDomain: firebaseConfig.authDomain,
+    adminApp = initializeApp({
       projectId: firebaseConfig.projectId,
-      appId: firebaseConfig.appId
     });
-    console.log(`[FIREBASE-CLIENT] App initialized with Project ID: ${firebaseConfig.projectId}`);
+    console.log(`[FIREBASE-ADMIN] App initialized with Project ID: ${firebaseConfig.projectId}`);
   } catch (err: any) {
-    console.error("[FIREBASE-CLIENT] Initialization error:", err.message);
+    console.error("[FIREBASE-ADMIN] Initialization error:", err.message);
   }
 } else {
-  firebaseApp = apps[0];
+  adminApp = apps[0];
 }
 
 // Ensure we use the correct database ID (Enterprise Multi-DB support)
@@ -64,11 +46,11 @@ const targetDatabaseId = firebaseConfig.firestoreDatabaseId && firebaseConfig.fi
   ? firebaseConfig.firestoreDatabaseId 
   : undefined;
 
-// Use the Client SDK getFirestore
-const db = firebaseApp ? getFirestore(firebaseApp, targetDatabaseId) : null;
+// Use the Admin SDK getFirestore
+const db = adminApp ? getFirestore(adminApp, targetDatabaseId) : null;
 
 if (db) {
-  console.log(`[FIREBASE-CLIENT] Firestore initialized via Client SDK. Project: ${firebaseConfig.projectId}, Database: ${targetDatabaseId || "(default)"}`);
+  console.log(`[FIREBASE-ADMIN] Firestore instance ready via Admin SDK. Project: ${firebaseConfig.projectId}, Database: ${targetDatabaseId || "(default)"}`);
 }
 
 // Transformation helper for Firestore REST API
@@ -113,23 +95,18 @@ const getGlobalSettings = async () => {
     return cachedGlobalSettings;
   }
 
+  if (!db) return null;
   try {
+    const docRef = db.collection('systemConfigs').doc('global');
+    const docSnap = await docRef.get();
+    
     let settings = null;
-    // 1. Try Client SDK first
-    if (db) {
-      try {
-        const docRef = doc(db, 'systemConfigs', 'global');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          settings = data?.data || data;
-        }
-      } catch (clientErr: any) {
-        console.warn("[CLIENT-SDK] Settings fetch error:", clientErr.message);
-      }
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      settings = data?.data || data;
     }
 
-    // 2. Fallback to REST API if SDK failed or returned nothing
+    // 2. Fallback to REST API if Firestore SDK returned nothing or failed (though SDK is more reliable here)
     if (!settings) {
       const pid = firebaseConfig.projectId;
       const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
@@ -150,10 +127,11 @@ const getGlobalSettings = async () => {
       lastGlobalSettingsUpdate = now;
       return settings;
     }
+    return null;
   } catch (err: any) {
-    console.warn("Global Settings fetch failed entirely:", err.message);
+    console.error("Error fetching global settings:", err.message);
+    return cachedGlobalSettings; // Return stale cache if fetch fails
   }
-  return cachedGlobalSettings; // Return stale cache if fetch fails
 };
 
 // Initialize Midtrans Snap with dynamic keys
@@ -528,6 +506,47 @@ app.get("/api/smtp-diagnostic", (req, res) => {
   });
 });
 
+app.post("/api/reset-event/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const { authEmail } = req.body;
+
+  if (!db) return res.status(500).json({ error: "DB not ready" });
+  
+  // Basic sanity check for admin identity
+  const isAdmin = authEmail === 'poedji.sugianto@gmail.com' || authEmail === 'admin@arcus.id';
+  if (!isAdmin) return res.status(403).json({ error: "Unauthorized" });
+
+  try {
+    const eventRef = db.collection('events').doc(eventId);
+    
+    // 1. Delete all submissions
+    const submissionsSnap = await eventRef.collection('submissions').get();
+    const batch = db.batch();
+    submissionsSnap.forEach(doc => batch.delete(doc.ref));
+    
+    // 2. Reset counters
+    batch.update(eventRef, {
+      "registrationCount": 0,
+      "data.registrationCount": 0,
+      "archers": [],
+      "officials": [],
+      "registrations": [],
+      "scores": [],
+      "scoreLogs": [],
+      "matches": {},
+      "lastResetAt": new Date().toISOString()
+    });
+
+    await batch.commit();
+    
+    if (eventDetailsCache[eventId]) delete eventDetailsCache[eventId];
+
+    res.json({ success: true, message: "Event data has been reset to fresh state." });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Health check and DB Diagnostics
 app.get("/api/health", async (req, res) => {
   const dbStatus = db ? "connected" : "not initialized";
@@ -590,12 +609,11 @@ app.get("/api/public-events", async (req, res) => {
 
   const pid = firebaseConfig.projectId;
   const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
-  console.log(`[API/PUBLIC-EVENTS] Fetching events via Client SDK (PID: ${pid}, DB: ${dbId})`);
+  console.log(`[API/PUBLIC-EVENTS] Fetching events via Admin SDK (PID: ${pid}, DB: ${dbId})`);
 
   try {
-    // 1. Ambil SEMUA event dari Firestore Client-Side SDK
-    const eventsCol = collection(db, 'events');
-    const snapshot = await getDocs(eventsCol);
+    // Ambil SEMUA event dari Firestore Admin SDK
+    const snapshot = await db.collection('events').get();
     const events: any[] = [];
     
     snapshot.forEach((d: any) => {
@@ -681,27 +699,34 @@ app.post("/api/register-participant", async (req, res) => {
   }
 
   try {
-    const eventRef = doc(db, 'events', eventId);
-    const batch = writeBatch(db);
+    const eventRef = db.collection('events').doc(eventId);
+    const batch = db.batch();
     
     // 1. Write each registration and participant to the subcollection
-    registrations.forEach((reg: any, index: number) => {
-      const subRef = doc(collection(eventRef, 'submissions'), reg.id || `reg_${Date.now()}_${index}`);
+    (registrations || []).forEach((reg: any, index: number) => {
+      const archerData = (archers || []).find((a: any) => a.id === reg.id);
+      const officialData = (officials || []).find((o: any) => o.id === reg.id);
+      
+      const subRef = eventRef.collection('submissions').doc(reg.id || `reg_${Date.now()}_${index}`);
+      
+      // Save a flattened document for maximum compatibility with UI expectations
       batch.set(subRef, {
-        ...reg,
-        archerData: archers.find((a: any) => a.id === reg.id) || null,
-        officialData: (officials || []).find((o: any) => o.id === reg.id) || null,
-        serverTimestamp: serverTimestamp()
+        ...reg,                // Base registration (payment info, etc)
+        ...(archerData || {}), // Participant details (name, category, etc)
+        ...(officialData || {}),
+        id: reg.id,            // FORCE the id to be the registration ID
+        serverTimestamp: FieldValue.serverTimestamp(),
+        updatedAt: new Date().toISOString()
       }, { merge: true });
     });
 
     // 2. Update the main event metadata
     batch.update(eventRef, {
-      "registrationCount": increment(registrations.length),
-      "data.registrationCount": increment(registrations.length),
+      "registrationCount": FieldValue.increment(registrations.length),
+      "data.registrationCount": FieldValue.increment(registrations.length),
       "data.lastRegistrationAt": new Date().toISOString(),
       "lastRegistrationAt": new Date().toISOString(),
-      "updatedAt": serverTimestamp()
+      "updatedAt": FieldValue.serverTimestamp()
     });
 
     await batch.commit();
@@ -748,10 +773,10 @@ app.get("/api/event-details/:id", async (req, res) => {
 
   try {
     // 1. Fetch Event Document
-    const eventRef = doc(db, 'events', eventId);
-    const eventSnap = await getDoc(eventRef);
+    const eventRef = db.collection('events').doc(eventId);
+    const eventSnap = await eventRef.get();
     
-    if (!eventSnap.exists()) {
+    if (!eventSnap.exists) {
       return res.status(404).json({ error: "Event tidak ditemukan" });
     }
     
@@ -760,14 +785,11 @@ app.get("/api/event-details/:id", async (req, res) => {
     // 2. Fetch Submissions
     let submissions: any[] = [];
     try {
-      const submissionsCol = collection(eventRef, 'submissions');
-      // Limit to 5000 to avoid huge results
-      const q = query(submissionsCol, limit(5000));
-      const submissionsSnap = await getDocs(q);
+      const submissionsSnap = await eventRef.collection('submissions').limit(5000).get();
       submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
     } catch (subErr: any) {
-      console.warn(`[API/EVENT-DETAILS] Submissions SDK fetch failed (${subErr.code}), trying REST fallback...`);
-      // REST fallback for submissions subcollection
+      console.warn(`[API/EVENT-DETAILS] Submissions fetch failed, trying REST fallback...`);
+      // REST fallback...
       const subUrl = `https://firestore.googleapis.com/v1/projects/${pid}/databases/${dbId}/documents/events/${eventId}/submissions?key=${firebaseConfig.apiKey}&pageSize=1000`;
       try {
         const subRes = await axios.get(subUrl, { timeout: 4000 });

@@ -1033,39 +1033,33 @@ export function App() {
       });
 
       // ADD REAL-TIME SUBMISSIONS LISTENER
-      (window as any)._unsubSubmissions = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snap) => {
-        if (!isMounted) return;
-        
-        console.log(`[REALTIME-SYNC] Submissions updated: ${snap.size} docs`);
-        const cloudSubmissions = snap.docs.map(d => ({
-          ...d.data(),
-          id: d.id
-        }));
-
-        setAppState(prev => {
-          const event = prev.events.find(e => e.id === appState.activeEventId);
-          if (!event) return prev;
-
-          // Merge archival data (shards) with live submissions
-          const existingIds = new Set(cloudSubmissions.map(s => s.id));
-          const archivalArchers = (event.archers || []).filter(a => !existingIds.has(a.id));
-          const archivalOfficials = (event.officials || []).filter(o => !existingIds.has(o.id));
-
-          const allArchers = [...archivalArchers, ...cloudSubmissions.filter((s: any) => s.regType !== 'OFFICIAL' && s.category !== 'OFFICIAL').map((s: any) => s.archerData || s)];
-          const allOfficials = [...archivalOfficials, ...cloudSubmissions.filter((s: any) => s.regType === 'OFFICIAL' || s.category === 'OFFICIAL').map((s: any) => s.officialData || s)];
+      if (appState.activeEventId) {
+        (window as any)._unsubSubmissions = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snap) => {
+          if (!isMounted) return;
           
-          return {
-            ...prev,
-            events: prev.events.map(e => e.id === appState.activeEventId ? {
-              ...e,
-              archers: Array.from(new Map(allArchers.map(a => [a.id, a])).values()),
-              officials: Array.from(new Map(allOfficials.map(o => [o.id, o])).values()),
-              registrations: (cloudSubmissions as any[]).filter((s: any) => s.status !== 'APPROVED' && s.status !== 'CONFIRMED'),
-              registrationCount: Math.max(e.registrationCount || 0, cloudSubmissions.length)
-            } : e)
-          };
-        });
-      }, (err) => console.warn("Submissions sync error:", err));
+          const cloudSubmissions = snap.docs.map(d => ({
+            ...d.data(),
+            id: d.id
+          })) as any[];
+
+          setAppState(prev => {
+            const event = prev.events.find(e => e.id === appState.activeEventId);
+            if (!event) return prev;
+
+            // Direct mapping
+            const pendingSubmissions = cloudSubmissions.filter(s => s.status === 'PENDING' || !s.status);
+            
+            return {
+              ...prev,
+              events: prev.events.map(e => e.id === appState.activeEventId ? {
+                ...e,
+                registrations: pendingSubmissions,
+                registrationCount: cloudSubmissions.length
+              } : e)
+            };
+          });
+        }, (err) => console.warn("Submissions sync error:", err));
+      }
     }, 500);
 
     // 3. Real-time listener for Organizer's events list
@@ -1074,29 +1068,26 @@ export function App() {
       const q = query(collection(db, 'events'), where('userId', '==', appState.currentUser.id));
       unsubEvents = onSnapshot(q, (snap) => {
         if (snap.metadata.hasPendingWrites) return;
-        console.log(`[REALTIME-LIST] Organizer events update: ${snap.size} docs`);
         
         const cloudEvents = snap.docs.map(d => ({
-          ...d.data().data, // Full event object is stored inside 'data' field
+          ...d.data().data, 
           id: d.id,
           registrationCount: d.data().registrationCount || 0,
           status: d.data().status || d.data().data?.status || 'DRAFT'
         }));
 
         setAppState(prev => {
-          // Merge cloud event metadata with local event state (preserving local data if needed)
           const newEvents = [...prev.events];
           cloudEvents.forEach(ce => {
             const index = newEvents.findIndex(e => e.id === ce.id);
             if (index !== -1) {
-              // Update metadata
               newEvents[index] = { 
                 ...newEvents[index], 
                 ...ce,
-                // Preserve heavy arrays if cloud meta didn't include them in the root doc (they are sharded)
-                archers: ce.archers || newEvents[index].archers || [],
-                scores: ce.scores || newEvents[index].scores || [],
-                registrations: ce.registrations || newEvents[index].registrations || []
+                // CRITICAL: DO NOT overwrite registrations/archers here if they already have data!
+                // These are loaded via separate sharding/subcollection listeners
+                archers: newEvents[index].archers?.length ? newEvents[index].archers : (ce.archers || []),
+                registrations: newEvents[index].registrations?.length ? newEvents[index].registrations : (ce.registrations || [])
               };
             } else {
               newEvents.push(ce as any);

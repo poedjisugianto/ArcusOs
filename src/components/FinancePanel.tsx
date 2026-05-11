@@ -32,48 +32,33 @@ const FinancePanel: React.FC<Props> = ({ event, globalSettings, onApproveRegistr
     ].includes(cat);
   };
 
-  // Use unique participants to avoid double counting revenue/fees
+  // Simplify: Use registrations list primarily for verification
+  // and include archers/officials only for total count reference
   const uniqueParticipants = Array.from(
     new Map([
-      ...(event.registrations || []), 
       ...(event.archers || []),
-      ...(event.officials || [])
-    ].map(p => [p.id, p])).values()
+      ...(event.officials || []),
+      ...(event.registrations || [])
+    ].map(p => [p.id || (p as any).email, p])).values()
   );
   
-  // Only show pending registrations that are truly not verified yet
-  const pendingRegistrations = uniqueParticipants.filter(p => {
-    // 1. Basic status check (already approved in its own data)
-    if (p.status === 'APPROVED' || p.status === 'CONFIRMED' || p.status === 'PAID') return false;
-    
-    // 2. Cross-reference check with main participant lists (Archers and Officials)
-    const lowerName = (p.name || '').toLowerCase().trim();
-    
-    // Check if this same person is already an approved Archer
-    const isAlreadyApprovedArcher = (event.archers || []).some(a => 
-      (a.status === 'APPROVED' || a.status === 'CONFIRMED') && (
-        a.id === p.id || 
-        (a.name.toLowerCase().trim() === lowerName && a.category === p.category)
-      )
-    );
-    if (isAlreadyApprovedArcher) return false;
+  // Pending registrations are those in registrations array PLUS anyone pending in archers/officials
+  const pendingFromRegs = event.registrations || [];
+  const pendingFromArchers = (event.archers || []).filter(a => a.status === 'PENDING' || !a.status);
+  const pendingFromOfficials = (event.officials || []).filter(o => o.status === 'PENDING' || !o.status);
+  
+  // Combine and deduplicate
+  const pendingRegistrations = Array.from(
+    new Map([
+      ...pendingFromArchers,
+      ...pendingFromOfficials,
+      ...pendingFromRegs
+    ].map(p => [p.id, p])).values()
+  );
 
-    // Check if this same person is already an approved Official
-    const isAlreadyApprovedOfficial = (event.officials || []).some(o => 
-      (o.status === 'APPROVED' || o.status === 'CONFIRMED') && (
-        o.id === p.id || 
-        (o.name.toLowerCase().trim() === lowerName && p.category === 'OFFICIAL')
-      )
-    );
-    if (isAlreadyApprovedOfficial) return false;
-
-    return true;
-  });
-
-  const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);
+  const totalRevenue = uniqueParticipants.reduce((acc, curr) => acc + (curr.totalPaid || (curr as any).platformFee || 0), 0);
   
   const totalPlatformFees = event.settings.isFreeEvent ? 0 : uniqueParticipants.reduce((acc, curr) => {
-    // If platformFee is missing or 0, fallback to globalSettings fee
     const fee = curr.platformFee && curr.platformFee > 0 
       ? curr.platformFee 
       : (isKidsCategory(curr.category) ? globalSettings.feeKids : globalSettings.feeAdult);

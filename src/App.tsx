@@ -13,7 +13,7 @@ import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, App
 import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache, limit } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache, limit, writeBatch, serverTimestamp, increment } from 'firebase/firestore';
 import { handleFirestoreError, OperationType, shardData, mergeShards, tryRecoverJSON } from './lib/firestoreUtils';
 import ArcusLogo from './components/ArcusLogo';
 import { safeFormatTime } from './lib/dateUtils';
@@ -1034,7 +1034,7 @@ export function App() {
 
       // ADD REAL-TIME SUBMISSIONS LISTENER
       (window as any)._unsubSubmissions = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snap) => {
-        if (!isMounted || snap.metadata.hasPendingWrites) return;
+        if (!isMounted) return;
         
         console.log(`[REALTIME-SYNC] Submissions updated: ${snap.size} docs`);
         const cloudSubmissions = snap.docs.map(d => ({
@@ -1060,7 +1060,7 @@ export function App() {
               ...e,
               archers: Array.from(new Map(allArchers.map(a => [a.id, a])).values()),
               officials: Array.from(new Map(allOfficials.map(o => [o.id, o])).values()),
-              registrations: cloudSubmissions.filter((s: any) => s.status !== 'APPROVED' && s.status !== 'CONFIRMED'),
+              registrations: (cloudSubmissions as any[]).filter((s: any) => s.status !== 'APPROVED' && s.status !== 'CONFIRMED'),
               registrationCount: Math.max(e.registrationCount || 0, cloudSubmissions.length)
             } : e)
           };
@@ -2290,6 +2290,16 @@ export function App() {
 
             handleUpdateEvent(activeEvent.id, updatePayload); 
 
+            // Update submission record in cloud for real-time responsiveness
+            try {
+              if (db) {
+                const subRef = doc(db, 'events', activeEvent.id, 'submissions', regId);
+                await updateDoc(subRef, { status: RegistrationStatus.APPROVED });
+              }
+            } catch (err) {
+              console.warn("Failed to update cloud submission:", err);
+            }
+
             // Send Confirmation Email
             try {
               const response = await fetch('/api/send-email-otp', {
@@ -2328,17 +2338,7 @@ export function App() {
           activeEvent ? (
             <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (registrations: ParticipantRegistration[]) => {
           const regs = registrations;
-          const officialRegs = regs.filter(r => r.category === 'OFFICIAL');
-          const archerRegs = regs.filter(r => r.category !== 'OFFICIAL');
-
-          const newArchers: Archer[] = archerRegs.map(r => ({
-            ...r,
-            targetNo: 0,
-            position: 'A',
-            wave: 1,
-            pin: Math.floor(1000 + Math.random() * 9000).toString()
-          }));
-
+          
           const registerLocallyOnly = () => {
             setAppState(prev => {
               const event = prev.events.find(e => e.id === (activeEvent as any).id);
@@ -2346,79 +2346,75 @@ export function App() {
               const updatedEvent: ArcheryEvent = { 
                 ...event, 
                 registrations: [...(event.registrations || []), ...regs],
-                archers: [...(event.archers || []), ...newArchers],
-                officials: [...(event.officials || []), ...officialRegs],
                 localUpdatedAt: new Date().toISOString()
               };
-              const newState = {
+              return {
                 ...prev,
                 events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
               };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-              return newState;
             });
             setHasPendingChanges(true);
-            pushNotification("Pendaftaran Lokal", `${regs.length} data pendaftaran disimpan lokal.`, "INFO");
           };
 
-          if (!isOnline) {
-            registerLocallyOnly();
-            return;
-          }
+          if (isOnline && db) {
+            try {
+              // Simpan langsung ke submissions di Firestore agar Admin bisa melihat secara real-time
+              const batch = writeBatch(db);
+              regs.forEach(r => {
+                const subRef = doc(collection(db, 'events', (activeEvent as any).id, 'submissions'), r.id);
+                batch.set(subRef, {
+                  ...r,
+                  serverTimestamp: serverTimestamp()
+                });
+              });
+              
+              // Increment count di root document agar angka di dashboard admin terupdate
+              const eventRef = doc(db, 'events', (activeEvent as any).id);
+              batch.update(eventRef, {
+                registrationCount: increment(regs.length)
+              });
 
-          try {
-            // Use ONLY API for registration to ensure atomic transactions and save client-side complexity
-            const response = await fetch('/api/register-participant', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                eventId: activeEvent.id,
-                registrations: regs,
-                archers: newArchers,
-                officials: officialRegs 
-              })
-            });
+              await batch.commit();
+              pushNotification("Pendaftaran Berhasil", `${regs.length} data pendaftaran telah terkirim ke panitia.`, "SUCCESS");
 
-            const result = await response.json();
-            if (response.ok && result.success) {
-              // Successfully registered in cloud, now refresh local state
-              await fetchCloudData(true);
-              pushNotification("Pendaftaran Berhasil", `${regs.length} peserta telah terdaftar di cloud.`, "SUCCESS");
-
-              // Send emails if not too many
-              if (regs.length <= 5) {
-                for (const r of regs) {
-                  const isAutoConfirm = r.status === 'APPROVED' || r.status === 'PAID';
-                  const subject = isAutoConfirm ? `Konfirmasi Pendaftaran: ${activeEvent?.settings?.tournamentName}` : `Pendaftaran Diterima: ${activeEvent?.settings?.tournamentName}`;
-                  const message = isAutoConfirm 
-                    ? `Halo ${r.name},\n\nTerima kasih telah mendaftar di event "${activeEvent?.settings?.tournamentName}".\n\nPendaftaran Anda telah VERIFIKASI.\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent?.id}&view=entry-list\n\nSelamat bertanding!`
-                    : `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi Pembayaran.`;
-
-                  try {
-                    await fetch('/api/send-email-otp', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: r.email, subject, message })
-                    });
-                  } catch (e) {
-                    console.warn("Email individual failed", e);
-                  }
+              // Kirim email notifikasi bahwa pendaftaran diterima
+              regs.forEach(r => {
+                try {
+                  fetch('/api/send-email-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                      email: r.email, 
+                      subject: `Pendaftaran Diterima: ${activeEvent?.settings?.tournamentName}`, 
+                      message: `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi.\n\nAdmin akan segera memverifikasi pendaftaran Anda.` 
+                    })
+                  });
+                } catch (e) {
+                  console.warn("Notification email failed", e);
                 }
+              });
+              
+              // Trigger reload data cloud untuk memastikan sinkronisasi lokal
+              setTimeout(() => fetchCloudData(true), 1000);
+            } catch (err: any) {
+              console.warn("Direct write failed, using API fallback:", err);
+              try {
+                const response = await fetch('/api/register-participant', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    eventId: activeEvent.id,
+                    registrations: regs,
+                    archers: [],
+                    officials: regs.filter(r => r.category === 'OFFICIAL')
+                  })
+                });
+                if (!response.ok) throw new Error("API fallback failed");
+              } catch (apiErr) {
+                registerLocallyOnly();
               }
-            } else {
-              console.error("Registration API failure:", result);
-              registerLocallyOnly();
-              const errorMsg = result.message || result.error || "Gagal sinkron pendaftaran ke cloud.";
-              pushNotification("Gagal Sinkron", errorMsg, "WARNING");
             }
-          } catch (err: any) {
-            console.error("Online registration error:", err);
-            if (err.message?.toLowerCase().includes('quota') || err.code === 'resource-exhausted') {
-              setQuotaExceeded(true);
-              pushNotification("Server Penuh", "Batas harian server tercapai. Pendaftaran disimpan LOKAL.", "WARNING");
-            } else {
-              pushNotification("Koneksi Bermasalah", "Data disimpan lokal karena gangguan koneksi.", "WARNING");
-            }
+          } else {
             registerLocallyOnly();
           }
         }} onBack={() => {

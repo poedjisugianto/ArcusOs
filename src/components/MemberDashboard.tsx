@@ -118,8 +118,16 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const calculateEventFees = (event: ArcheryEvent) => {
     if (event.settings?.isFreeEvent || event.settings?.isPractice) return 0;
     const participants = Array.from(
-      new Map([...(event.registrations || []), ...(event.archers || [])].filter(Boolean).map(p => [p.id, p])).values()
+      new Map([...(event.registrations || []), ...(event.archers || []), ...(event.officials || [])].filter(Boolean).map(p => [p.id, p])).values()
     );
+    // If the arrays are empty but registrationCount is high, use registrationCount for estimation
+    const countToBill = Math.max(participants.length, (event as any).registrationCount || 0);
+    
+    if (participants.length === 0 && countToBill > 0) {
+      // Estimate based on adult fee if no data yet
+      return countToBill * (globalSettings?.feeAdult || 0);
+    }
+
     return participants.reduce((acc, curr) => {
       if (!curr) return acc;
       const fee = curr.platformFee && curr.platformFee > 0 
@@ -595,7 +603,10 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {unpaidEvents.map(event => {
                 const totalFee = calculateEventFees(event);
-                const participantCount = Array.from(new Set([...event.archers.map(a => a.id), ...event.registrations.map(r => r.id)])).length;
+                const participantCount = Math.max(
+                    Array.from(new Set([...(event.archers || []).map(a => a.id), ...(event.registrations || []).map(r => r.id)])).length,
+                    (event as any).registrationCount || 0
+                );
                 return (
                   <div key={event.id} className="bg-white p-6 rounded-[2rem] border border-orange-200 shadow-sm flex flex-col justify-between gap-4 group hover:border-orange-500 transition-all">
                      <div>

@@ -226,7 +226,9 @@ const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent }) =
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2">
                        <Users className="w-3 h-3 text-slate-300" />
-                       <span className="text-xs font-bold text-slate-700">{(event.archers || []).length}</span>
+                       <span className="text-xs font-bold text-slate-700">
+                         {Math.max((event.archers || []).length + (event.officials || []).length, (event as any).registrationCount || 0)}
+                       </span>
                     </div>
                   </td>
                   <td className="px-8 py-5">

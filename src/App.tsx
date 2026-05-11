@@ -1060,17 +1060,58 @@ export function App() {
               ...e,
               archers: Array.from(new Map(allArchers.map(a => [a.id, a])).values()),
               officials: Array.from(new Map(allOfficials.map(o => [o.id, o])).values()),
-              registrationCount: Math.max(e.registrationCount || 0, allArchers.length)
+              registrations: cloudSubmissions.filter((s: any) => s.status !== 'APPROVED' && s.status !== 'CONFIRMED'),
+              registrationCount: Math.max(e.registrationCount || 0, cloudSubmissions.length)
             } : e)
           };
         });
       }, (err) => console.warn("Submissions sync error:", err));
     }, 500);
 
+    // 3. Real-time listener for Organizer's events list
+    let unsubEvents: () => void = () => {};
+    if (appState.currentUser && !appState.currentUser.isSuperAdmin && view === 'MEMBER_DASHBOARD') {
+      const q = query(collection(db, 'events'), where('userId', '==', appState.currentUser.id));
+      unsubEvents = onSnapshot(q, (snap) => {
+        if (snap.metadata.hasPendingWrites) return;
+        console.log(`[REALTIME-LIST] Organizer events update: ${snap.size} docs`);
+        
+        const cloudEvents = snap.docs.map(d => ({
+          ...d.data().data, // Full event object is stored inside 'data' field
+          id: d.id,
+          registrationCount: d.data().registrationCount || 0,
+          status: d.data().status || d.data().data?.status || 'DRAFT'
+        }));
+
+        setAppState(prev => {
+          // Merge cloud event metadata with local event state (preserving local data if needed)
+          const newEvents = [...prev.events];
+          cloudEvents.forEach(ce => {
+            const index = newEvents.findIndex(e => e.id === ce.id);
+            if (index !== -1) {
+              // Update metadata
+              newEvents[index] = { 
+                ...newEvents[index], 
+                ...ce,
+                // Preserve heavy arrays if cloud meta didn't include them in the root doc (they are sharded)
+                archers: ce.archers || newEvents[index].archers || [],
+                scores: ce.scores || newEvents[index].scores || [],
+                registrations: ce.registrations || newEvents[index].registrations || []
+              };
+            } else {
+              newEvents.push(ce as any);
+            }
+          });
+          return { ...prev, events: newEvents };
+        });
+      });
+    }
+
     return () => {
       isMounted = false;
       clearTimeout(subTimeout);
       unsub();
+      unsubEvents();
       if ((window as any)._unsubSubmissions) (window as any)._unsubSubmissions();
     };
   }, [db, appState.activeEventId, view, hasPendingChanges, appState.isDataLoaded]);
@@ -1299,12 +1340,12 @@ export function App() {
     setView('LANDING');
   };
 
-  const saveEventToCloud = async (event: ArcheryEvent) => {
+  const saveEventToCloud = async (event: ArcheryEvent, forceState?: AppState) => {
     if (!db) return;
     
-    // Instead of raw setDoc (which might hit 1MB limit or skip sharding), 
-    // we trigger the main sync method which handles sharding and differential updates.
-    await syncCloudData(true);
+    // Trigger the main sync method which handles sharding and differential updates.
+    // Pass the state explicitly to avoid stale appStateRef issues during quick transitions.
+    await syncCloudData(true, forceState);
   };
 
   const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
@@ -1326,7 +1367,7 @@ export function App() {
     setHasPendingChanges(true);
     // CRITICAL: Immediately sync management changes to cloud using the fresh state to avoid stale appStateRef
     if (finalEvent && db && isOnline && nextState) {
-      await syncCloudData(true, nextState);
+      await saveEventToCloud(finalEvent, nextState);
       setHasPendingChanges(false);
     }
   };
@@ -1879,13 +1920,10 @@ export function App() {
                 status: 'DRAFT' as const 
               }; 
               
-              setAppState(prev => {
-                const newState = { ...prev, events: [e, ...prev.events], activeEventId: e.id };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-                return newState;
-              });
+              const nextState = { ...appState, events: [e, ...appState.events], activeEventId: e.id };
+              setAppState(nextState);
               
-              saveEventToCloud(e);
+              saveEventToCloud(e, nextState);
               setView('ACTIVATE_TOURNAMENT'); 
               
               fetch('/api/send-email-otp', {
@@ -1931,7 +1969,9 @@ export function App() {
                 disbursementRequests: [], 
                 status: 'UPCOMING' as const 
               }; 
-              setAppState(prev => ({ ...prev, events: [e, ...prev.events], activeEventId: e.id })); 
+              const nextState = { ...appState, events: [e, ...appState.events], activeEventId: e.id };
+              setAppState(nextState);
+              saveEventToCloud(e, nextState);
               setView('EVENT_ADMIN'); 
               pushNotification("Sesi Latihan", `Latihan "${n}" siap digunakan${isFree ? ' (Bebas Biaya Platform)' : ''}.`, "SUCCESS"); 
             }} 

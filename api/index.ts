@@ -570,8 +570,8 @@ app.get("/api/public-events", async (req, res) => {
   console.log(`[API/PUBLIC-EVENTS] Fetching events... PID: ${effectiveProjectId}, DBID: ${dbId || "(default)"}`);
 
   try {
-    // 1. Scanning broad for guest devices
-    console.log("[API/PUBLIC-EVENTS] Scanning all event documents for public visibility...");
+    // 1. Ambil SEMUA event dari Firestore Server-Side
+    console.log("[API/PUBLIC-EVENTS] Scanning ALL events from cloud...");
     const snapshot = await db.collection('events').get();
     
     const events: any[] = [];
@@ -579,14 +579,16 @@ app.get("/api/public-events", async (req, res) => {
       try {
         const data = doc.data();
         const eventData = data.data || data;
+        
+        // Sangat fleksibel dalam mencari status
         const statusRaw = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-        const tournamentName = eventData.tournamentName || eventData.settings?.tournamentName || data.name || eventData.name;
-
-        if (statusRaw !== 'DELETED' && statusRaw !== 'DRAFT' && tournamentName) {
+        
+        // Kecualikan hanya yang dihapus
+        if (statusRaw !== 'DELETED' && statusRaw !== 'DRAFT') {
            events.push({
-             ...(data.data || data), 
+             ...eventData, 
              id: doc.id,
-             status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusRaw) ? 'ACTIVE' : statusRaw,
+             status: statusRaw,
              createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
            });
         }
@@ -595,9 +597,14 @@ app.get("/api/public-events", async (req, res) => {
       }
     });
 
-    events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Urutkan berdasarkan tanggal terbaru
+    events.sort((a,b) => {
+       const tA = new Date(a.createdAt).getTime();
+       const tB = new Date(b.createdAt).getTime();
+       return tB - tA;
+    });
 
-    console.log(`[API/PUBLIC-EVENTS] Returning ${events.length} clean event objects.`);
+    console.log(`[API/PUBLIC-EVENTS] Success: Found ${events.length} public events.`);
 
     return res.json({ 
        success: true, 

@@ -57,6 +57,14 @@ export default function LandingPage({
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'GRID' | 'CALENDAR'>('GRID');
   
+  // Debug log untuk memastikan data sampai ke komponen
+  React.useEffect(() => {
+    console.log("[LandingPage] Props events changed:", {
+      total: events?.length || 0,
+      ids: (events || []).map(e => e.id)
+    });
+  }, [events]);
+
   const activeEvents = (events || [])
     .map(e => {
       const raw = e as any;
@@ -65,7 +73,9 @@ export default function LandingPage({
       
       const statusStrRaw = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
       let statusStr = statusStrRaw;
-      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusStrRaw)) {
+      
+      // MAPPING LONGGAR: Semua yang berpotensi aktif kita anggap ACTIVE
+      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING', 'A', '1'].includes(statusStrRaw)) {
         statusStr = 'ACTIVE';
       }
 
@@ -95,7 +105,8 @@ export default function LandingPage({
         }
       };
     })
-    .filter(ev => ev.id && ev.status !== 'DRAFT' && ev.status !== 'DELETED')
+    // FILTER SANGAT LONGGAR: Asal ada ID dan bukan DELETED, tampilkan saja!
+    .filter(ev => ev.id && ev.status !== 'DELETED' && ev.status !== 'DRAFT')
     .sort((a, b) => {
       // Prioritize ACTIVE/UPCOMING status
       if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
@@ -491,11 +502,11 @@ export default function LandingPage({
                   
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                     <button 
-                      onClick={() => window.location.reload()}
+                      onClick={() => onRefresh ? onRefresh() : window.location.reload()}
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-10 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-arcus-red transition-all shadow-xl active:scale-95 shadow-red-200"
                     >
                       <Activity className="w-4 h-4" />
-                      Cek Update
+                      {isSyncing ? 'Mencari...' : 'Cek Update'}
                     </button>
                     <button 
                       onClick={onLogin}

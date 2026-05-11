@@ -3,8 +3,23 @@ import cors from "cors";
 import axios from "axios";
 import nodemailer from "nodemailer";
 import midtransClient from "midtrans-client";
-import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  writeBatch, 
+  increment, 
+  setDoc, 
+  updateDoc,
+  serverTimestamp 
+} from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -25,40 +40,35 @@ try {
   console.error("Failed to load firebase-applet-config.json:", err);
 }
 
-// Initialize Firebase Admin lazily
-let adminApp: any = null;
-if (!getApps().length) {
+// Initialize Firebase Client SDK for server-side use
+let firebaseApp: any = null;
+const apps = getApps();
+if (!apps.length) {
   try {
-    // Priority: use explicit projectId from config to avoid using compute project defaults
-    const options: any = {};
-    if (firebaseConfig.projectId) {
-      options.projectId = firebaseConfig.projectId;
-      console.log("[FIREBASE-ADMIN] Using projectId from config:", options.projectId);
-    }
-    
-    adminApp = initializeApp(options);
-    console.log("[FIREBASE-ADMIN] App initialized.");
-  } catch (err) {
-    console.error("[FIREBASE-ADMIN] Initialization error:", err);
+    firebaseApp = initializeApp({
+      apiKey: firebaseConfig.apiKey,
+      authDomain: firebaseConfig.authDomain,
+      projectId: firebaseConfig.projectId,
+      appId: firebaseConfig.appId
+    });
+    console.log(`[FIREBASE-CLIENT] App initialized with Project ID: ${firebaseConfig.projectId}`);
+  } catch (err: any) {
+    console.error("[FIREBASE-CLIENT] Initialization error:", err.message);
   }
 } else {
-  adminApp = getApps()[0];
+  firebaseApp = apps[0];
 }
 
-// Determine actual project ID being used
-const effectiveProjectId = adminApp?.options?.projectId || firebaseConfig.projectId || process.env.GOOGLE_CLOUD_PROJECT;
-
-// Ensure we use the correct database ID
-const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") 
+// Ensure we use the correct database ID (Enterprise Multi-DB support)
+const targetDatabaseId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)" 
   ? firebaseConfig.firestoreDatabaseId 
   : undefined;
 
-const db = (adminApp) 
-  ? (dbId ? getFirestore(adminApp, dbId) : getFirestore(adminApp))
-  : null;
+// Use the Client SDK getFirestore
+const db = firebaseApp ? getFirestore(firebaseApp, targetDatabaseId) : null;
 
 if (db) {
-  console.log("[FIREBASE-ADMIN] Firestore connected. Project:", effectiveProjectId, "Database:", dbId || "(default)");
+  console.log(`[FIREBASE-CLIENT] Firestore initialized via Client SDK. Project: ${firebaseConfig.projectId}, Database: ${targetDatabaseId || "(default)"}`);
 }
 
 // Transformation helper for Firestore REST API
@@ -105,22 +115,25 @@ const getGlobalSettings = async () => {
 
   try {
     let settings = null;
-    // 1. Try Admin SDK first
+    // 1. Try Client SDK first
     if (db) {
       try {
-        const docSnap = await db.collection('systemConfigs').doc('global').get();
-        if (docSnap.exists) {
+        const docRef = doc(db, 'systemConfigs', 'global');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
           const data = docSnap.data();
           settings = data?.data || data;
         }
-      } catch (adminErr: any) {
-        console.warn("[ADMIN-SDK] Settings fetch error:", adminErr.message);
+      } catch (clientErr: any) {
+        console.warn("[CLIENT-SDK] Settings fetch error:", clientErr.message);
       }
     }
 
-    // 2. Fallback to REST API if Admin failed or returned nothing
+    // 2. Fallback to REST API if SDK failed or returned nothing
     if (!settings) {
-      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/systemConfigs/global?key=${firebaseConfig.apiKey}`;
+      const pid = firebaseConfig.projectId;
+      const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+      const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/${dbId}/documents/systemConfigs/global?key=${firebaseConfig.apiKey}`;
       try {
         const response = await axios.get(url, { timeout: 4000 });
         if (response.data && response.data.fields) {
@@ -528,31 +541,39 @@ app.get("/api/health", async (req, res) => {
 });
 
 app.get("/api/db-test", async (req, res) => {
-  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+  const projectId = firebaseConfig.projectId;
+  
+  if (!db) return res.status(500).json({ 
+    error: "DB not initialized", 
+    firebaseApp: !!firebaseApp,
+    projectId,
+    databaseId: dbId
+  });
+
   try {
-    // Try to list collections to see if we have broad access
-    const collections = await db.listCollections();
-    const collectionIds = collections.map((c: any) => c.id);
+    console.log(`[DB-TEST] Running diagnostics via Client SDK for DB: ${dbId} in Project: ${projectId}`);
     
-    // Try to get a specific document
-    const doc = await db.collection('test').doc('connection').get();
+    // 1. Basic path test
+    const docRef = doc(db, 'test', 'connection');
+    const docSnap = await getDoc(docRef);
     
     return res.json({ 
       success: true, 
-      exists: doc.exists, 
-      path: doc.ref.path,
-      collections: collectionIds,
+      exists: docSnap.exists(), 
+      path: docRef.path,
       projectId: firebaseConfig.projectId,
-      databaseId: firebaseConfig.firestoreDatabaseId || "(default)"
+      databaseId: dbId,
+      clientAppInitialized: !!firebaseApp
     });
   } catch (err: any) {
-    console.error("[DB-TEST] Full Error Object:", err);
+    console.error("[DB-TEST] Failure:", err);
     return res.status(500).json({ 
       success: false, 
       error: err.message,
       code: err.code,
-      details: err.details,
-      stack: err.stack
+      projectId: projectId,
+      databaseId: dbId
     });
   }
 });
@@ -560,133 +581,90 @@ app.get("/api/db-test", async (req, res) => {
 // --- PRODUCTION API FOR EVENT DISCOVERY ---
 // Fetch public events directly from Firestore without "faking" or stale caching.
 app.get("/api/public-events", async (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=5'); // Sangat singkat agar data segar
+  res.setHeader('Cache-Control', 'public, max-age=5'); 
 
   if (!db) {
     console.error("[API/PUBLIC-EVENTS] Firestore DB not initialized.");
     return res.status(500).json({ error: "Cloud Server tidak aktif", dbStatus: "not_initialized" });
   }
 
-  console.log(`[API/PUBLIC-EVENTS] Fetching events... PID: ${effectiveProjectId}, DBID: ${dbId || "(default)"}`);
+  const pid = firebaseConfig.projectId;
+  const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+  console.log(`[API/PUBLIC-EVENTS] Fetching events via Client SDK (PID: ${pid}, DB: ${dbId})`);
 
   try {
-    // 1. Ambil SEMUA event dari Firestore Server-Side tanpa filter ketat
-    console.log(`[API/PUBLIC-EVENTS] Scanning ALL events from cloud. Project: ${effectiveProjectId}, DB: ${dbId || "(default)"}`);
-    const snapshot = await db.collection('events').get();
-    
-    console.log(`[API/PUBLIC-EVENTS] Query completed. Snapshot size: ${snapshot.size}`);
-
+    // 1. Ambil SEMUA event dari Firestore Client-Side SDK
+    const eventsCol = collection(db, 'events');
+    const snapshot = await getDocs(eventsCol);
     const events: any[] = [];
-    snapshot.forEach((doc: any) => {
-      try {
-        const rawData = doc.data();
-        const eventInfo = rawData.data || rawData;
-        const settings = eventInfo.settings || rawData.settings || {};
-        
-        const status = (rawData.status || eventInfo.status || settings.status || 'ACTIVE').toString().toUpperCase();
+    
+    snapshot.forEach((d: any) => {
+      const rawData = d.data();
+      // Normalize data structure
+      const eventInfo = rawData.data || rawData;
+      const settings = eventInfo.settings || rawData.settings || {};
+      const status = (rawData.status || eventInfo.status || 'ACTIVE').toString().toUpperCase();
 
-        if (status !== 'DELETED') {
-           events.push({
-             ...eventInfo,
-             ...settings,
-             id: doc.id,
-             status: status,
-             tournamentName: eventInfo.tournamentName || settings.tournamentName || rawData.name || "Tournament",
-             createdAt: rawData.createdAt || eventInfo.createdAt || settings.createdAt || rawData.updatedAt || new Date().toISOString()
-           });
-        }
-      } catch (e) {
-        console.error(`[API/PUBLIC-EVENTS] Skipping corrupt doc ${doc.id}`);
+      if (status !== 'DELETED') {
+         events.push({
+           ...eventInfo,
+           ...settings,
+           id: d.id,
+           status: status,
+           registrationCount: rawData.registrationCount || eventInfo.registrationCount || 0,
+           createdAt: rawData.createdAt || eventInfo.createdAt || rawData.updatedAt || new Date().toISOString()
+         });
       }
     });
 
-    events.sort((a,b) => {
-       const tA = new Date(a.createdAt).getTime();
-       const tB = new Date(b.createdAt).getTime();
-       return (tB || 0) - (tA || 0);
-    });
-
-    console.log(`[API/PUBLIC-EVENTS] Success: Returning ${events.length} events (Source: Broad Scan).`);
-
     return res.json({ 
        success: true, 
-       events, 
+       events: events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), 
        count: events.length,
-       source: 'broad-scan-v7',
+       source: 'client-sdk-scan',
        timestamp: new Date().toISOString()
     });
   } catch (err: any) {
-    console.error("[API/PUBLIC-EVENTS] Admin SDK fetch CRITICAL ERROR:", err.message, err.stack);
+    console.error(`[API/PUBLIC-EVENTS] Client SDK fetch ERROR (${err.code}):`, err.message);
     
     // 2. Try REST API Fallback
     try {
-      console.log("[API/PUBLIC-EVENTS] Attempting REST API fallback...");
-      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
+      console.log(`[API/PUBLIC-EVENTS] Attempting REST API fallback (PID: ${pid}, DB: ${dbId})...`);
+      const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/${dbId}/documents/events?key=${firebaseConfig.apiKey}&pageSize=100`;
       const response = await axios.get(url, { timeout: 5000 });
       
       if (response.data && response.data.documents) {
-        const events: any[] = [];
-        response.data.documents.forEach((doc: any) => {
-          const transformed = transformRestFields(doc.fields);
+        const fallbackEvents: any[] = [];
+        response.data.documents.forEach((d: any) => {
+          const transformed = transformRestFields(d.fields);
           const eventData = transformed.data || transformed;
           const status = (transformed.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-          const docId = doc.name.split('/').pop();
+          const docId = d.name.split('/').pop();
           
           if (status !== 'DELETED' && status !== 'DRAFT') {
-            const regCount = transformed.registrationCount || eventData.registrationCount || 0;
-            events.push({
+            fallbackEvents.push({
               ...eventData,
               id: docId,
-              registrationCount: regCount,
               status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(status) ? 'ACTIVE' : status,
               createdAt: transformed.createdAt || eventData.createdAt || eventData.settings?.createdAt || transformed.updatedAt || new Date().toISOString()
             });
           }
         });
 
-        console.log(`[API/PUBLIC-EVENTS] Returning ${events.length} events (Source: REST API).`);
-
         return res.json({ 
           success: true, 
-          events: events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), 
+          events: fallbackEvents.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), 
           source: 'live-cloud-rest',
-          count: events.length,
+          count: fallbackEvents.length,
           timestamp: new Date().toISOString() 
         });
       }
     } catch (restErr: any) {
-       console.error("[API/PUBLIC-EVENTS] REST API fallback failed:", restErr.response?.data || restErr.message);
+       const errorDetails = restErr.response?.data || restErr.message;
+       console.error("[API/PUBLIC-EVENTS] REST API fallback failed:", JSON.stringify(errorDetails));
     }
 
-    // 3. Last Resort: SDK without sort or filter
-    try {
-      console.log("[API/PUBLIC-EVENTS] Last resort: Fetching all events to manually filter...");
-      const fallbackSnap = await db.collection('events').get();
-      const fallbackEvents: any[] = [];
-      fallbackSnap.forEach((doc: any) => {
-        try {
-          const data = doc.data();
-          const eventData = data.data || data;
-          const statusRaw = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
-          
-          if (statusRaw !== 'DELETED' && statusRaw !== 'DRAFT') {
-             fallbackEvents.push({
-               ...(data.data || data), 
-               id: doc.id,
-               status: ['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING'].includes(statusRaw) ? 'ACTIVE' : statusRaw,
-               createdAt: data.createdAt || eventData.createdAt || eventData.settings?.createdAt || data.updatedAt || new Date().toISOString()
-             });
-          }
-        } catch (e) {
-          console.error(`[API/PUBLIC-EVENTS] Error processing doc ${doc.id}:`, e);
-        }
-      });
-      console.log(`[API/PUBLIC-EVENTS] Returning ${fallbackEvents.length} events (Source: Last Resort Full Scan).`);
-      return res.json({ success: true, events: fallbackEvents, source: 'cloud-no-query', count: fallbackEvents.length, timestamp: new Date().toISOString() });
-    } catch (innerErr: any) {
-      console.error("[API/PUBLIC-EVENTS] FALLBACK FAILED COMPLETELY:", innerErr.message);
-      res.status(500).json({ error: "Gagal mengambil data cloud.", details: innerErr.message });
-    }
+    res.status(500).json({ error: "Gagal mengambil data cloud.", details: err.message, code: err.code });
   }
 });
 
@@ -703,43 +681,38 @@ app.post("/api/register-participant", async (req, res) => {
   }
 
   try {
-    const eventRef = db.collection('events').doc(eventId);
-    
-    // Use a batch to write submissions AND update the main event metadata
-    const batch = db.batch();
+    const eventRef = doc(db, 'events', eventId);
+    const batch = writeBatch(db);
     
     // 1. Write each registration and participant to the subcollection
     registrations.forEach((reg: any, index: number) => {
-      const subRef = eventRef.collection('submissions').doc(reg.id || `reg_${Date.now()}_${index}`);
+      const subRef = doc(collection(eventRef, 'submissions'), reg.id || `reg_${Date.now()}_${index}`);
       batch.set(subRef, {
         ...reg,
         archerData: archers.find((a: any) => a.id === reg.id) || null,
         officialData: (officials || []).find((o: any) => o.id === reg.id) || null,
-        serverTimestamp: new Date().toISOString()
+        serverTimestamp: serverTimestamp()
       }, { merge: true });
     });
 
-    // 2. Update the main event metadata (counts and timestamps)
-    // We don't push the full array to the main document to avoid the 1MB limit!
-    // Instead, we just store the count and the last updated time.
+    // 2. Update the main event metadata
     batch.update(eventRef, {
-      "registrationCount": FieldValue.increment(registrations.length),
-      "data.registrationCount": FieldValue.increment(registrations.length),
+      "registrationCount": increment(registrations.length),
+      "data.registrationCount": increment(registrations.length),
       "data.lastRegistrationAt": new Date().toISOString(),
       "lastRegistrationAt": new Date().toISOString(),
-      "updatedAt": new Date().toISOString()
+      "updatedAt": serverTimestamp()
     });
 
     await batch.commit();
 
-    // Invalidate memory cache for this event so subsequent fetches get fresh data
     if (eventDetailsCache[eventId]) {
       delete eventDetailsCache[eventId];
     }
 
     res.json({ 
       success: true, 
-      message: `${registrations.length} participant(s) registered successfully in cloud subcollections`,
+      message: `${registrations.length} participant(s) registered successfully`,
       count: registrations.length
     });
   } catch (error: any) {
@@ -747,7 +720,7 @@ app.post("/api/register-participant", async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: error.message,
-      message: "Gagal memproses pendaftaran masal. Silahkan coba lagi." 
+      message: "Gagal memproses pendaftaran. Silahkan coba lagi." 
     });
   }
 });
@@ -760,107 +733,73 @@ app.get("/api/event-details/:id", async (req, res) => {
   const eventId = req.params.id;
   const now = Date.now();
 
-  console.log(`[API/EVENT-DETAILS] Fetching details for ${eventId}...`);
+  console.log(`[API/EVENT-DETAILS] Fetching via Client SDK for ${eventId}...`);
 
-  // Kembalikan cache hanya jika di bawah 5 detik (untuk meredam benturan ratusan user di detik yang sama)
   if (eventDetailsCache[eventId] && (now - eventDetailsCache[eventId].timestamp < DETAIL_CACHE_TTL)) {
-    console.log(`[API/EVENT-DETAILS] Serving from cache for ${eventId}`);
     return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'cache' });
   }
 
   if (!db) {
-    console.error("[API/EVENT-DETAILS] DB not initialized.");
     return res.status(500).json({ error: "Sistem Cloud tidak siap" });
   }
 
+  const pid = firebaseConfig.projectId;
+  const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+
   try {
-    let data: any = null;
-    let submissions: any[] = [];
-    let shards: any[] = [];
-    let source = 'live-cloud-admin';
-
-    // 1. Try Admin SDK First
-    if (db) {
-      try {
-        const eventDoc = await db.collection('events').doc(eventId).get();
-        if (eventDoc.exists) {
-          data = eventDoc.data();
-          
-          const [submissionsSnap, shardsSnap] = await Promise.all([
-            db.collection('events').doc(eventId).collection('submissions').limit(5000).get(),
-            db.collection('events').doc(eventId).collection('shards').limit(1000).get()
-          ]);
-
-          submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
-          shardsSnap.forEach((d: any) => shards.push({ id: d.id, ...d.data() }));
-        }
-      } catch (adminErr: any) {
-        console.warn(`[ADMIN-SDK] Detail fetch warning for ${eventId}:`, adminErr.message);
-      }
-    }
-
-    // 2. Fallback to REST API if Admin failed or returned nothing
-    if (!data) {
-      source = 'live-cloud-rest';
-      const baseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId || "(default)"}/documents/events/${eventId}`;
-      const queryParams = `?key=${firebaseConfig.apiKey}`;
-      
-      try {
-        const [eventRes, submissionsRes, shardsRes] = await Promise.all([
-          axios.get(`${baseUrl}${queryParams}`, { timeout: 5000 }),
-          axios.get(`${baseUrl}/submissions${queryParams}&pageSize=1000`, { timeout: 5000 }).catch(() => ({ data: { documents: [] } })),
-          axios.get(`${baseUrl}/shards${queryParams}&pageSize=1000`, { timeout: 5000 }).catch(() => ({ data: { documents: [] } }))
-        ]);
-
-        if (eventRes.data && eventRes.data.fields) {
-          data = transformRestFields(eventRes.data.fields);
-          
-          if (submissionsRes.data && submissionsRes.data.documents) {
-            submissions = submissionsRes.data.documents.map((doc: any) => ({
-              id: doc.name.split('/').pop(),
-              ...transformRestFields(doc.fields)
-            }));
-          }
-
-          if (shardsRes.data && shardsRes.data.documents) {
-            shards = shardsRes.data.documents.map((doc: any) => ({
-              id: doc.name.split('/').pop(),
-              ...transformRestFields(doc.fields)
-            }));
-          }
-        }
-      } catch (restErr: any) {
-         console.error(`[REST-API] Detail fetch error for ${eventId}:`, restErr.response?.data || restErr.message);
-      }
-    }
-
-    if (!data) {
-      if (eventDetailsCache[eventId]) {
-        return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'error-cache-fallback' });
-      }
-      return res.status(404).json({ error: "Turnamen tidak ditemukan atau akses ditolak." });
+    // 1. Fetch Event Document
+    const eventRef = doc(db, 'events', eventId);
+    const eventSnap = await getDoc(eventRef);
+    
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ error: "Event tidak ditemukan" });
     }
     
-    const eventData = data.data || data;
-    const fullData = {
-      event: { id: eventId, ...data, data: eventData },
-      submissions,
-      shards
+    const data = eventSnap.data();
+    
+    // 2. Fetch Submissions
+    const submissions: any[] = [];
+    const submissionsCol = collection(eventRef, 'submissions');
+    const q = query(submissionsCol, limit(5000));
+    const submissionsSnap = await getDocs(q);
+    
+    submissionsSnap.forEach((d: any) => submissions.push({ id: d.id, ...d.data() }));
+
+    const responseData = {
+      ...data,
+      registrations: submissions,
+      id: eventId
     };
 
-    // Update Cache
-    eventDetailsCache[eventId] = { data: fullData, timestamp: now };
-
-    res.json({ success: true, data: fullData, source });
-  } catch (err: any) {
-    console.error(`[DETAIL-FETCH-CRITICAL] ${eventId}:`, err.message);
+    eventDetailsCache[eventId] = { data: responseData, timestamp: now };
+    return res.json({ success: true, data: responseData, source: 'client-sdk' });
+  } catch (error: any) {
+    console.error(`[API/EVENT-DETAILS] Client SDK Error (${error.code}):`, error.message);
     
-    // Fallback on error
+    // REST API Fallback for Detail
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/${dbId}/documents/events/${eventId}?key=${firebaseConfig.apiKey}`;
+      console.log(`[API/EVENT-DETAILS] REST Fallback Attempt: ${url}`);
+      const response = await axios.get(url, { timeout: 3000 });
+      
+      if (response.data) {
+        const transformedData = transformRestFields(response.data.fields);
+        const data = transformedData.data || transformedData;
+        
+        return res.json({ 
+          success: true, 
+          data: { ...data, id: eventId, registrations: [] }, 
+          source: 'cloud-rest-fallback' 
+        });
+      }
+    } catch (restErr: any) {
+      console.warn("[API/EVENT-DETAILS] REST Fallback failed:", restErr.message);
+    }
+
     if (eventDetailsCache[eventId]) {
       return res.json({ success: true, data: eventDetailsCache[eventId].data, source: 'error-fallback' });
     }
-    
-    res.status(500).json({ error: "Sistem sibuk, silakan coba lagi." });
+    res.status(500).json({ error: "Gagal mengambil detail dari cloud", details: error.message, code: error.code });
   }
 });
 

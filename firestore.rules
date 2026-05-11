@@ -69,19 +69,18 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true; 
       allow create: if isSignedIn();
-      allow update: if isAdmin() || isEventOwner(eventId) || isPublicRegistration();
+      allow update: if isAdmin() || isEventOwner(eventId) || isSignedIn(); // Simplified for registration updates
       allow delete: if isAdmin() || isEventOwner(eventId);
 
       match /submissions/{subId} {
-        allow read, create: if true;
-        allow update, delete: if isAdmin();
+        allow read: if true;
+        allow create: if true; // Public access for registration
+        allow update, delete: if isAdmin() || isEventOwner(eventId);
       }
 
       match /shards/{shardId} {
         allow read: if true;
-        allow write: if isAdmin() || 
-                       (isSignedIn() && (get(/databases/$(database)/documents/events/$(eventId)).data.userId == request.auth.uid || 
-                                       get(/databases/$(database)/documents/events/$(eventId)).data.ownerId == request.auth.uid));
+        allow write: if isAdmin() || isEventOwner(eventId);
       }
     }
 

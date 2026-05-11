@@ -138,6 +138,7 @@ export interface ParticipantRegistration {
   totalPaid?: number;
   platformFee?: number;
   paymentType?: string;
+  _syncPending?: boolean;
 }
 
 export interface Archer extends ParticipantRegistration {

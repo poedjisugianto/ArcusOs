@@ -537,6 +537,8 @@ export function App() {
     });
   }, [appState.currentUser?.id, appState.activeEventId, view]);
 
+  const [isCheckingLink, setIsCheckingLink] = useState(false);
+
   // AUTO-SYNC PENDING CHANGES: Removed setInterval, syncCloudData handles debouncing
   useEffect(() => {
     if (hasPendingChanges && !isSyncing) {
@@ -544,7 +546,44 @@ export function App() {
     }
   }, [hasPendingChanges, isSyncing]);
 
-  const [isCheckingLink, setIsCheckingLink] = useState(false);
+  // Real-time listener for active event submissions to make it appear "seketika"
+  useEffect(() => {
+    // Only listen if we have an active event and are in a view that needs participant data
+    const viewsNeedingData = ['LIVE', 'PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'ARCHERS', 'EVENT_ADMIN', 'MEMBER_DASHBOARD', 'FINANCE', 'ID_CARD_EDITOR'];
+    if (!db || !appState.activeEventId || !viewsNeedingData.includes(view)) return;
+
+    console.log(`[REALTIME] Starting listener for submissions in ${appState.activeEventId}`);
+    const unsub = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snapshot) => {
+      // Logic for merging: 
+      // 1. We take everything from cloud.
+      // 2. If a local registration with _syncPending exists and is NOT in the cloud yet, we keep it locally too.
+      const cloudSubmissions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      
+      setAppState(prev => {
+        const event = prev.events.find(e => e.id === appState.activeEventId);
+        if (!event) return prev;
+
+        // Find local ones that haven't reached cloud yet
+        const localPending = (event.registrations || []).filter(r => r._syncPending && !cloudSubmissions.find(c => c.id === r.id));
+        const mergedSubmissions = [...cloudSubmissions, ...localPending];
+
+        return {
+          ...prev,
+          events: prev.events.map(e => e.id === appState.activeEventId ? {
+            ...e,
+            registrations: mergedSubmissions,
+            registrationCount: mergedSubmissions.length,
+            localUpdatedAt: new Date().toISOString()
+          } : e)
+        };
+      });
+    }, (error) => {
+      console.warn("Realtime listener failed - likely permission issue for public view:", error.message);
+      // If it fails with permission denied, we might need to rely on the API fallback in public views
+    });
+
+    return () => unsub();
+  }, [appState.activeEventId, view, isOnline, !!db]);
 
   // Handle URL Parameters for Sharing
   useEffect(() => {
@@ -711,251 +750,82 @@ export function App() {
   }, [view]);
 
   const syncCloudData = async (manual = false, overrideState?: AppState) => {
-    // ABORT if: no database, offline, quota exceeded (unless manual), or NO LOGGED IN USER/SCORER (prevents ghost writes)
-    if (!db || !isOnline || (quotaExceeded && !manual) || (!appStateRef.current?.currentUser && !appStateRef.current?.activeScorer)) return;
-    
-    // Clear any pending sync to debounce
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-
-    // Use overrideState if provided (for immediate syncs), otherwise use latest state from ref
     const state = overrideState || appStateRef.current;
-    if (!state || (!hasPendingChanges && !manual && !overrideState)) return;
+    if (!db || !isOnline || (!state?.currentUser && !state?.activeScorer)) return;
+    if (!hasPendingChanges && !manual && !overrideState) return;
     
     const activeEvent = state.activeEventId ? state.events.find(e => e.id === state.activeEventId) : null;
-    
-    // Safety check: Don't sync if data hasn't been loaded from cloud yet
     const isOwnerOrAdmin = !!(state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com' || state.currentUser?.email === 'admin@arcus.id');
     if (!state.isDataLoaded && !manual && !isOwnerOrAdmin) return;
 
-    if (!manual) {
-      // Fast debounce for upgraded Blaze plan
-      syncTimeoutRef.current = setTimeout(() => performSync(state, activeEvent, false), 1000);
-      return;
-    }
-
-    await performSync(state, activeEvent, true);
-  };
-
-  const performSync = async (state: AppState, activeEvent: ArcheryEvent | null | undefined, manual: boolean) => {
-    if (isCurrentlySyncing.current) {
-      // Re-schedule if already syncing
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      syncTimeoutRef.current = setTimeout(() => syncCloudData(manual, state), 1000);
-      return;
-    }
-
+    if (isCurrentlySyncing.current) return;
     isCurrentlySyncing.current = true;
     setIsSyncing(true);
+
     try {
-      // 0. Double check if there's actually anything to sync to save quota
-      const lastSync = localStorage.getItem('last_cloud_sync_hash');
-      const currentHash = JSON.stringify({
-        settings: state.globalSettings,
-        profile: state.currentUser?.id,
-        activeEventId: activeEvent?.id,
-        eventData: activeEvent ? {
-          archers: activeEvent.archers.length,
-          regs: activeEvent.registrations.length,
-          scores: activeEvent.scores.length
-        } : null
-      });
-
-      if (lastSync === currentHash && !manual) {
-        console.log("Sync skipped: No structural changes detected.");
-        setHasPendingChanges(false);
-        return;
-      }
-
-      const isPrivileged = !!(
-        state.currentUser?.isSuperAdmin || 
-        state.currentUser?.role === 'SUPERADMIN' || 
-        state.currentUser?.email === 'poedji.sugianto@gmail.com' || 
-        state.currentUser?.email === 'admin@arcus.id' ||
-        (state.activeScorer && state.activeScorer.eventId === activeEvent?.id)
-      );
-
-      // 1. Sync Global Settings (Only SuperAdmin)
+      // 1. Sync Global Settings
       if (state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com') {
         await setDoc(doc(db, 'systemConfigs', 'global'), { 
           id: 'global', 
           data: state.globalSettings, 
-          updatedAt: new Date().toISOString() 
+          updatedAt: serverTimestamp() 
         }, { merge: true });
       }
 
       // 2. Sync User Profile
       if (state.currentUser) {
-        try {
-          await setDoc(doc(db, 'profiles', state.currentUser.id), { 
-            id: state.currentUser.id, 
-            data: state.currentUser, 
-            updatedAt: new Date().toISOString() 
+        await setDoc(doc(db, 'profiles', state.currentUser.id), { 
+          id: state.currentUser.id, 
+          data: state.currentUser, 
+          updatedAt: serverTimestamp() 
+        }, { merge: true });
+      }
+
+      // 3. Sync Parking Registrations (The "Parkir" logic)
+      if (activeEvent) {
+        const pendingRegs = (activeEvent.registrations || []).filter(r => r._syncPending);
+        if (pendingRegs.length > 0) {
+          const batch = writeBatch(db);
+          pendingRegs.forEach(r => {
+            const { _syncPending, ...cleanReg } = r;
+            const subRef = doc(collection(db, 'events', activeEvent.id, 'submissions'), r.id);
+            batch.set(subRef, { ...cleanReg, serverTimestamp: serverTimestamp() });
+          });
+          await batch.commit();
+          
+          setAppState(prev => {
+            const e = prev.events.find(ev => ev.id === activeEvent.id);
+            if (!e) return prev;
+            return {
+              ...prev,
+              events: prev.events.map(ev => ev.id === activeEvent.id ? {
+                ...ev,
+                registrations: ev.registrations.map(r => r._syncPending ? { ...r, _syncPending: false } : r)
+              } : ev)
+            };
+          });
+        }
+
+        // 4. Sync Event Metadata if privileged
+        if (isOwnerOrAdmin || state.activeScorer?.eventId === activeEvent.id) {
+          await setDoc(doc(db, 'events', activeEvent.id), {
+            id: activeEvent.id,
+            userId: activeEvent.settings?.organizerId || activeEvent.ownerId || state.currentUser?.id,
+            status: activeEvent.status || 'DRAFT',
+            updatedAt: serverTimestamp()
           }, { merge: true });
-        } catch (e) {
-          console.warn("Failed to sync profile - likely no permission for guests:", e);
         }
       }
-      
-      // 3. Sync Active Event (Only if authorized)
-      if (activeEvent && isPrivileged) {
-        try {
-          // STRATEGY: We dynamically detect and shard ANY field that is too large or potentially heavy
-          const rawEvent: any = JSON.parse(JSON.stringify(activeEvent)); 
-          // CLEANUP: Ensure we don't have a nested 'data' field from a previous sync bug
-          if (rawEvent.data && typeof rawEvent.data === 'object' && !Array.isArray(rawEvent.data)) {
-            const nestedData = rawEvent.data;
-            delete rawEvent.data;
-            Object.assign(rawEvent, nestedData);
-          }
-          
-          const strippedEvent: any = { ...rawEvent };
-          const shardCounts: Record<string, number> = {};
-          const shardsMap: Record<string, string[]> = {};
-          
-          const SHARD_THRESHOLD = 1500; // 1.5KB - extremely aggressive to avoid document limit
-          
-          // 1. Shard any large root field
-          Object.keys(strippedEvent).forEach(key => {
-            // Keep core identity and status fields at root for queryability
-            const protectedKeys = ['id', 'status', 'userId', 'ownerId', 'localUpdatedAt', 'isSharded', 'shardCounts', 'settings'];
-            if (protectedKeys.includes(key)) return;
 
-            const val = strippedEvent[key];
-            if (val) {
-              // PROTECT Server-Managed fields from being stomped by stale client state
-              if (key === 'registrationCount' || key === 'archers') {
-                // If it's archers array, we only shard if it's huge, 
-                // but registrationCount we should probably let the server own if it's a simple number
-                if (key === 'registrationCount') {
-                   delete strippedEvent[key];
-                   return;
-                }
-              }
-
-              const str = (typeof val === 'string') ? val : JSON.stringify(val);
-              if (str.length > SHARD_THRESHOLD) { 
-                shardsMap[key] = shardData(val);
-                shardCounts[key] = shardsMap[key].length;
-                delete strippedEvent[key];
-              }
-            }
-          });
-
-          // 2. Also shard heavy sub-fields in settings (> 2KB)
-          if (strippedEvent.settings) {
-            Object.keys(strippedEvent.settings).forEach(key => {
-              const forbiddenSettings = ['tournamentName', 'organizerId', 'isPractice', 'status', 'isActivated', 'isConfirmed', 'isFreeEvent'];
-              if (forbiddenSettings.includes(key)) return;
-
-              const val = strippedEvent.settings[key];
-              if (val) {
-                const str = (typeof val === 'string') ? val : JSON.stringify(val);
-                if (str.length > SHARD_THRESHOLD) {
-                  const shardKey = `settings_${key}`;
-                  shardsMap[shardKey] = shardData(val);
-                  shardCounts[shardKey] = shardsMap[shardKey].length;
-                  delete strippedEvent.settings[key];
-                }
-              }
-            });
-          }
-
-          // Debug and Emergency Size Guard
-          const finalTotalSize = JSON.stringify(strippedEvent).length;
-          if (finalTotalSize > 800000) {
-             console.error(`[SYNC-CRITICAL] Object still too large after sharding: ${finalTotalSize} bytes. Purging non-essential fields to prevent sync failure.`);
-             // Emergency purge of ANY large field left
-             Object.keys(strippedEvent).forEach(k => {
-               if (['settings', 'id', 'status'].includes(k)) return;
-               const fieldStr = JSON.stringify(strippedEvent[k]);
-               if (fieldStr.length > 1000) {
-                 console.warn(`Purging field ${k} (size: ${fieldStr.length})`);
-                 delete strippedEvent[k];
-               }
-             });
-          }
-
-          // 3a. Save core event metadata
-          const metaString = JSON.stringify(strippedEvent);
-          const metaHashKey = `${activeEvent.id}_meta`;
-          if (lastSyncedHash.current[metaHashKey] !== metaString) {
-            await setDoc(doc(db, 'events', activeEvent.id), { 
-              id: activeEvent.id, 
-              userId: activeEvent.settings?.organizerId || activeEvent.ownerId || state.currentUser?.id || null, 
-              data: strippedEvent,
-              status: activeEvent.status || strippedEvent.status || 'DRAFT',
-              updatedAt: new Date().toISOString(),
-              isSharded: true,
-              shardCounts // Store totals so we don't load zombie shards
-            });
-            lastSyncedHash.current[metaHashKey] = metaString;
-          }
-
-          // 3b. Save shards
-          const shardPromises: Promise<any>[] = [];
-          Object.entries(shardsMap).forEach(([key, shards]) => {
-            const eventShardKeyPrefix = `${activeEvent.id}_${key}`;
-            shards.forEach((content, index) => {
-              const shardId = `${key}_${index}`;
-              const fullShardKey = `${eventShardKeyPrefix}_${index}`;
-              
-              // Only write if content has changed since last sync
-              if (lastSyncedHash.current[fullShardKey] !== content) {
-                shardPromises.push(
-                  setDoc(doc(db, 'events', activeEvent.id, 'shards', shardId), {
-                    key,
-                    index,
-                    content,
-                    updatedAt: new Date().toISOString()
-                  }).then(() => {
-                    lastSyncedHash.current[fullShardKey] = content;
-                  })
-                );
-              }
-            });
-          });
-          
-          if (shardPromises.length > 0) {
-            console.log(`Syncing ${shardPromises.length} changed shards for ${activeEvent.id}`);
-            await Promise.all(shardPromises);
-          }
-        } catch (err: any) {
-          handleFirestoreError(err, OperationType.WRITE, `events/${activeEvent.id}`);
-        }
-      }
-      
-      setLastSync(new Date());
-      localStorage.setItem('last_cloud_sync_hash', currentHash);
       setHasPendingChanges(false);
-      if (manual) pushNotification("Sinkronisasi Selesai", "Data telah aman di cloud.", "SUCCESS");
-    } catch (err: any) { 
-      console.error("Sync error", err); 
-      errorCount.current++;
-      
-      const isQuotaError = err.message?.includes('resource-exhausted') || err.message?.includes('Quota exceeded');
-      
-      if (isQuotaError && !isBlazePlan) {
-        setQuotaExceeded(true);
-        if (manual) pushNotification("Limit Tercapai", "Batas harian sistem tercapai. Data tetap tersimpan lokal.", "WARNING");
-      } else if (errorCount.current > 3 && manual) {
-        pushNotification("Koneksi Tidak Stabil", "Beberapa upaya sinkronisasi gagal. Kami akan mencoba lagi di latar belakang.", "WARNING");
-      } else if (manual && !isQuotaError) {
-        pushNotification("Gagal Sinkron", err.message, "WARNING");
-      }
-      
-      // If payment required or other persistent quota error on Blaze
-      if (isQuotaError && isBlazePlan && errorCount.current > 10) {
-        pushNotification("Kendala Layanan Cloud", "Sistem mendeteksi limitasi teknis. Mohon hubungi support atau cek konfigurasi Blaze Anda.", "WARNING");
-      }
-      // If permission error, clear pending changes so we don't loop forever
-      if (err.message?.includes('permission')) {
-        setHasPendingChanges(false);
-      }
+      setLastSync(new Date());
+      if (manual) pushNotification("Sinkronisasi Selesai", "Data berhasil diperbarui.", "SUCCESS");
+    } catch (err: any) {
+      console.error("Sync error:", err);
+      if (manual) pushNotification("Gagal Sinkron", err.message, "WARNING");
     } finally {
-      isCurrentlySyncing.current = false;
       setIsSyncing(false);
+      isCurrentlySyncing.current = false;
     }
   };
 
@@ -1046,14 +916,12 @@ export function App() {
             const event = prev.events.find(e => e.id === appState.activeEventId);
             if (!event) return prev;
 
-            // Direct mapping
-            const pendingSubmissions = cloudSubmissions.filter(s => s.status === 'PENDING' || !s.status);
-            
+            // Direct mapping: Putting ALL submissions in registrations for admin visibility
             return {
               ...prev,
               events: prev.events.map(e => e.id === appState.activeEventId ? {
                 ...e,
-                registrations: pendingSubmissions,
+                registrations: cloudSubmissions,
                 registrationCount: cloudSubmissions.length
               } : e)
             };
@@ -2331,77 +2199,42 @@ export function App() {
           const regs = registrations;
           
           const registerLocallyOnly = () => {
+            const pendingRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING, _syncPending: true }));
             setAppState(prev => {
               const event = prev.events.find(e => e.id === (activeEvent as any).id);
               if (!event) return prev;
-              const updatedEvent: ArcheryEvent = { 
-                ...event, 
-                registrations: [...(event.registrations || []), ...regs],
-                localUpdatedAt: new Date().toISOString()
-              };
               return {
                 ...prev,
-                events: prev.events.map(e => e.id === event.id ? updatedEvent : e)
+                events: prev.events.map(e => e.id === event.id ? { 
+                  ...e, 
+                  registrations: [...(e.registrations || []), ...pendingRegs] 
+                } : e)
               };
             });
             setHasPendingChanges(true);
+            pushNotification("Data Terparkir", "Jaringan sibuk. Data diparkir lokal.", "WARNING");
           };
 
           if (isOnline && db) {
             try {
-              // Simpan langsung ke submissions di Firestore agar Admin bisa melihat secara real-time
               const batch = writeBatch(db);
               regs.forEach(r => {
                 const subRef = doc(collection(db, 'events', (activeEvent as any).id, 'submissions'), r.id);
-                batch.set(subRef, {
-                  ...r,
-                  serverTimestamp: serverTimestamp()
-                });
+                batch.set(subRef, { ...r, serverTimestamp: serverTimestamp() });
               });
-              
-              // Increment count di root document agar angka di dashboard admin terupdate
               const eventRef = doc(db, 'events', (activeEvent as any).id);
-              batch.update(eventRef, {
-                registrationCount: increment(regs.length)
-              });
-
+              batch.update(eventRef, { registrationCount: increment(regs.length) });
               await batch.commit();
-              pushNotification("Pendaftaran Berhasil", `${regs.length} data pendaftaran telah terkirim ke panitia.`, "SUCCESS");
-
-              // Kirim email notifikasi bahwa pendaftaran diterima
-              regs.forEach(r => {
-                try {
-                  fetch('/api/send-email-otp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                      email: r.email, 
-                      subject: `Pendaftaran Diterima: ${activeEvent?.settings?.tournamentName}`, 
-                      message: `Halo ${r.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah kami terima.\n\nStatus: Menunggu Verifikasi.\n\nAdmin akan segera memverifikasi pendaftaran Anda.` 
-                    })
-                  });
-                } catch (e) {
-                  console.warn("Notification email failed", e);
-                }
-              });
-              
-              // Trigger reload data cloud untuk memastikan sinkronisasi lokal
-              setTimeout(() => fetchCloudData(true), 1000);
-            } catch (err: any) {
-              console.warn("Direct write failed, using API fallback:", err);
+              pushNotification("Berhasil", "Pendaftaran terkirim.", "SUCCESS");
+            } catch (err) {
               try {
-                const response = await fetch('/api/register-participant', {
+                const res = await fetch('/api/register-participant', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                    eventId: activeEvent.id,
-                    registrations: regs,
-                    archers: [],
-                    officials: regs.filter(r => r.category === 'OFFICIAL')
-                  })
+                  body: JSON.stringify({ eventId: activeEvent.id, registrations: regs, archers: [] })
                 });
-                if (!response.ok) throw new Error("API fallback failed");
-              } catch (apiErr) {
+                if (!res.ok) throw new Error();
+              } catch {
                 registerLocallyOnly();
               }
             }

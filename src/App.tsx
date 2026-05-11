@@ -202,22 +202,16 @@ export function App() {
         ((view === 'LANDING' || isPublicView) 
           ? fetch(`/api/public-events?t=${Date.now()}`, { cache: 'no-store' }) 
               .then(async res => {
-                const contentType = res.headers.get("content-type");
-                if (contentType && contentType.includes("application/json")) {
-                  const data = await res.json();
-                  if (data && data.events) {
-                    return { 
-                      docs: (data.events || []).map((e: any) => {
-                         const eventInfo = e.data || e;
-                         return { 
-                          id: e.id, 
-                          data: () => ({ ...eventInfo, id: e.id }),
-                          exists: () => true 
-                        };
-                      }), 
-                      __type: 'custom_array' 
-                    };
-                  }
+                const data = await res.json().catch(() => null);
+                if (data && data.success && data.events) {
+                  return { 
+                    docs: data.events.map((e: any) => ({
+                      id: e.id, 
+                      data: () => ({ ...(e.data || e), id: e.id }),
+                      exists: () => true 
+                    })), 
+                    __type: 'custom_array' 
+                  };
                 }
                 return null;
               })

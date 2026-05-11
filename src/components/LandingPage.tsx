@@ -105,8 +105,8 @@ export default function LandingPage({
         }
       };
     })
-    // FILTER SANGAT LONGGAR: Asal ada ID dan bukan DELETED, tampilkan saja!
-    .filter(ev => ev.id && ev.status !== 'DELETED' && ev.status !== 'DRAFT')
+    // FILTER SANGAT LONGGAR: Tampilkan semua kecuali yang dihapus (DELETED)
+    .filter(ev => ev.id && ev.status !== 'DELETED')
     .sort((a, b) => {
       // Prioritize ACTIVE/UPCOMING status
       if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;

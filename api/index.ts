@@ -571,20 +571,25 @@ app.get("/api/public-events", async (req, res) => {
 
   try {
     // 1. Ambil SEMUA event dari Firestore Server-Side tanpa filter ketat
-    console.log("[API/PUBLIC-EVENTS] Scanning ALL events from cloud...");
+    console.log(`[API/PUBLIC-EVENTS] Scanning ALL events from cloud. Project: ${effectiveProjectId}, DB: ${dbId || "(default)"}`);
     const snapshot = await db.collection('events').get();
     
+    console.log(`[API/PUBLIC-EVENTS] Query completed. Snapshot size: ${snapshot.size}`);
+
     const events: any[] = [];
     snapshot.forEach((doc: any) => {
       try {
         const data = doc.data();
         const eventData = data.data || data;
         
-        // Sangat fleksibel dalam mencari status
+        // Log sampel data pertama untuk debug jika events kosong
+        if (events.length === 0) {
+           console.log(`[API/PUBLIC-EVENTS] Sample doc found: ${doc.id}, Raw Status: ${data.status || 'N/A'}`);
+        }
+
         const statusRaw = (data.status || eventData.status || (eventData.settings?.status) || 'ACTIVE').toString().toUpperCase();
         
         // HANYA sembunyikan yang sudah dihapus (DELETED)
-        // Kita tampilkan DRAFT juga agar penyelenggara yang lupa 'publish' tetap bisa melihat di device lain
         if (statusRaw !== 'DELETED') {
            events.push({
              ...eventData, 
@@ -605,13 +610,13 @@ app.get("/api/public-events", async (req, res) => {
        return (tB || 0) - (tA || 0);
     });
 
-    console.log(`[API/PUBLIC-EVENTS] Success: Found ${events.length} public events.`);
+    console.log(`[API/PUBLIC-EVENTS] Success: Returning ${events.length} public events to client.`);
 
     return res.json({ 
        success: true, 
        events, 
        count: events.length,
-       source: 'admin-sdk-full-scan-v4',
+       source: 'admin-sdk-full-scan-v5-verbose',
        timestamp: new Date().toISOString()
     });
   } catch (err: any) {

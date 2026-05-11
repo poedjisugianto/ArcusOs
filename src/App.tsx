@@ -199,11 +199,12 @@ export function App() {
           .catch(() => db ? safeGetDoc(doc(db, 'systemConfigs', 'global')) : null),
         
         // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
+        // Fallback to direct Client SDK if API fails or returns empty
         ((view === 'LANDING' || isPublicView) 
           ? fetch(`/api/public-events?t=${Date.now()}`, { cache: 'no-store' }) 
               .then(async res => {
                 const data = await res.json().catch(() => null);
-                if (data && data.success && data.events) {
+                if (data && data.success && data.events && data.events.length > 0) {
                   return { 
                     docs: data.events.map((e: any) => ({
                       id: e.id, 
@@ -213,9 +214,14 @@ export function App() {
                     __type: 'custom_array' 
                   };
                 }
+                // If API is empty or failed, try direct client SDK read
+                console.log("[App/fetch] Public API empty/failed, falling back to direct Firestore read...");
+                if (db) {
+                   return safeGetDocs(collection(db, 'events'));
+                }
                 return null;
               })
-              .catch(() => null)
+              .catch(() => db ? safeGetDocs(collection(db, 'events')) : null)
           : (isPrivileged && db ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
         ).catch(() => null),
 

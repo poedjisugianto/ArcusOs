@@ -1,4 +1,4 @@
-import { TournamentSettings, TargetType } from './types';
+import { TournamentSettings, TargetType, GlobalSettings } from './types';
 
 export const STORAGE_KEY = 'arcus_digital_archery_v1';
 export const APP_VERSION = '1.2.0';
@@ -39,4 +39,19 @@ export const CATEGORY_LABELS: Record<string, string> = {
   'U9_PUTRA': 'U9 Putra',
   'U9_PUTRI': 'U9 Putri',
   'OFFICIAL': 'Official (Manager/Pelatih)'
+};
+
+export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
+  feeAdult: 0, 
+  feeKids: 0, 
+  maintenanceMode: false,
+  contactSupport: '087834193339', 
+  bankProvider: '',
+  bankAccountNumber: '', 
+  bankAccountName: '',
+  dataRetentionDays: 90, 
+  practiceRetentionDays: 7,
+  paymentGatewayProvider: 'NONE',
+  paymentGatewayIsProduction: false,
+  platformFeePercentage: 0
 };

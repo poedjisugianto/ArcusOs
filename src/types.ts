@@ -49,6 +49,7 @@ export interface User {
   club?: string;
   phone?: string;
   role?: UserRole;
+  photoURL?: string;
 }
 
 export interface GlobalSettings {
@@ -73,7 +74,7 @@ export interface AppNotification {
   id: string;
   title: string;
   message: string;
-  type: 'INFO' | 'SUCCESS' | 'WARNING';
+  type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
   timestamp: number;
   read: boolean;
   recipientId?: string;

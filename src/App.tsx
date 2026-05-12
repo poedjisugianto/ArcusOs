@@ -1,776 +1,337 @@
-import * as React from 'react';
-import { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
-  Bell, BellRing, ArrowLeft, LogIn, Database, Gavel, Wifi, WifiOff,
-  Users as UsersIcon, Monitor, Plus, Clock, X, CreditCard, ChevronLeft, GitBranch, 
-  ShieldCheck, Settings as SettingsIcon, User as UserIcon, List, Info, CloudOff,
-  FileText, Activity, Trophy, Download, Target, Swords, Share2, Check, ShieldAlert,
-  RefreshCw, Sparkles, DollarSign, FileDown, Cloud, Zap, LayoutDashboard,
-  AlertTriangle, AlertCircle
+  Trophy, Users, Calendar, Settings, 
+  Plus, ChevronRight, LogOut, 
+  Menu, X, Bell, User as UserIcon, 
+  HardHat, ShieldCheck, Globe, 
+  Zap, Cloud, CloudOff, RefreshCw, 
+  AlertCircle, Download, Smartphone 
 } from 'lucide-react';
-import { toast } from 'sonner';
-import { AppState, ArcheryEvent, CategoryType, User, Archer, GlobalSettings, AppNotification, ScoreEntry, ParticipantRegistration, Match, ScoreLog, DisbursementRequest, TargetType, UserRole, TournamentSettings, RegistrationStatus } from './types';
-import { DEFAULT_SETTINGS, STORAGE_KEY, APP_VERSION } from './constants';
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion, query, where, onSnapshot, deleteDoc, Timestamp, getDocFromCache, getDocsFromCache, limit, writeBatch, serverTimestamp, increment } from 'firebase/firestore';
-import { handleFirestoreError, OperationType, shardData, mergeShards, tryRecoverJSON } from './lib/firestoreUtils';
-import ArcusLogo from './components/ArcusLogo';
-import { safeFormatTime } from './lib/dateUtils';
+import { 
+  initializeApp, 
+  getApps 
+} from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  serverTimestamp, 
+  writeBatch,
+  increment,
+  getDocFromServer
+} from 'firebase/firestore';
+import { 
+  getAuth, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut,
+  User as FirebaseUser
+} from 'firebase/auth';
+
+import firebaseConfig from '../firebase-applet-config.json';
+import { 
+  AppState, 
+  ArcheryEvent, 
+  UserRole, 
+  TournamentSettings, 
+  ParticipantRegistration, 
+  RegistrationStatus, 
+  User, 
+  AppNotification, 
+  GlobalSettings,
+  ScoreEntry,
+  ScoreLog,
+  CategoryType
+} from './types';
+import { STORAGE_KEY, DEFAULT_GLOBAL_SETTINGS } from './constants';
+
+// Clean imports for components
+import LandingPage from './components/LandingPage';
+import RegistrationPanel from './components/OnlineRegistration';
+import AdminDashboard from './components/AdminDashboard';
 import AdminPanel from './components/AdminPanel';
 import ScoringPanel from './components/ScoringPanel';
 import LiveScoreboard from './components/LiveScoreboard';
-import ArcherList from './components/ArcherList';
-import LandingPage from './components/LandingPage';
-import MemberDashboard from './components/MemberDashboard';
 import LoginPanel from './components/LoginPanel';
-import OnlineRegistration from './components/OnlineRegistration';
-import FinancePanel from './components/FinancePanel';
 import ProfilePanel from './components/ProfilePanel';
-import EntryList from './components/EntryList';
-import EventInfo from './components/EventInfo';
-import ResultsPanel from './components/ResultsPanel';
-import LegalDoc from './components/LegalDoc';
-import ShareModal from './components/ShareModal';
-import EliminationPanel from './components/EliminationPanel';
 import SuperAdminPanel from './components/SuperAdminPanel';
-import OperatorCenter from './components/OperatorCenter';
+import TournamentCalendar from './components/TournamentCalendar';
+import ArcusLogo from './components/ArcusLogo';
+import ShareModal from './components/ShareModal';
 import QuickScoringPanel from './components/QuickScoringPanel';
-import ScorerLogin from './components/ScorerLogin';
+import OperatorCenter from './components/OperatorCenter';
+import EliminationPanel from './components/EliminationPanel';
 import ActivateTournament from './components/ActivateTournament';
+import ResultsPanel from './components/ResultsPanel';
+import FinancePanel from './components/FinancePanel';
+import ArcherList from './components/ArcherList';
 import OfficialList from './components/OfficialList';
-import IdCardEditor from './components/IdCardEditor';
-import ResetPasswordPanel from './components/ResetPasswordPanel';
+import EventInfo from './components/EventInfo';
+import ScorerLogin from './components/ScorerLogin';
 
-type View = 'LANDING' | 'LOGIN' | 'REGISTER' | 'RESET_PASSWORD' | 'MEMBER_DASHBOARD' | 'PROFILE' | 'EVENT_ADMIN' | 'SETTINGS' | 'REGISTER_PARTICIPANT' | 'SCORING' | 'QUICK_SCORING' | 'LIVE' | 'ARCHERS' | 'OFFICIALS' | 'FINANCE' | 'SUPER_ADMIN' | 'OPERATOR_CENTER' | 'JUDGE_PANEL' | 'ELIMINATION' | 'PUBLIC_LIVE' | 'PUBLIC_ENTRY_LIST' | 'PUBLIC_EVENT_INFO' | 'RESULTS' | 'DOCUMENTATION' | 'PRIVACY' | 'TERMS' | 'SCORER_LOGIN' | 'ACTIVATE_TOURNAMENT' | 'ID_CARD_EDITOR';
+// Initialize Firebase
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
-import { motion, AnimatePresence } from 'motion/react';
-import { Toaster } from 'sonner';
-
-export function App() {
-  const [view, setView] = useState<View>(() => {
-    const saved = localStorage.getItem('ARCUS_CURRENT_VIEW');
-    return (saved as View) || 'LANDING';
-  });
+export default function App() {
+  const [view, setView] = useState<string>('LANDING');
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [appState, setAppState] = useState<AppState>({
+    events: [],
+    users: [],
+    notifications: [],
+    globalSettings: DEFAULT_GLOBAL_SETTINGS,
+    currentUser: null,
+    activeEventId: null,
+    isDataLoaded: false
+  });
+
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
-  const [shareData, setShareData] = useState<{ isOpen: boolean; name: string; url: string; registerUrl?: string }>({ isOpen: false, name: '', url: '' });
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
-  const [liveBoardTVMode, setLiveBoardTVMode] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
-  const [isBlazePlan, setIsBlazePlan] = useState(true); 
-  const [syncStatus, setSyncStatus] = useState<{ source: string, time: string } | null>(null);
-  
-  // Anti-loop protection for sync
-  const errorCount = React.useRef(0);
-  const isSyncingFromCloud = React.useRef(false);
-  const isCurrentlySyncing = React.useRef(false);
-  const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const lastSyncedHash = React.useRef<Record<string, string>>({});
-
-  const [appState, setAppState] = useState<AppState>(() => {
-    const initialSettings: GlobalSettings = {
-      feeAdult: 0, 
-      feeKids: 0, 
-      maintenanceMode: false,
-      contactSupport: '087834193339', 
-      bankProvider: '',
-      bankAccountNumber: '', 
-      bankAccountName: '',
-      dataRetentionDays: 90, 
-      practiceRetentionDays: 7,
-      paymentGatewayProvider: 'NONE',
-      paymentGatewayIsProduction: false,
-      platformFeePercentage: 0,
-      productionUrl: ''
-    };
-
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = tryRecoverJSON(saved);
-        // We restore everything BUT force isDataLoaded to false so we fetch fresh from cloud
-        return { 
-          ...parsed, 
-          isDataLoaded: false,
-          notifications: parsed.notifications || []
-        };
-      }
-    } catch (e) {
-      console.error("Local storage recovery failed:", e);
-      // Clean up potentially corrupted storage
-      localStorage.removeItem(STORAGE_KEY);
-    }
-
-    return {
-      events: [],
-      users: [],
-      currentUser: null, 
-      activeEventId: null, 
-      globalSettings: initialSettings, 
-      notifications: [],
-      isDataLoaded: false,
-      drafts: { scoring: {}, adminSettings: {}, activeCategory: {} }
-    };
+  const [shareData, setShareData] = useState<{isOpen: boolean, url: string, name: string, registerUrl?: string}>({
+    isOpen: false,
+    url: '',
+    name: ''
   });
+  
+  const [isCheckingLink, setIsCheckingLink] = useState(true);
+  const isSyncingFromCloud = useRef(false);
+  const isCurrentlySyncing = useRef(false);
+  const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
 
-  const appStateRef = React.useRef(appState);
-
+  const appStateRef = useRef(appState);
   useEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
 
   const pushNotification = (title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' = 'INFO') => {
-    const newNotif: AppNotification = {
-      id: 'ntf_' + Math.random().toString(36).substr(2, 9),
-      title,
-      message,
-      type,
+    const id = Date.now().toString();
+    const newNotif: AppNotification = { 
+      id, 
+      title, 
+      message, 
+      type: type === 'ERROR' as any ? 'WARNING' : type, 
       timestamp: Date.now(),
       read: false
     };
-    setAppState(prev => ({
-      ...prev,
-      notifications: [newNotif, ...prev.notifications].slice(0, 50)
-    }));
+    setNotifications(prev => [newNotif, ...prev].slice(0, 5));
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
   };
 
-  const fetchCloudData = async (manual = false, userOverride?: User | null) => {
-    // We allow proceeding without DB (Client SDK) if we're just hitting the public API
-    if (manual) {
-      setIsSyncing(true);
-      setQuotaExceeded(false); 
-    }
-    
-    if (hasPendingChanges && !manual) {
-      return;
-    }
-
-    const user = userOverride !== undefined ? userOverride : appState.currentUser;
-    const isPrivileged = !!user; 
-    const canFetchProfiles = !!(user?.isSuperAdmin || user?.role === 'SUPERADMIN' || user?.email === 'poedji.sugianto@gmail.com');
-    const isPublicView = !user || (view === 'LANDING' || view.startsWith('PUBLIC_'));
-
-    try {
-      isSyncingFromCloud.current = true;
-      setIsSyncing(true);
-      
-      const safeGetDocs = async (collRef: any, queryRef?: any) => {
-        if (!db) return null;
+  // 1. Initial Data Load (Local + Cloud)
+  useEffect(() => {
+    const loadInitialData = async () => {
+      // 1. Load Local Storage
+      const localData = localStorage.getItem(STORAGE_KEY);
+      if (localData) {
         try {
-          return await getDocs(queryRef || collRef);
-        } catch (err: any) {
-          const errStr = err.message || "";
-          if (err.code === 'resource-exhausted' || errStr.toLowerCase().includes('quota')) {
-            return await getDocsFromCache(queryRef || collRef).catch(() => null);
-          }
-          return null;
-        }
-      };
-
-      const safeGetDoc = async (docRef: any) => {
-        if (!db) return null;
-        try {
-          return await getDoc(docRef);
-        } catch (err: any) {
-          const errStr = err.message || "";
-          if (err.code === 'resource-exhausted' || errStr.toLowerCase().includes('quota')) {
-            return await getDocFromCache(docRef).catch(() => null);
-          }
-          return null;
-        }
-      };
-
-      const fetchJobs: Promise<any>[] = [
-        // 1. Fetch System Config (Optimized with Server Cache)
-        fetch(`/api/settings?t=${Date.now()}`)
-          .then(res => res.json())
-          .then(data => ({
-            exists: () => true,
-            data: () => data,
-            __is_api_mock: true
-          }))
-          .catch(() => db ? safeGetDoc(doc(db, 'systemConfigs', 'global')) : null),
-        
-        // 2. Optimized Event Fetch: Use Server-Side Cache for Public Landing Page
-        // Fallback to direct Client SDK if API fails or returns empty
-        ((view === 'LANDING' || isPublicView) 
-          ? fetch(`/api/public-events?t=${Date.now()}`, { cache: 'no-store' }) 
-              .then(async res => {
-                const data = await res.json().catch(() => null);
-                if (data && data.success && data.events && data.events.length > 0) {
-                  return { 
-                    docs: data.events.map((e: any) => ({
-                      id: e.id, 
-                      data: () => ({ ...e, id: e.id }), // Ensure ID is flattened
-                      exists: () => true 
-                    })), 
-                    __type: 'custom_array' 
-                  };
-                }
-                // If API returns no events, guests try to read directly from Firestore
-                if (db) return safeGetDocs(collection(db, 'events'));
-                return null;
-              })
-              .catch(() => db ? safeGetDocs(collection(db, 'events')) : null)
-          : (isPrivileged && db ? safeGetDocs(collection(db, 'events')) : Promise.resolve(null))
-        ).catch(() => null),
-
-        // 3. Optimized Event Details (ARCHERS / SCORES / SHARDS)
-        // This is the CRITICAL fix for Quota during live tournament results
-        (appState.activeEventId
-          ? fetch(`/api/event-details/${appState.activeEventId}?t=${Date.now()}`, { cache: 'no-store' })
-              .then(res => res.json())
-              .then(res => {
-                  if (res.success && res.data) {
-                    // API returns the event object directly in res.data
-                    const event = res.data;
-                    const submissions = res.data.registrations || [];
-                    const shards = res.data.shards || [];
-                    
-                    // Format into a shape that the state-merging logic understands
-                    return { 
-                      __is_api_cache: true,
-                      submissions: { docs: submissions.map((s: any) => ({ 
-                        id: s.id || s.email, 
-                        data: () => {
-                           // Ensure we unwrap data if present from API
-                           const base = s.archerData || s.officialData || s.data || s;
-                           const regType = s.regType || base.regType || (s.isOfficial ? 'OFFICIAL' : (base.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER'));
-                           return { ...base, id: s.id || s.email, regType, status: s.status || base.status };
-                        }, 
-                        exists: true 
-                      })) },
-                      shards: { docs: shards.map((s: any) => ({ id: s.id, data: () => s, exists: true })) },
-                      event: { id: event.id, data: () => ({ ...event, id: event.id }), exists: true }
-                    };
-                  }
-                  return null;
-              })
-              .catch(() => null)
-          : Promise.resolve(null)),
-        
-        // 4. Fetch Submissions (ONLY for privileged/non-public views as backup)
-        (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'submissions')) : Promise.resolve(null)),
-        
-        // 5. Fetch Shards (ONLY for privileged/non-public views as backup)
-        (!isPublicView && appState.activeEventId ? safeGetDocs(collection(db, 'events', appState.activeEventId, 'shards')) : Promise.resolve(null))
-      ];
-
-      // 3. Fetch Profiles (Only if Admin AND not public view)
-      const needsFullProfiles = canFetchProfiles && !isPublicView && (view === 'SUPER_ADMIN' || view === 'MEMBER_DASHBOARD' || view === 'EVENT_ADMIN');
-
-      if (needsFullProfiles) {
-        fetchJobs.push(
-          safeGetDocs(collection(db, 'profiles')).catch(() => null)
-        );
-      } else if (user?.id) {
-        // Just fetch own profile if not in management view
-        fetchJobs.push(
-          safeGetDoc(doc(db, 'profiles', user.id)).then(snap => ({
-            docs: snap?.exists() ? [snap] : [],
-            __is_single_profile: true
-          })).catch(() => null)
-        );
-      }
-
-      const results = await Promise.all(fetchJobs);
-      const configSnap = results[0];
-      const eventsSnap = results[1];
-      const apiCacheDetails = results[2]; // The new cached details from /api/event-details
-      
-      // For public views, we prefer apiCacheDetails. For organizers, we use the SDK results.
-      let submissionsSnap = results[3];
-      let shardsSnap = results[4];
-      const profilesSnap = results.length > 5 ? results[5] : null;
-
-      // If we are in public view and obtained data from API cache, use it as the source of truth
-      if (isPublicView && apiCacheDetails?.__is_api_cache) {
-        submissionsSnap = apiCacheDetails.submissions;
-        shardsSnap = apiCacheDetails.shards;
-        
-        // Inject fresh event data into the documents list if we are viewing this specific event
-        if (apiCacheDetails.event && eventsSnap?.docs) {
-          const idx = eventsSnap.docs.findIndex((d: any) => d.id === apiCacheDetails.event.id);
-          if (idx !== -1) {
-            eventsSnap.docs[idx] = apiCacheDetails.event;
-          }
+          const parsed = JSON.parse(localData);
+          setAppState(prev => ({ 
+            ...prev, 
+            ...parsed, 
+            isDataLoaded: false // Set false until cloud sync is done
+          }));
+        } catch (e) {
+          console.error("Local storage corrupted", e);
         }
       }
 
-      const cloudSettings = (configSnap?.exists?.() && configSnap.data()) ? configSnap.data()?.data : null;
+      // 2. Load Cloud Data (Direct Fetch)
+      if (isOnline && db) {
+        try {
+          await fetchCloudData();
+        } catch (err: any) {
+          console.warn("Cloud data fetch failed, continuing with local state", err.message);
+          if (err.message?.includes('quota exceeded')) {
+            setQuotaExceeded(true);
+            pushNotification("Quota Firestore Habis", "Limit harian tercapai. Mode offline aktif.", "WARNING");
+          }
+        }
+      }
       
-      let cloudEvents: any[] | null = null;
-      if (eventsSnap?.docs) {
-        cloudEvents = eventsSnap.docs.map((doc: any) => {
-          const e = doc.data();
-          if (!e) return null;
-          const eventId = e.id || doc.id;
-          const ownerId = e.userId || e.ownerId;
-          const status = e.status || e.data?.status || (e.settings?.status) || 'ACTIVE';
-          
-          // CRITICAL: If the document has a 'data' wrapper (from our sharding logic), unwrap it first!
-          // This prevents duplicating fields at root and inside 'data'
-          let eventObj: any = { id: eventId, ownerId, status, isSharded: !!e.isSharded };
-          if (e.data && typeof e.data === 'object' && !Array.isArray(e.data)) {
-            eventObj = { ...eventObj, ...e.data };
-          } else {
-            eventObj = { ...eventObj, ...e };
-          }
-          
-          // Reconstruct shards if this is the sharded active event
-          if (shardsSnap?.docs && eventId === appState.activeEventId && (e.isSharded || e.data?.isSharded)) {
-            const shardCounts = e.shardCounts || e.data?.shardCounts || {};
-            const shardsByArray: Record<string, string[]> = {};
-            
-            shardsSnap.docs.forEach((sd: any) => {
-              const s = sd.data();
-              if (s.key && s.content !== undefined) {
-                // If we have shardCounts, only use shards within the limit
-                const maxCount = shardCounts[s.key];
-                if (maxCount !== undefined && s.index >= maxCount) {
-                  return; // Skip zombie shard
-                }
-                
-                if (!shardsByArray[s.key]) shardsByArray[s.key] = [];
-                shardsByArray[s.key][s.index] = s.content;
-              }
-            });
+      setAppState(prev => ({ ...prev, isDataLoaded: true }));
+      setIsCheckingLink(false);
+      
+      // Force hide splash screen after a small delay to allow initial render
+      setTimeout(() => {
+        setIsSplashVisible(false);
+      }, 500);
+    };
 
-            Object.entries(shardsByArray).forEach(([key, shards]) => {
-              try {
-                // Verify shards array integrity - No "holes" allowed
-                const expectedCount = shardCounts[key];
-                if (expectedCount !== undefined) {
-                  for (let i = 0; i < expectedCount; i++) {
-                    if (shards[i] === undefined) {
-                      console.warn(`Shard hole detected for ${key} at index ${i}. Joining partial data...`);
-                    }
-                  }
-                }
-                const merged = mergeShards(shards);
-                if (key.startsWith('settings_')) {
-                  const settingsKey = key.replace('settings_', '') as keyof TournamentSettings;
-                  if (eventObj.settings) {
-                    (eventObj.settings as any)[settingsKey] = merged;
-                  }
-                } else {
-                  eventObj[key] = merged;
-                }
-              } catch (parseError: any) {
-                console.error(`Failed to reconstruct sharded key ${key}:`, parseError.message);
-                if (!key.startsWith('settings_')) eventObj[key] = []; 
-              }
-            });
-          }
+    loadInitialData();
+  }, []);
 
-          // Merge submissions into the event if this is the active one
-          if (submissionsSnap?.docs && e.id === appState.activeEventId) {
-            const submissions = submissionsSnap.docs.map((sd: any) => sd.data());
-            const existingIds = new Set(eventObj.registrations?.map((r: any) => r.id) || []);
-            const newRegistrations = submissions.filter((s: any) => !existingIds.has(s.id));
-            if (newRegistrations.length > 0) {
-              console.log(`Merging ${newRegistrations.length} submissions into event ${e.id}`);
-              eventObj.registrations = [...(eventObj.registrations || []), ...newRegistrations];
-            }
-          }
-          return eventObj;
+  // 2. Authentication Observer
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Build user object from firebase
+        // In Arcus, email is the identity. Admin emails are hardcoded for bootstrap.
+        const isAdmin = ['poedji.sugianto@gmail.com', 'admin@arcus.id'].includes(firebaseUser.email || '');
+        const userData: User = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || 'User',
+          role: isAdmin ? UserRole.SUPERADMIN : UserRole.PARTICIPANT,
+          photoURL: firebaseUser.photoURL || undefined
+        };
+
+        setAppState(prev => {
+          // If profile exists in cloud, it will be merged later via fetchCloudData
+          return { ...prev, currentUser: userData };
         });
+      } else {
+        setAppState(prev => ({ ...prev, currentUser: null }));
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const fetchCloudData = async () => {
+    if (!db || !isOnline || quotaExceeded) return;
+    
+    try {
+      // Fetch global settings
+      const settingsSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
+      let cloudSettings = DEFAULT_GLOBAL_SETTINGS;
+      if (settingsSnap.exists()) {
+        const d = settingsSnap.data();
+        cloudSettings = d.data || d;
       }
 
-      let cloudUsers: any[] | null = null;
-      let isSingleProfile = false;
-      if (profilesSnap?.docs) {
-        cloudUsers = profilesSnap.docs.map((doc: any) => {
-          const d = doc.data();
-          if (!d) return null;
-          // Support both legacy wrapped { data: ... } and modern unwrapped formats
-          return d.data || d;
-        }).filter(Boolean);
-        isSingleProfile = !!profilesSnap.__is_single_profile;
-      }
-      
-      // Heuristic: Ensure we always have the most up-to-date registrations by merging submissions
-      // for the active event even as a privileged user.
-      const cloudEventsModified = cloudEvents ? cloudEvents.map(ce => {
-        if (submissionsSnap?.docs && ce.id === appState.activeEventId) {
-          const rawSubmissions = submissionsSnap.docs.map((sd: any) => {
-            const d = sd.data();
-            const regType = d.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
-            return { ...d, id: sd.id, regType };
-          });
-          
-          // Separate submissions by type
-          const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL');
-          const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL');
-
-          console.log(`[INITIAL-SYNC] Processing Submissions for ${ce.id}: ${cloudArchers.length} Archers, ${cloudOfficials.length} Officials`);
-          
-          // Merge with any existing/legacy data
-          const uniqueArchers = Array.from(new Map([...(ce.archers || []), ...cloudArchers].map(a => [a.id, a])).values());
-          const uniqueOfficials = Array.from(new Map([...(ce.officials || []), ...cloudOfficials].map(o => [o.id, o])).values());
-          const uniqueRegs = Array.from(new Map([...(ce.registrations || []), ...rawSubmissions].map(r => [r.id, r])).values());
-
-          return {
-            ...ce,
-            registrations: uniqueRegs,
-            archers: uniqueArchers,
-            officials: uniqueOfficials,
-            registrationCount: uniqueRegs.length
-          };
+      // If privileged, fetch all events. If participant, fetch active events.
+      // But for simplicity in this V1, let the backend/security rules handle filtering.
+      // We'll use the API for public discovery to save on read costs.
+      let cloudEvents: ArcheryEvent[] = [];
+      try {
+        const res = await fetch('/api/public-events');
+        const contentType = res.headers.get("content-type");
+        
+        if (!res.ok) {
+          if (contentType && contentType.includes("application/json")) {
+            const errData = await res.json();
+            throw new Error(errData.message || `API Error ${res.status}`);
+          }
+          throw new Error(`API returned ${res.status} (Non-JSON)`);
         }
-        return ce;
-      }) : null;
+
+        if (contentType && contentType.includes("application/json")) {
+           const data = await res.json();
+           cloudEvents = data.events || [];
+        } else {
+           throw new Error("Expected JSON response but got " + contentType);
+        }
+      } catch (apiErr: any) {
+        // Silent warning - if this fails, we fall back to direct Firestore. 
+        // We only log if it's a real issue that prevents display.
+        
+        // Fallback: Direct Firestore query from client
+        if (db) {
+          try {
+            const eventsSnap = await getDocs(collection(db, 'events'));
+            cloudEvents = eventsSnap.docs.map(doc => {
+              const d = doc.data();
+              const base = d.data || d;
+              return { ...base, id: doc.id, status: (d.status || base.status || 'ACTIVE').toString().toUpperCase() };
+            });
+          } catch (dbErr: any) {
+            console.error("[FETCH-DIRECT] Critical error: All fetch methods failed.", dbErr.message);
+          }
+        }
+      }
+
+      // For Active Event, we might need a more granular fetch including submissions
+      let submissionsSnap: any = null;
+      if (appStateRef.current.activeEventId) {
+        submissionsSnap = await getDocs(query(
+          collection(db, 'events', appStateRef.current.activeEventId, 'submissions'),
+          limit(3000)
+        ));
+      }
+
+      // Fetch profiles if Admin
+      let profilesSnap: any = null;
+      if (appStateRef.current.currentUser?.role === UserRole.SUPERADMIN) {
+        profilesSnap = await getDocs(collection(db, 'profiles'));
+      }
 
       setAppState(prev => {
-        let updatedEvents = [...prev.events];
-        
-        if (cloudEventsModified && cloudEventsModified.length > 0) {
-          // If we are master/admin, we might want to replace entirely, but we still 
-          // merge to avoid losing the registrations that were just made locally.
-          const isPrivileged = !!(user?.isSuperAdmin || user?.role === UserRole.SUPERADMIN);
-          
-          if (isPrivileged) {
-            // Even as admin, only replace events that were fetched
-            cloudEventsModified.forEach(ce => {
-              const localIndex = updatedEvents.findIndex(le => le.id === ce.id);
-              if (localIndex === -1) {
-                updatedEvents.push(ce);
-              } else {
-                const le = updatedEvents[localIndex];
-                // Only overwrite if cloud data is actually newer or has more content 
-                // Or if we are explicitly doing a manual refresh
-                const cloudContentHash = (ce.registrations?.length || 0) + (ce.archers?.length || 0) + (ce.scores?.length || 0);
-                const localContentHash = (le.registrations?.length || 0) + (le.archers?.length || 0) + (le.scores?.length || 0);
-                
-                if (manual || cloudContentHash >= localContentHash) {
-                  updatedEvents[localIndex] = ce;
-                }
-              }
+        const activeId = prev.activeEventId;
+        const modifiedEvents = cloudEvents.map(ce => {
+          if (ce.id === activeId && submissionsSnap) {
+            const rawSubmissions = submissionsSnap.docs.map((sd: any) => {
+               const d = sd.data();
+               const base = d.archerData || d.officialData || d.participantData || d.data || d;
+               const regType = d.regType || base.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
+               return { ...base, ...d, id: sd.id, regType };
             });
-          } else {
-            // MERGE LOGIC: Keep local events if they have more registrations or are "newer"
-            cloudEventsModified.forEach(ce => {
-              if (!ce) return;
-              const localIndex = updatedEvents.findIndex(le => le && le.id === ce.id);
-              if (localIndex === -1) {
-                updatedEvents.push(ce);
-              } else {
-                const le = updatedEvents[localIndex];
-                // Heuristic: Sekarang kita juga cek registrationCount dari cloud
-                const cloudRegs = ce.registrationCount || ce.registrations?.length || 0;
-                const localRegs = le.registrationCount || le.registrations?.length || 0;
-                const cloudArchers = ce.archers?.length || 0;
-                const localArchers = le.archers?.length || 0;
-
-                // Jika cloud punya info terbaru (atau kita sedang manual), paksa update
-                if (manual || cloudRegs >= localRegs) {
-                  updatedEvents[localIndex] = ce;
-                }
-              }
-            });
+            const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL');
+            const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL');
+            return {
+              ...ce,
+              registrations: rawSubmissions,
+              archers: cloudArchers,
+              officials: cloudOfficials,
+              registrationCount: rawSubmissions.length
+            };
           }
-        }
+          return ce;
+        });
 
         return {
           ...prev,
-          globalSettings: cloudSettings || prev.globalSettings,
-          events: (updatedEvents || []).filter(Boolean),
-          users: (cloudUsers && cloudUsers.length > 0) ? 
-            (isSingleProfile ? 
-              // MERGE: Update only the profile we fetched (current user)
-              (prev.users || []).filter(Boolean).map(u => {
-                const updated = (cloudUsers || []).find(cu => cu && cu.id === u.id);
-                return updated || u;
-              }).concat((cloudUsers || []).filter(cu => cu && cu.id && !prev.users.some(u => u && u.id === cu.id)))
-              : cloudUsers // REPLACE: Full list from Super Admin view
-            ) : (prev.users || []).filter(Boolean),
-          currentUser: (isSingleProfile && cloudUsers && cloudUsers.length > 0) ? 
-            (cloudUsers.find(cu => cu && cu.id === prev.currentUser?.id) || prev.currentUser) : 
-            (cloudUsers && prev.currentUser ? (cloudUsers.find(cu => cu && cu.id === prev.currentUser?.id) || prev.currentUser) : prev.currentUser),
+          globalSettings: {
+            ...cloudSettings,
+            paymentGatewayProvider: (cloudSettings.paymentGatewayProvider as any) || 'NONE'
+          } as GlobalSettings,
+          events: modifiedEvents,
+          users: profilesSnap ? profilesSnap.docs.map((d: any) => d.data()?.data || d.data()) : prev.users,
           isDataLoaded: true
         };
       });
 
-      setLastSync(new Date());
-    } catch (err: any) { 
-      console.error("Fetch Cloud General Error:", err);
-      const errStr = err.message || JSON.stringify(err);
-      if (errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('exhausted') || err.code === 'resource-exhausted') {
-        setQuotaExceeded(true);
-        // Inform user about background caching instead of just "Quota"
-    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
-        if (isPrivileged && manual) {
-           pushNotification("Optimasi Data Aktif", "Menggunakan sistem jalur cadangan untuk menghemat sumber daya cloud.", "INFO");
-        }
-      } else {
-        if (manual) pushNotification("Sinkronisasi Gagal", "Gagal menghubungkan ke sistem cloud.", "WARNING");
-      }
-      setAppState(prev => ({ ...prev, isDataLoaded: true }));
-    } finally {
-      setIsSyncing(false);
-      isSyncingFromCloud.current = false;
+    } catch (err: any) {
+      console.error("Cloud fetch failed:", err.message);
+      throw err;
     }
   };
-
-  useEffect(() => {
-    fetchCloudData().catch(err => {
-      console.warn("Initial fetch silent failure:", err.message);
-    });
-  }, [appState.currentUser?.id, appState.activeEventId, view]);
-
-  const [isCheckingLink, setIsCheckingLink] = useState(false);
-
-  // AUTO-SYNC PENDING CHANGES: Removed setInterval, syncCloudData handles debouncing
-  useEffect(() => {
-    if (hasPendingChanges && !isSyncing) {
-      syncCloudData(false);
-    }
-  }, [hasPendingChanges, isSyncing]);
-
-  // Real-time listener for active event submissions to make it appear "seketika"
-  useEffect(() => {
-    // Only listen if we have an active event and are in a view that needs participant data
-    const viewsNeedingData = ['LIVE', 'PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'ARCHERS', 'EVENT_ADMIN', 'MEMBER_DASHBOARD', 'FINANCE', 'ID_CARD_EDITOR'];
-    if (!db || !appState.activeEventId || !viewsNeedingData.includes(view)) return;
-
-    console.log(`[REALTIME] Starting listener for submissions in ${appState.activeEventId}`);
-    const unsub = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snapshot) => {
-      console.log(`[REALTIME] Received cloud update for event ${appState.activeEventId}. Docs: ${snapshot.size}`);
-      const cloudSubmissions = snapshot.docs.map(doc => {
-        const d = doc.data() as any;
-        const regType = d.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
-        return { ...d, id: doc.id, regType };
-      });
-      
-      setAppState(prev => {
-        // If events list is empty, we can't find our target event yet.
-        // We'll update the global submissions list for now so it's available when events load.
-        const existingEvent = prev.events.find(e => e.id === appState.activeEventId);
-        
-        // Find local pending registrations
-        const localPending = existingEvent ? (existingEvent.registrations || []).filter(r => r._syncPending && !cloudSubmissions.find(c => c.id === r.id)) : [];
-        const mergedSubmissions = [...cloudSubmissions, ...localPending];
-
-        // Categorize for UI efficiency
-        const archers = mergedSubmissions.filter(s => s.regType !== 'OFFICIAL') as any[];
-        const officials = mergedSubmissions.filter(s => s.regType === 'OFFICIAL') as any[];
-
-        if (!existingEvent) {
-          // If the event doesn't exist yet, we still record these submissions 
-          // to prevent them from being lost during the race condition
-          return {
-            ...prev,
-            submissions: mergedSubmissions // Use a temporary global submissions list if needed
-          };
-        }
-
-        return {
-          ...prev,
-          events: prev.events.map(e => e.id === appState.activeEventId ? {
-            ...e,
-            registrations: mergedSubmissions,
-            archers,
-            officials,
-            registrationCount: mergedSubmissions.length,
-            localUpdatedAt: new Date().toISOString()
-          } : e)
-        };
-      });
-    }, (error) => {
-      console.warn("Realtime listener failed - likely permission issue for public view:", error.message);
-      // If it fails with permission denied, we might need to rely on the API fallback in public views
-    });
-
-    return () => unsub();
-  }, [appState.activeEventId, view, isOnline, !!db]);
-
-  // Handle URL Parameters for Sharing
-  useEffect(() => {
-    const handleDeepLink = async () => {
-      const hash = window.location.hash;
-      if (hash.includes('type=recovery')) {
-        setView('RESET_PASSWORD');
-        return;
-      }
-
-      const params = new URLSearchParams(window.location.search);
-      const eventId = params.get('event');
-      const registerId = params.get('register');
-      const viewParam = params.get('view');
-
-      if (!eventId && !registerId) return;
-
-      if (!db) {
-        console.log("Deep link validation skipped: Database not ready.");
-        return;
-      }
-
-      setIsCheckingLink(true);
-
-      // Safety timeout to prevent infinite loading if something goes wrong
-      const safetyTimeout = setTimeout(() => {
-        setIsCheckingLink(false);
-      }, 5000);
-
-      try {
-        const idToFetch = eventId || registerId;
-        if (idToFetch) {
-          console.log("Validasi link via API Cloud Arcus:", idToFetch);
-          
-          // Shortcut: Gunakan API Backend yang lebih stabil daripada SDK Client saat kuota kritis
-          const response = await fetch(`/api/event-details/${idToFetch}`);
-          const resJson = await response.json();
-
-          if (resJson.success && resJson.data) {
-            console.log("Data turnamen ditemukan (Live).");
-            const { event, submissions, shards } = resJson.data;
-            const targetEvent = (event.data || event) as ArcheryEvent;
-            targetEvent.id = event.id; // Pastikan ID konsisten
-            
-            // Masukkan data ke State utama
-            setAppState(prev => {
-              const exists = prev.events.some(e => e.id === targetEvent.id);
-              return { 
-                ...prev, 
-                events: exists ? prev.events.map(e => e.id === targetEvent.id ? targetEvent : e) : [targetEvent, ...prev.events],
-                activeEventId: targetEvent.id,
-                submissions: submissions || prev.submissions,
-                shards: shards || prev.shards
-              };
-            });
-
-            // Langsung arahkan ke halaman yang sesuai
-            if (registerId) setView('REGISTER_PARTICIPANT');
-            else if (viewParam === 'live') setView('PUBLIC_LIVE');
-            else if (viewParam === 'entry-list') setView('PUBLIC_ENTRY_LIST');
-            else setView('PUBLIC_EVENT_INFO');
-            
-          } else {
-            console.warn("Turnamen tidak ditemukan di Cloud:", idToFetch);
-            pushNotification("Turnamen Tidak Ditemukan", "Data turnamen tidak ditemukan. Silakan cek link kembali.", "WARNING");
-          }
-        }
-      } catch (err) {
-        console.error("Deep link fetch error:", err);
-      } finally {
-        setIsCheckingLink(false);
-        clearTimeout(safetyTimeout);
-      }
-    };
-
-    handleDeepLink();
-    fetchCloudData().catch(err => console.error("Cloud ready fetch error:", err));
-  }, [db]); // Run once when db is ready
-
-  // Multi-tab synchronization
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const newState = JSON.parse(e.newValue);
-          setAppState(newState);
-        } catch (err) {
-          console.error("Failed to sync from storage event", err);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // Firebase Auth Listener
-  useEffect(() => {
-    if (!auth) return;
-
-    // Listen for auth changes
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        handleBackgroundLogin(user);
-      } else {
-        // Reset current user state
-        setAppState(prev => ({ ...prev, currentUser: null }));
-        
-        // Navigation: Only reset to LANDING if in a private/auth-required view
-        // Don't reset view if user is currently viewing a public event or deep link
-        const privateViews: View[] = ['SUPER_ADMIN', 'MEMBER_DASHBOARD', 'EVENT_ADMIN', 'LOGIN', 'REGISTER'];
-        setView(prevView => {
-          if (privateViews.includes(prevView)) {
-            setAppState(prev => ({ ...prev, activeEventId: null }));
-            return 'LANDING';
-          }
-          return prevView;
-        });
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const handleBackgroundLogin = async (user: any) => {
-    if (!db) return;
-    try {
-      const profileSnap = await getDoc(doc(db, 'profiles', user.uid));
-      const profileData = profileSnap.exists() ? profileSnap.data().data : null;
-
-      const isSuper = profileData?.role === 'SUPERADMIN' || 
-                     profileData?.role === 'superadmin' || 
-                     user.email === 'admin@arcus.id' || 
-                     user.email === 'poedji.sugianto@gmail.com';
-
-      const loggedInUser: User = {
-        id: user.uid,
-        email: user.email || '',
-        name: profileData?.name || user.displayName || 'User',
-        phone: profileData?.phone || '',
-        isOrganizer: true,
-        isVerified: true,
-        isSuperAdmin: isSuper,
-        role: isSuper ? UserRole.SUPERADMIN : ((profileData?.role as UserRole) || UserRole.ORGANIZER)
-      };
-
-      setAppState(prev => ({ ...prev, currentUser: loggedInUser }));
-      fetchCloudData().catch(err => console.error("Post-login fetch error:", err));
-    } catch (err) {
-      console.error("Profile sync error:", err);
-    }
-  };
-
-  const activeEvent = (appState.events || []).find(e => e && e.id === appState.activeEventId);
-
-  useEffect(() => {
-    // Only save to localStorage after initial cloud fetch to avoid overwriting cloud with stale local data
-    if (appState.isDataLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-    }
-  }, [appState]);
-
-  useEffect(() => {
-    localStorage.setItem('ARCUS_CURRENT_VIEW', view);
-  }, [view]);
 
   const syncCloudData = async (manual = false, overrideState?: AppState) => {
     const state = overrideState || appStateRef.current;
     if (!db || !isOnline || (!state?.currentUser && !state?.activeScorer)) return;
     if (!hasPendingChanges && !manual && !overrideState) return;
     
-    const activeEvent = state.activeEventId ? state.events.find(e => e.id === state.activeEventId) : null;
-    const isOwnerOrAdmin = !!(state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com' || state.currentUser?.email === 'admin@arcus.id');
-    if (!state.isDataLoaded && !manual && !isOwnerOrAdmin) return;
-
     if (isCurrentlySyncing.current) return;
     isCurrentlySyncing.current = true;
     setIsSyncing(true);
 
     try {
       // 1. Sync Global Settings
-      if (state.currentUser?.isSuperAdmin || state.currentUser?.email === 'poedji.sugianto@gmail.com') {
+      if (state.currentUser?.role === UserRole.SUPERADMIN) {
         await setDoc(doc(db, 'systemConfigs', 'global'), { 
           id: 'global', 
           data: state.globalSettings, 
@@ -787,42 +348,6 @@ export function App() {
         }, { merge: true });
       }
 
-      // 3. Sync Parking Registrations (The "Parkir" logic)
-      if (activeEvent) {
-        const pendingRegs = (activeEvent.registrations || []).filter(r => r._syncPending);
-        if (pendingRegs.length > 0) {
-          const batch = writeBatch(db);
-          pendingRegs.forEach(r => {
-            const { _syncPending, ...cleanReg } = r;
-            const subRef = doc(collection(db, 'events', activeEvent.id, 'submissions'), r.id);
-            batch.set(subRef, { ...cleanReg, serverTimestamp: serverTimestamp() });
-          });
-          await batch.commit();
-          
-          setAppState(prev => {
-            const e = prev.events.find(ev => ev.id === activeEvent.id);
-            if (!e) return prev;
-            return {
-              ...prev,
-              events: prev.events.map(ev => ev.id === activeEvent.id ? {
-                ...ev,
-                registrations: ev.registrations.map(r => r._syncPending ? { ...r, _syncPending: false } : r)
-              } : ev)
-            };
-          });
-        }
-
-        // 4. Sync Event Metadata if privileged
-        if (isOwnerOrAdmin || state.activeScorer?.eventId === activeEvent.id) {
-          await setDoc(doc(db, 'events', activeEvent.id), {
-            id: activeEvent.id,
-            userId: activeEvent.settings?.organizerId || activeEvent.ownerId || state.currentUser?.id,
-            status: activeEvent.status || 'DRAFT',
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        }
-      }
-
       setHasPendingChanges(false);
       setLastSync(new Date());
       if (manual) pushNotification("Sinkronisasi Selesai", "Data berhasil diperbarui.", "SUCCESS");
@@ -835,1379 +360,149 @@ export function App() {
     }
   };
 
-  // Real-time Subscriptions - Granular control to save quota
-  useEffect(() => {
-    if (!db || !appState.activeEventId || quotaExceeded || !appState.isDataLoaded) return;
-    
-    // High Priority: Admin, Scorers, Operator, and TV Mode Scoreboard
-    const isAdminView = ['EVENT_ADMIN', 'ARCHERS', 'ID_CARD_EDITOR', 'FINANCE', 'OPERATOR_CENTER'].includes(view);
-    const isScoringView = ['SCORING', 'QUICK_SCORING'].includes(view);
-    const isTVMode = view === 'LIVE' || (view === 'PUBLIC_LIVE' && window.innerWidth >= 1024);
-    
-    // Only subscribe for these high-priority roles/modes
-    if (!isAdminView && !isScoringView && !isTVMode) return;
-    
-    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
-    const isPublicView = !appState.currentUser || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
-    if (isPublicView) return; // Do not use onSnapshot for public guests (save quota)
-
-    let isMounted = true;
-    let unsub: () => void = () => {};
-
-    const subTimeout = setTimeout(() => {
-      if (!isMounted) return;
-
-      unsub = onSnapshot(doc(db, 'events', appState.activeEventId), (docSnap) => {
-        if (!isMounted) return;
-        if (docSnap.exists()) {
-          const isRemoteChange = !docSnap.metadata.hasPendingWrites;
-          const isLiveView = ['LIVE', 'PUBLIC_LIVE'].includes(view);
-          
-          if (isRemoteChange && (!hasPendingChanges || isLiveView)) {
-            console.log("Cloud update received for active event:", appState.activeEventId);
-            const cloudEventRaw = docSnap.data();
-            const cloudEventData = cloudEventRaw.data as ArcheryEvent;
-            const cloudStatus = cloudEventRaw.status;
-            const cloudRegCount = cloudEventRaw.registrationCount || cloudEventData?.registrationCount || 0;
-            
-            isSyncingFromCloud.current = true;
-            setAppState(prev => ({
-              ...prev,
-              events: prev.events.map(e => {
-                if (e.id === appState.activeEventId) {
-                  const merged = { 
-                    ...e, 
-                    ...cloudEventData, 
-                    id: e.id, 
-                    status: cloudStatus, 
-                    registrationCount: cloudRegCount,
-                    isSharded: !!cloudEventRaw.isSharded 
-                  };
-                  // If sharded, preserve arrays if they are missing in cloudEventData
-                  if (cloudEventRaw.isSharded) {
-                    const arrays = ['archers', 'registrations', 'scores', 'scoreLogs', 'matches'];
-                    arrays.forEach(key => {
-                      if (!(cloudEventData as any)[key] && (e as any)[key]) {
-                        (merged as any)[key] = (e as any)[key];
-                      }
-                    });
-                  }
-                  return merged as ArcheryEvent;
-                }
-                return e;
-              })
-            }));
-            setTimeout(() => { if (isMounted) isSyncingFromCloud.current = false; }, 100);
-          }
-        }
-      }, (error) => {
-        if (!isMounted) return;
-        console.warn("Event Snapshot Muted Error:", error.message);
-        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
-          setQuotaExceeded(true);
-        }
-      });
-
-      // ADD REAL-TIME SUBMISSIONS LISTENER
-      if (appState.activeEventId) {
-        (window as any)._unsubSubmissions = onSnapshot(collection(db, 'events', appState.activeEventId, 'submissions'), (snap) => {
-          if (!isMounted) return;
-          
-          const cloudSubmissions = snap.docs.map(d => ({
-            ...d.data(),
-            id: d.id
-          })) as any[];
-
-          setAppState(prev => {
-            const event = prev.events.find(e => e.id === appState.activeEventId);
-            if (!event) return prev;
-
-            // Direct mapping: Putting ALL submissions in registrations for admin visibility
-            return {
-              ...prev,
-              events: prev.events.map(e => e.id === appState.activeEventId ? {
-                ...e,
-                registrations: cloudSubmissions,
-                registrationCount: cloudSubmissions.length
-              } : e)
-            };
-          });
-        }, (err) => console.warn("Submissions sync error:", err));
-      }
-    }, 500);
-
-    // 3. Real-time listener for Organizer's events list
-    let unsubEvents: () => void = () => {};
-    if (appState.currentUser && !appState.currentUser.isSuperAdmin && view === 'MEMBER_DASHBOARD') {
-      const q = query(collection(db, 'events'), where('userId', '==', appState.currentUser.id));
-      unsubEvents = onSnapshot(q, (snap) => {
-        if (snap.metadata.hasPendingWrites) return;
-        
-        const cloudEvents = snap.docs.map(d => ({
-          ...d.data().data, 
-          id: d.id,
-          registrationCount: d.data().registrationCount || 0,
-          status: d.data().status || d.data().data?.status || 'DRAFT'
-        }));
-
-        setAppState(prev => {
-          const newEvents = [...prev.events];
-          cloudEvents.forEach(ce => {
-            const index = newEvents.findIndex(e => e.id === ce.id);
-            if (index !== -1) {
-              newEvents[index] = { 
-                ...newEvents[index], 
-                ...ce,
-                // CRITICAL: DO NOT overwrite registrations/archers here if they already have data!
-                // These are loaded via separate sharding/subcollection listeners
-                archers: newEvents[index].archers?.length ? newEvents[index].archers : (ce.archers || []),
-                registrations: newEvents[index].registrations?.length ? newEvents[index].registrations : (ce.registrations || [])
-              };
-            } else {
-              newEvents.push(ce as any);
-            }
-          });
-          return { ...prev, events: newEvents };
-        });
-      });
-    }
-
-    return () => {
-      isMounted = false;
-      clearTimeout(subTimeout);
-      unsub();
-      unsubEvents();
-      if ((window as any)._unsubSubmissions) (window as any)._unsubSubmissions();
-    };
-  }, [db, appState.activeEventId, view, hasPendingChanges, appState.isDataLoaded]);
-
-  // Shard Subscription for Active Event
-  useEffect(() => {
-    if (!db || !appState.activeEventId || quotaExceeded || !appState.isDataLoaded) return;
-    
-    // Only subscribe in views that need live updates
-    const liveViews = ['LIVE', 'PUBLIC_LIVE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'ARCHERS', 'FINANCE'];
-    if (!liveViews.includes(view)) return;
-
-    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
-    const isPublicView = !appState.currentUser || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
-    if (isPublicView) return; // Do not use onSnapshot for public guests (save quota)
-
-    const event = appState.events.find(e => e.id === appState.activeEventId);
-    if (!event || !event.isSharded) return;
-
-    let isMounted = true;
-    let unsubShards: () => void = () => {};
-
-    const subTimeout = setTimeout(() => {
-      if (!isMounted) return;
-
-      unsubShards = onSnapshot(collection(db, 'events', appState.activeEventId, 'shards'), (shardsSnap) => {
-        if (!isMounted) return;
-        const isRemoteChange = !shardsSnap.metadata.hasPendingWrites;
-        if (isRemoteChange && !hasPendingChanges) {
-          const shardsByArray: Record<string, string[]> = {};
-          shardsSnap.docs.forEach(d => {
-            const s = d.data();
-            if (s.key && s.content) {
-              if (!shardsByArray[s.key]) shardsByArray[s.key] = [];
-              shardsByArray[s.key][s.index] = s.content;
-            }
-          });
-
-          if (Object.keys(shardsByArray).length === 0) return;
-
-          isSyncingFromCloud.current = true;
-          setAppState(prev => ({
-            ...prev,
-            events: prev.events.map(e => {
-              if (e.id === appState.activeEventId) {
-                const updatedEvent = { ...e };
-                Object.entries(shardsByArray).forEach(([key, shards]) => {
-                  try {
-                    const merged = mergeShards(shards);
-                    if (merged) {
-                      if (key.startsWith('settings_')) {
-                        const settingsKey = key.replace('settings_', '') as keyof TournamentSettings;
-                        if (updatedEvent.settings) {
-                          (updatedEvent.settings as any)[settingsKey] = merged;
-                        }
-                      } else {
-                        (updatedEvent as any)[key] = merged;
-                      }
-                    }
-                  } catch (err) {
-                    console.error(`Failed to merge shards for ${key}:`, err);
-                  }
-                });
-                return updatedEvent;
-              }
-              return e;
-            })
-          }));
-          setTimeout(() => { if (isMounted) isSyncingFromCloud.current = false; }, 100);
-        }
-      }, (error) => {
-        if (!isMounted) return;
-        console.warn("Shard Snapshot Muted Error:", error.message);
-        if (error.code === 'resource-exhausted') setQuotaExceeded(true);
-      });
-    }, 800);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(subTimeout);
-      unsubShards();
-    };
-  }, [db, appState.activeEventId, view, hasPendingChanges, appState.isDataLoaded]);
-
-  // Global Config Subscription
-  useEffect(() => {
-    if (!db) return;
-    const isPrivileged = !!(appState.currentUser?.isSuperAdmin || appState.currentUser?.role === 'SUPERADMIN' || appState.currentUser?.email === 'poedji.sugianto@gmail.com');
-    const isPublicView = !appState.currentUser || (!isPrivileged && (view === 'LANDING' || view.startsWith('PUBLIC_')));
-    if (isPublicView) return; // Disable live config updates for guests
-
-    const unsubConfig = onSnapshot(doc(db, 'systemConfigs', 'global'), (docSnap) => {
-      if (docSnap.exists() && !hasPendingChanges) {
-        const cloudSettings = docSnap.data().data as GlobalSettings;
-        isSyncingFromCloud.current = true;
-        setAppState(prev => ({ ...prev, globalSettings: cloudSettings }));
-        setTimeout(() => { isSyncingFromCloud.current = false; }, 100);
-      }
-    }, (error) => {
-      console.warn("Config snapshot error:", error.message);
-      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
-        setQuotaExceeded(true);
-      }
-    });
-    return () => unsubConfig();
-  }, [db, hasPendingChanges]);
-
-  // Debounced Sync for Profile, Global Settings, and Events (Pushes)
-  useEffect(() => {
-    if (!hasPendingChanges) return;
-    const debounce = setTimeout(() => {
-      console.log("Auto-syncing all pending changes...");
-      syncCloudData(false).then(() => {
-        setHasPendingChanges(false);
-      });
-    }, 300); 
-    return () => clearTimeout(debounce);
-  }, [appState.globalSettings, appState.currentUser, appState.events, hasPendingChanges]);
-/*
-  useEffect(() => {
-    const debounce = setTimeout(syncCloudData, 3000); // 3s for batching
-    return () => clearTimeout(debounce);
-  }, [appState.events, appState.globalSettings, appState.currentUser, isOnline, hasPendingChanges]);
-*/
-
-  // Consistency Check for View and State - Wait for data to be loaded to avoid false kicks
-  useEffect(() => {
-    if (!appState.isDataLoaded || isCheckingLink) return;
-
-    const eventRequiredViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'ELIMINATION', 'ACTIVATE_TOURNAMENT', 'SCORING', 'QUICK_SCORING', 'JUDGE_PANEL', 'LIVE'];
-    if (eventRequiredViews.includes(view) && !activeEvent && appState.isDataLoaded) {
-      setView('MEMBER_DASHBOARD');
-    }
-
-    const publicEventRequiredViews = ['PUBLIC_LIVE', 'PUBLIC_ENTRY_LIST', 'PUBLIC_EVENT_INFO', 'REGISTER_PARTICIPANT'];
-    if (publicEventRequiredViews.includes(view) && !activeEvent && appState.isDataLoaded && !appState.activeEventId) {
-      setView('LANDING');
-    }
-    const authViews = ['MEMBER_DASHBOARD', 'PROFILE', 'SUPER_ADMIN', 'OPERATOR_CENTER'];
-    if (authViews.includes(view) && !appState.currentUser) {
-      setView('LANDING');
-    }
-  }, [view, activeEvent, appState.currentUser, appState.isDataLoaded, isCheckingLink]);
-
-  useEffect(() => {
-    if (activeEvent?.status === 'DRAFT' && view.startsWith('PUBLIC_')) {
-      setView('LANDING');
-      pushNotification("Turnamen Belum Aktif", "Turnamen ini masih dalam status draf dan belum diaktifkan oleh penyelenggara.", "WARNING");
-    }
-  }, [activeEvent, view]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsSplashVisible(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      // Trigger immediate sync when coming back online
-      pushNotification("Kembali Online", "Menghubungkan ke cloud...", "INFO");
-      syncCloudData(true);
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      pushNotification("Sedang Offline", "Bekerja dalam mode lokal. Data akan disimpan di perangkat.", "WARNING");
-    };
-    const handleUpdate = () => setUpdateAvailable(true);
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallBanner(true);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('arcusUpdateAvailable', handleUpdate);
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setShowInstallBanner(false);
-    }
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('arcusUpdateAvailable', handleUpdate);
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  // Polling for updates - Used for lower priority views (Public Mobile Scoreboard, etc)
-  useEffect(() => {
-    if (!db || !isOnline || quotaExceeded) return;
-    
-    const isPublicTournamentView = view.startsWith('PUBLIC_') || view === 'REGISTER_PARTICIPANT';
-    const adminViews = ['EVENT_ADMIN', 'ARCHERS', 'OFFICIALS', 'FINANCE', 'SCORING', 'QUICK_SCORING', 'OPERATOR_CENTER', 'LIVE'];
-    
-    // Sinkronisasi otomatis untuk semua view penting
-    // Data dipastikan segar setiap 15 detik untuk pengunjung & admin
-    const pollInterval = 15000;
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-         console.log(`Sinkronisasi data cloud (${view})...`);
-         fetchCloudData().catch(err => console.error("Gagal sinkronisasi:", err));
-      }
-    }, pollInterval); 
-    return () => clearInterval(interval);
-  }, [view, isOnline, quotaExceeded]);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setShowInstallBanner(false);
-    }
+  const onLoginSuccess = (user: User) => {
+    setAppState(prev => ({ ...prev, currentUser: user }));
+    setView('MEMBER_DASHBOARD');
+    pushNotification("Selamat Datang", `Halo, ${user.name}!`, "SUCCESS");
+    syncCloudData(true);
   };
 
   const handleLogout = async () => {
     if (auth) await signOut(auth);
-    setAppState(prev => ({ ...prev, currentUser: null, activeEventId: null }));
+    setAppState(prev => ({ ...prev, currentUser: null, activeEventId: null, activeScorer: null }));
     setView('LANDING');
   };
 
-  const saveEventToCloud = async (event: ArcheryEvent, forceState?: AppState) => {
-    if (!db) return;
-    
-    // Trigger the main sync method which handles sharding and differential updates.
-    // Pass the state explicitly to avoid stale appStateRef issues during quick transitions.
-    await syncCloudData(true, forceState);
-  };
-
   const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
-    let finalEvent: ArcheryEvent | null = null;
-    let nextState: AppState | null = null;
-
-    setAppState(prev => {
-      const event = prev.events.find(e => e.id === id);
-      if (!event) return prev;
-
-      finalEvent = { ...event, ...updated, localUpdatedAt: new Date().toISOString() };
-      nextState = { 
-        ...prev, 
-        events: prev.events.map(e => e.id === id ? finalEvent! : e) 
-      };
-      return nextState;
-    });
-
-    setHasPendingChanges(true);
-    // CRITICAL: Immediately sync management changes to cloud using the fresh state to avoid stale appStateRef
-    if (finalEvent && db && isOnline && nextState) {
-      await saveEventToCloud(finalEvent, nextState);
-      setHasPendingChanges(false);
-    }
-  };
-
-  const handleDeleteEvent = async (id: string) => {
-    if (!id) return;
-    
-    const eventToDelete = appState.events.find(e => e.id === id);
-    if (!eventToDelete) return;
-
-    setDeletedEventIds(prev => new Set(prev).add(id));
-
-    setAppState(prev => ({ 
-      ...prev, 
-      events: prev.events.filter(e => e.id !== id),
-      activeEventId: prev.activeEventId === id ? null : prev.activeEventId 
+    setAppState(prev => ({
+      ...prev,
+      events: prev.events.map(e => e.id === id ? { ...e, ...updated, updatedAt: new Date().toISOString() } : e)
     }));
     
-    if (view !== 'MEMBER_DASHBOARD' && activeEvent?.id === id) setView('MEMBER_DASHBOARD');
-
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'events', id));
-        pushNotification("Berhasil Dihapus", `Event telah dihapus dari cloud.`, "SUCCESS");
-      } catch (err: any) {
-        pushNotification("Error", err.message, "WARNING");
-      }
-    }
-    
-    setTimeout(() => {
-      setDeletedEventIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }, 5000);
-  };
-
-  const handleShare = (id: string, name?: string) => {
-    const event = appState.events.find(e => e.id === id);
-    const eventName = name || event?.settings?.tournamentName || 'Tournament';
-    
-    // Urutan prioritas link: 
-    // 1. Production URL (dari settings) 
-    // 2. Current Origin (jika bukan local)
-    // 3. Fallback Alias (jika local)
-    const currentOrigin = window.location.origin;
-    const isLocal = currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1');
-    const settingsUrl = appState.globalSettings.productionUrl?.trim();
-    
-    const baseUrl = (settingsUrl && settingsUrl.startsWith('http')) 
-      ? settingsUrl.replace(/\/$/, '') 
-      : (isLocal ? 'https://arcus-digital.arcus.field' : currentOrigin);
-
-    setShareData({
-      isOpen: true,
-      name: eventName,
-      url: `${baseUrl}?event=${id}`,
-      registerUrl: `${baseUrl}?register=${id}`
-    });
-
-    if (isLocal && !settingsUrl) {
-      pushNotification("Lokal Detected", "Berbagi dari localhost mungkin tidak bisa dibuka orang lain. Masukkan link produksi di Pengaturan Super Admin.", "WARNING");
+    if (isOnline && db) {
+       try {
+         await setDoc(doc(db, 'events', id), {
+           ...updated,
+           updatedAt: serverTimestamp()
+         }, { merge: true });
+         pushNotification("Berhasil", "Perubahan disimpan.", "SUCCESS");
+       } catch (err: any) {
+         pushNotification("Gagal Sync", err.message, "WARNING");
+         setHasPendingChanges(true);
+       }
+    } else {
+      setHasPendingChanges(true);
     }
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    const user = appState.users.find(u => u.id === userId);
-    if (!user) return;
-
-    if (user.isSuperAdmin) {
-      pushNotification("Aksi Ditolak", "Tidak dapat menghapus Super Admin.", "WARNING");
-      return;
-    }
-
-    setAppState(prev => ({ ...prev, users: prev.users.filter(u => u.id !== userId) }));
-
-    pushNotification("Menghapus User", `Menghapus akun ${user.name}...`, "INFO");
-
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'profiles', userId));
-        pushNotification("User Dihapus", `Akun ${user.name} telah dihapus permanen.`, "SUCCESS");
-      } catch (err: any) {
-        pushNotification("Error", err.message, "WARNING");
-      }
-    }
-  };
-
-  const onSaveScore = async (score: ScoreEntry | ScoreEntry[], log?: ScoreLog | ScoreLog[]) => {
-    if (!activeEvent) return;
-    const now = Date.now();
-    const scoresArray = (Array.isArray(score) ? score : [score]).map(s => ({ ...s, lastUpdated: now }));
-    const logsArray = Array.isArray(log) ? log : (log ? [log] : []);
-    
-    // Calculate the updated event first to ensure we sync the EXACT SAME data we set in state
-    let updatedEvent: ArcheryEvent | null = null;
-
-    setAppState(prev => {
-      const event = prev.events.find(e => e.id === activeEvent.id);
-      if (!event) return prev;
-      
-      let newScores = [...event.scores];
-      scoresArray.forEach(s => {
-        const normalizedS = (s.sessionId === '1' || s.sessionId === '2' || !s.sessionId) ? 'QUAL' : s.sessionId;
-        const entryToSave = { ...s, sessionId: normalizedS };
-
-        newScores = newScores.filter(existing => {
-          const normalizedExisting = (existing.sessionId === '1' || existing.sessionId === '2' || !existing.sessionId) ? 'QUAL' : existing.sessionId;
-          return !(
-            existing.archerId === s.archerId && 
-            normalizedExisting === normalizedS && 
-            existing.endIndex === s.endIndex
-          );
-        });
-        newScores.push(entryToSave);
-      });
-      
-      updatedEvent = {
-        ...event,
-        scores: newScores,
-        scoreLogs: [...logsArray, ...event.scoreLogs],
-        localUpdatedAt: new Date().toISOString()
-      };
-
-      return {
+  const onDeleteEvent = async (id: string) => {
+    if (!confirm("Hapus turnamen ini permanen?")) return;
+    try {
+      if (db) await deleteDoc(doc(db, 'events', id));
+      setAppState(prev => ({
         ...prev,
-        events: prev.events.map(e => e.id === event.id ? updatedEvent! : e)
-      };
-    });
-
-    setHasPendingChanges(true);
-
-    // Direct Sync to Cloud (Parking Lot to Highway)
-    if (updatedEvent && !isSyncing && !quotaExceeded) {
-       saveEventToCloud(updatedEvent);
-       setHasPendingChanges(false);
-    }
-  };
-
-  const onResetScores = async () => {
-    if (!activeEvent) return;
-    if (!confirm("PERINGATAN: Ini akan MENGHAPUS SEMUA SKOR secara permanen dari Cloud dan Lokal. Lanjutkan?")) return;
-
-    const now = Date.now();
-    let updatedEvent: ArcheryEvent | null = null;
-
-    setAppState(prev => {
-      const event = prev.events.find(e => e.id === activeEvent.id);
-      if (!event) return prev;
-      
-      updatedEvent = {
-        ...event,
-        scores: [], 
-        scoreLogs: [
-          {
-            id: 'reset_' + now,
-            archerId: 'SYSTEM',
-            oldTotal: 0,
-            newTotal: 0,
-            timestamp: now,
-            reason: "PERMANENT HARD RESET",
-            operatorName: "ADMIN"
-          },
-          ...event.scoreLogs
-        ],
-        settings: {
-          ...event.settings,
-          lastResetAt: now 
-        },
-        localUpdatedAt: new Date().toISOString()
-      };
-
-      return {
-        ...prev,
-        events: prev.events.map(e => e.id === event.id ? updatedEvent! : e)
-      };
-    });
-
-    setHasPendingChanges(true);
-    if (updatedEvent) {
-      await saveEventToCloud(updatedEvent);
-      setHasPendingChanges(false);
-      pushNotification("Reset Berhasil", "Semua skor telah dihapus dari cloud.", "SUCCESS");
+        events: prev.events.filter(e => e.id !== id)
+      }));
+      pushNotification("Dihapus", "Turnamen berhasil dihapus.", "SUCCESS");
+    } catch (err: any) {
+      pushNotification("Error", err.message, "WARNING");
     }
   };
 
   const onResetSystemData = async () => {
-    if (!appState.currentUser?.isSuperAdmin) return;
-    if (!confirm("PERINGATAN KRITIS: Anda akan menghapus SELURUH DATA SISTEM (Events, Profiles, Configs) dari Cloud. Tindakan ini tidak dapat dibatalkan. Lanjutkan?")) return;
-    if (!confirm("KONFIRMASI TERAKHIR: Semua data akan hilang selamanya. Anda yakin?")) return;
+    if (!appState.currentUser?.isSuperAdmin && appState.currentUser?.email !== 'poedji.sugianto@gmail.com') return;
+    if (!confirm("Hapus seluruh data sistem?")) return;
 
     setIsSyncing(true);
     try {
-      pushNotification("Hard Reset", "Memulai pembersihan data cloud...", "WARNING");
-      
-      // 1. Delete all events
-      const eventsSnap = await getDocs(collection(db, 'events'));
-      for (const d of eventsSnap.docs) {
-        await deleteDoc(doc(db, 'events', d.id));
-      }
-
-      // 2. Delete all profiles (except self)
-      const profilesSnap = await getDocs(collection(db, 'profiles'));
-      for (const d of profilesSnap.docs) {
-        if (d.id !== appState.currentUser.id) {
-          await deleteDoc(doc(db, 'profiles', d.id));
-        }
-      }
-
-        {/* Reset System Data (CRITICAL) */}
-        // 3. Reset Global Settings to null/defaults
-        const initialSettings: GlobalSettings = {
-          feeAdult: 0, 
-          feeKids: 0, 
-          maintenanceMode: false,
-          contactSupport: '087834193339', 
-          bankProvider: '',
-          bankAccountNumber: '', 
-          bankAccountName: '',
-          dataRetentionDays: 90, 
-          practiceRetentionDays: 7,
-          paymentGatewayProvider: 'NONE',
-          paymentGatewayIsProduction: false,
-          platformFeePercentage: 0
-        };
-      
-      await setDoc(doc(db, 'systemConfigs', 'global'), { 
-        id: 'global', 
-        data: initialSettings, 
-        updatedAt: new Date().toISOString() 
+      const res = await fetch("/api/admin/nuke-database", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authEmail: appState.currentUser.email })
       });
-
-      // Clear Local Storage - CRITICAL to prevent re-syncing old data back to cloud
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.clear();
-
-      pushNotification("Reset Berhasil", "Sistem telah dibersihkan. Memuat ulang...", "SUCCESS");
-      
-      // Force reload state
-      setAppState(prev => ({
-        ...prev,
-        events: [],
-        users: prev.users.filter(u => u.id === appState.currentUser?.id),
-        globalSettings: initialSettings,
-        activeEventId: null
-      }));
-
-      setTimeout(() => window.location.reload(), 2000);
-
+      if (res.ok) {
+        pushNotification("Reset Berhasil", "Database dibersihkan.", "SUCCESS");
+        window.location.reload();
+      } else {
+        throw new Error("Gagal nuke database");
+      }
     } catch (err: any) {
-      console.error("Hard Reset Error:", err);
-      pushNotification("Reset Gagal", err.message, "WARNING");
+      pushNotification("Gagal", err.message, "WARNING");
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handleUpdateGlobalSettings = (newSettings: GlobalSettings) => {
-    const newState = { ...appState, globalSettings: newSettings };
-    setAppState(newState);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-    setHasPendingChanges(true);
-    // Trigger immediate sync for global settings with the NEW state
-    syncCloudData(true, newState);
-  };
+  const activeEvent = useMemo(() => 
+    appState.events.find(e => e.id === appState.activeEventId) || null
+  , [appState.events, appState.activeEventId]);
 
-  // Robust navigation for public views to ensure state sync
-  const navigateToPublicEvent = (id: string, targetView: View) => {
-    // Ensuring activeEventId is set in appState before or at the same time as the view change
-    setAppState(prev => ({ ...prev, activeEventId: id }));
-    setView(targetView);
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 selection:bg-arcus-red selection:text-white relative">
-      <Toaster position="top-right" richColors closeButton toastOptions={{ className: 'print:hidden' }} />
-      {/* Professional Sync Status - Only for Organizers */}
-      {appState.currentUser && (
-        <div className="fixed top-0 left-0 right-0 z-[200] px-4 py-1.5 flex items-center justify-between pointer-events-none transition-opacity print:hidden">
-          <div className="flex items-center gap-2">
-            <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-arcus-red animate-pulse' : (db ? 'bg-emerald-500' : 'bg-slate-300')}`} />
-            <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
-              {isSyncing ? 'Cloud Syncing' : (db ? 'Cloud Ready' : 'Offline Mode')}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-              <div className="px-2 py-0.5 bg-slate-900/5 rounded-full flex items-center gap-1.5">
-                <div className="w-1 h-1 bg-slate-300 rounded-full" />
-                <span className="text-[7px] font-black uppercase tracking-[0.2em] text-slate-400">
-                  User: {appState.currentUser.name || appState.currentUser.email}
-                </span>
-              </div>
-          </div>
+  // Main UI Router
+  const renderView = () => {
+    if (quotaExceeded && !isOnline) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mb-6" />
+          <h1 className="text-2xl font-black mb-4">MODE OFFLINE DARURAT</h1>
+          <p className="text-slate-600 mb-8 max-w-md">Limit Firestore Arcus telah habis hari ini. Sistem beralih ke mode offline sepenuhnya. Data hanya disimpan di perangkat ini.</p>
+          <button onClick={() => setQuotaExceeded(false)} className="px-8 py-3 bg-arcus-red text-white rounded-2xl font-bold uppercase tracking-widest">Lanjutkan Offline</button>
         </div>
-      )}
+      );
+    }
 
-      <AnimatePresence>
-        {(isSplashVisible || isCheckingLink) && (
-          <motion.div 
-            key="splash"
-            exit={{ opacity: 0, scale: 1.1 }}
-            className="fixed inset-0 z-[10000] bg-slate-900 flex flex-col items-center justify-center p-8 overflow-hidden"
-          >
-            <motion.div 
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="relative"
-            >
-              <div className="absolute inset-0 bg-arcus-red/20 blur-[120px] rounded-full scale-150 animate-pulse" />
-              <ArcusLogo className="w-40 h-40 md:w-56 md:h-56 text-white relative z-10 filter drop-shadow-[0_0_50px_rgba(239,68,68,0.5)]" />
-            </motion.div>
-            
-            <motion.div 
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="mt-12 text-center relative z-10"
-            >
-              <h1 className="text-5xl md:text-7xl font-black font-oswald text-white uppercase italic tracking-tighter leading-none">
-                ARCUS <span className="text-arcus-red">ARCHERY</span>
-              </h1>
-              <div className="mt-6 flex flex-col items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-1.5 bg-arcus-red rounded-full animate-ping" />
-                  <p className="text-[12px] font-black text-white/40 uppercase tracking-[0.5em]">
-                    {isCheckingLink ? 'VALIDATING LINK...' : 'TOURNAMENT OS INITIALIZING'}
-                  </p>
-                </div>
-                <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ x: "-100%" }}
-                    animate={{ x: "100%" }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                    className="w-1/2 h-full bg-arcus-red shadow-[0_0_15px_rgba(239,68,68,0.5)]"
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {updateAvailable && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
-          <div className="bg-slate-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-700">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black font-oswald uppercase italic tracking-widest text-arcus-red">Update Tersedia</span>
-              <span className="text-xs font-bold">Versi baru ARCUS telah siap.</span>
-            </div>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="bg-arcus-red text-white px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:brightness-110 transition-all"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Status Bar removed for cleaner UI on paid plan */}
-
-      <main className="min-h-screen pt-10 sm:pt-11">
-        {view === 'LANDING' && (
-          <LandingPage 
-            events={appState.events} 
-            onViewLive={(id) => navigateToPublicEvent(id, 'PUBLIC_LIVE')} 
-            onViewParticipants={(id) => navigateToPublicEvent(id, 'PUBLIC_ENTRY_LIST')} 
-            onViewInfo={(id) => navigateToPublicEvent(id, 'PUBLIC_EVENT_INFO')} 
-            onRegister={(id) => { 
-              console.log("App: onRegister called for", id);
-              navigateToPublicEvent(id, 'REGISTER_PARTICIPANT');
-              pushNotification("Membuka Pendaftaran", "Menyiapkan formulir pendaftaran...", "INFO");
-            }}
-            onScorerLogin={() => setView('SCORER_LOGIN')}
-            onRefresh={() => fetchCloudData(true)}
-            isSyncing={isSyncing}
-            syncStatus={syncStatus}
-            quotaExceeded={quotaExceeded}
-            onShare={handleShare} 
-            currentUser={appState.currentUser}
-            onLogout={handleLogout}
-            onLogin={() => setView('LOGIN')}
-            onCreateEvent={() => {
-              if (appState.currentUser) setView('MEMBER_DASHBOARD');
-              else setView('REGISTER');
-            }}
-          />
-        )}
-        {view === 'SCORER_LOGIN' && (
-          <ScorerLogin 
-            events={appState.events} 
-            onLogin={(event, scorer) => {
-              setAppState(prev => ({ 
-                ...prev, 
-                activeEventId: event.id, 
-                activeScorer: scorer,
-                currentUser: {
-                  id: scorer.id,
-                  name: scorer.name,
-                  email: 'scorer@field.arcus',
-                  isOrganizer: false,
-                  role: UserRole.SCORER
-                }
-              }));
-              setView('EVENT_ADMIN');
-              pushNotification("Login Scorer", `Selamat bertugas, ${scorer.name}!`, "SUCCESS");
-            }}
-            onBack={() => setView('LANDING')}
-          />
-        )}
-
-        {(view === 'LOGIN' || view === 'REGISTER') && (
-          <LoginPanel 
-            users={appState.users} 
-            initialMode={view === 'REGISTER' ? 'REGISTER' : 'LOGIN'}
-            onLogin={(u) => { 
-              setAppState(prev => {
-                const updatedEvents = prev.events.map(e => {
-                  if (!e.settings?.organizerId || e.settings?.organizerId === 'guest') {
-                    const updated = { ...e, settings: { ...e.settings, organizerId: u.id } };
-                    // Sync this specific event to cloud
-                    saveEventToCloud(updated);
-                    return updated;
-                  }
-                  return e;
-                });
-                return { ...prev, currentUser: u, events: updatedEvents };
-              }); 
-              setView('MEMBER_DASHBOARD'); 
-              // Clear URL params to avoid re-triggering login view if we came from a link
-              window.history.replaceState({}, document.title, window.location.pathname);
-            }} 
-            onRegister={async (u) => {
-              setAppState(prev => ({ ...prev, users: [...prev.users, u] }));
-              if (db) {
-                await setDoc(doc(db, 'profiles', u.id), {
-                  id: u.id,
-                  data: u,
-                  updatedAt: new Date().toISOString()
-                }, { merge: true });
-              }
-            }} 
-            onUpdateUser={async (u) => {
-              setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }));
-              if (db) {
-                try {
-                  await setDoc(doc(db, 'profiles', u.id), u, { merge: true });
-                  pushNotification("Profil Diperbarui", "User berhasil diperbarui di cloud.", "SUCCESS");
-                } catch (err: any) {
-                  handleFirestoreError(err, OperationType.WRITE, `profiles/${u.id}`);
-                }
-              }
-            }} 
-            onBack={() => setView('LANDING')} 
-          />
-        )}
-        {view === 'ACTIVATE_TOURNAMENT' && appState.activeEventId && (
-          <ActivateTournament
-            event={appState.events.find(e => e.id === appState.activeEventId)!}
-            userEmail={appState.currentUser?.email || ''}
-            onActivate={(code: string) => {
-              const event = appState.events.find(e => e.id === appState.activeEventId);
-              if (event && event.settings.activationCode === code) {
-                handleUpdateEvent(event.id, { 
-                  status: 'UPCOMING', 
-                  settings: { ...event.settings, isActivated: true } 
-                });
-                setView('EVENT_ADMIN');
-                pushNotification("Aktivasi Berhasil", `Turnamen "${event.settings?.tournamentName}" telah diaktifkan dan sekarang publik.`, "SUCCESS");
-                
-                // Force comprehensive sync to ensure everyone else sees it
-                setTimeout(() => syncCloudData(true), 800);
-              } else {
-                pushNotification("Kode Salah", "Kode aktivasi yang Anda masukkan tidak valid.", "WARNING");
-              }
-            }}
-            onBack={() => setView('MEMBER_DASHBOARD')}
-            onResend={async () => {
-              const event = appState.events.find(e => e.id === appState.activeEventId);
-              if (event) {
-                try {
-                  const response = await fetch('/api/send-email-otp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      email: appState.currentUser!.email,
-                      subject: "Aktivasi Turnamen ARCUS (Kirim Ulang)",
-                      message: `Halo ${appState.currentUser!.name},\n\nKode aktivasi untuk turnamen "${event.settings?.tournamentName}" adalah: ${event.settings?.activationCode}\n\nSilakan masukkan kode ini di dashboard untuk mengaktifkan turnamen Anda.`
-                    })
-                  });
-                  const result = await response.json();
-                  if (!response.ok || !result.success) {
-                    throw new Error(result.error || result.message || "Gagal mengirim email");
-                  }
-
-                  if (result.isSimulated) {
-                    pushNotification("Mode Simulasi", "Kode aktivasi (Simulasi): " + event.settings.activationCode, "SUCCESS");
-                  } else {
-                    pushNotification("Email Terkirim", "Kode aktivasi telah dikirim ulang ke email Anda.", "INFO");
-                  }
-                } catch (err: any) {
-                  console.error("Failed to resend activation email", err);
-                  pushNotification("Gagal Kirim Email", err.message, "WARNING");
-                }
-              }
-            }}
-          />
-        )}
-
-        {view === 'RESET_PASSWORD' && (
-          <ResetPasswordPanel 
-            onSuccess={() => setView('LOGIN')}
-            onBack={() => setView('LANDING')}
-          />
-        )}
-
-        {view === 'MEMBER_DASHBOARD' && appState.currentUser && (
-          <MemberDashboard 
-            userName={appState.currentUser.name} 
-            userId={appState.currentUser.id} 
-            userRole={appState.currentUser.role}
-            currentUser={appState.currentUser}
-            isSuperAdmin={appState.currentUser.isSuperAdmin} 
-            notifications={appState.notifications} 
-            onMarkNotifRead={() => setAppState(prev => ({ ...prev, notifications: prev.notifications.map(n => ({ ...n, read: true })) }))} 
-            globalSettings={appState.globalSettings} 
-            onLogout={handleLogout}
-            events={(appState.events || []).filter(e => e && (e.settings?.organizerId === appState.currentUser?.id || appState.currentUser?.isSuperAdmin))} 
-            onCreateEvent={async (n, isFree, desc) => { 
-              const activationCode = Math.floor(1000 + Math.random() * 9000).toString();
-              const e: ArcheryEvent = { 
-                id: 'evt_'+Math.random().toString(36).substr(2,9), 
-                settings: { 
-                  ...DEFAULT_SETTINGS, 
-                  tournamentName: n, 
-                  description: desc || '',
-                  organizerId: appState.currentUser!.id, 
-                  isFreeEvent: isFree,
-                  createdAt: Date.now(),
-                  activationCode
-                }, 
-                archers: [], 
-                scores: [], 
-                scoreLogs: [], 
-                matches: {} as any, 
-                registrations: [], 
-                disbursementRequests: [], 
-                status: 'DRAFT' as const 
-              }; 
-              
-              const nextState = { ...appState, events: [e, ...appState.events], activeEventId: e.id };
-              setAppState(nextState);
-              
-              saveEventToCloud(e, nextState);
-              setView('ACTIVATE_TOURNAMENT'); 
-              
-              fetch('/api/send-email-otp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  email: appState.currentUser!.email,
-                  subject: "Aktivasi Turnamen ARCUS",
-                  message: `Halo ${appState.currentUser!.name},\n\nKode aktivasi untuk turnamen "${n}" adalah: ${activationCode}\n\nSilakan masukkan kode ini di dashboard untuk mengaktifkan turnamen Anda.`
-                })
-              }).then(async (response) => {
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                  throw new Error(result.message || "Gagal mengirim email");
-                }
-                
-                if (result.isSimulated) {
-                  pushNotification("Mode Simulasi", "Kode aktivasi (Simulasi): " + activationCode, "SUCCESS");
-                } else {
-                  pushNotification("Email Terkirim", "Kode aktivasi telah dikirim ke email Anda.", "INFO");
-                }
-              }).catch((err) => {
-                console.error("Failed to send activation email", err);
-                pushNotification("Gagal Kirim Email", err.message || "Gagal mengirim kode aktivasi otomatis. Gunakan tombol Kirim Ulang.", "WARNING");
-              });
-            }} 
-            onCreatePractice={(n, isFree) => { 
-              const e: ArcheryEvent = { 
-                id: 'evt_'+Math.random().toString(36).substr(2,9), 
-                settings: { 
-                  ...DEFAULT_SETTINGS, 
-                  tournamentName: n, 
-                  organizerId: appState.currentUser!.id, 
-                  isPractice: true, 
-                  isFreeEvent: isFree,
-                  createdAt: Date.now() 
-                }, 
-                archers: [], 
-                scores: [], 
-                scoreLogs: [], 
-                matches: {} as any, 
-                registrations: [], 
-                disbursementRequests: [], 
-                status: 'UPCOMING' as const 
-              }; 
-              const nextState = { ...appState, events: [e, ...appState.events], activeEventId: e.id };
-              setAppState(nextState);
-              saveEventToCloud(e, nextState);
-              setView('EVENT_ADMIN'); 
-              pushNotification("Sesi Latihan", `Latihan "${n}" siap digunakan${isFree ? ' (Bebas Biaya Platform)' : ''}.`, "SUCCESS"); 
-            }} 
-            onCreateSelfPractice={() => {}} 
-            onManageEvent={(id) => { 
-                const ev = appState.events.find(e => e.id === id); 
-                setAppState(prev => ({ ...prev, activeEventId: id })); 
-                if (ev?.status === 'DRAFT') {
-                  setView('ACTIVATE_TOURNAMENT');
-                } else { 
-                  setView('EVENT_ADMIN'); 
-                } 
-              }} 
-              onActivateEvent={(id) => { 
-                setAppState(prev => ({ ...prev, activeEventId: id })); 
-                setView('ACTIVATE_TOURNAMENT'); 
-              }}
-            onViewLive={(id) => { 
-              setAppState(prev => ({ ...prev, activeEventId: id })); 
-              setView('LIVE'); 
-            }} 
-            onUpdateEvent={handleUpdateEvent} 
-            onDeleteEvent={handleDeleteEvent} 
-            onRefreshData={() => fetchCloudData(true)} 
-            onSyncNow={() => syncCloudData(true)}
-            isSyncing={isSyncing}
-            lastSync={lastSync}
-            onShare={handleShare} 
-            onGoToSuperAdmin={() => setView('SUPER_ADMIN')} 
-          />
-        )}
-        {view === 'SUPER_ADMIN' && appState.currentUser?.isSuperAdmin && (
-          <SuperAdminPanel 
-            state={appState} 
-            onUpdateSettings={handleUpdateGlobalSettings} 
-            onResetSystemData={onResetSystemData}
-            onUpdateEvent={handleUpdateEvent} 
-            onDeleteEvent={handleDeleteEvent} 
-            onDeleteUser={handleDeleteUser} 
-            onUpdateUser={async (u) => {
-              setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr) }));
-              if (db) {
-                try {
-                  await setDoc(doc(db, 'profiles', u.id), u);
-                  pushNotification("Profil Diperbarui", "User berhasil diperbarui di cloud.", "SUCCESS");
-                } catch (err: any) {
-                  handleFirestoreError(err, OperationType.WRITE, `profiles/${u.id}`);
-                }
-              }
-            }} 
-            onSendNotif={(n) => setAppState(prev => ({ ...prev, notifications: [n, ...prev.notifications] }))} 
-            onBack={() => setView('MEMBER_DASHBOARD')} 
-          />
-        )}
-        {view === 'PROFILE' && appState.currentUser && <ProfilePanel user={appState.currentUser} eventsManaged={appState.events.filter(e => e.settings?.organizerId === appState.currentUser?.id).length} onUpdate={(u) => setAppState(prev => ({ ...prev, users: prev.users.map(usr => usr.id === u.id ? u : usr), currentUser: u }))} onBack={() => setView('MEMBER_DASHBOARD')} contactSupport={appState.globalSettings.contactSupport} />}
-        {view === 'EVENT_ADMIN' && activeEvent && (
-          <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-24 animate-in fade-in duration-700 px-4 md:px-0">
-            {/* Console Header */}
-            <div className="relative group overflow-hidden bg-slate-50/50 p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] flex flex-col lg:flex-row items-center justify-between gap-6 md:gap-8">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/50 rounded-full -mr-32 -mt-32 pointer-events-none group-hover:scale-110 transition-transform duration-1000" />
-              <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6 relative z-10 w-full lg:w-auto">
-                <button 
-                  onClick={() => {
-                    if (appState.activeScorer) {
-                      setAppState(prev => ({ ...prev, activeScorer: null, currentUser: null, activeEventId: null }));
-                      setView('LANDING');
-                    } else {
-                      setView('MEMBER_DASHBOARD');
-                    }
-                  }} 
-                  className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-white rounded-xl text-slate-400 hover:text-arcus-red hover:bg-red-50 transition-all active:scale-90 group/btn"
-                >
-                  <ArrowLeft className="w-5 h-5 group-hover/btn:-translate-x-1 transition-transform" />
-                </button>
-                <div className="space-y-0.5 md:space-y-1">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <span className="bg-arcus-red text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest italic animate-pulse">Live Console</span>
-                    <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest">ARCUS TOUR-OS v2.0</span>
-                  </div>
-                  <h2 className="text-xl md:text-3xl lg:text-4xl font-black font-oswald uppercase italic leading-none tracking-tighter text-slate-900 drop-shadow-sm">{activeEvent?.settings?.tournamentName}</h2>
-                  <p className="flex items-center gap-2 text-[9px] md:text-[11px] font-bold text-slate-500 italic">
-                    <Activity className="w-2.5 h-2.5 text-emerald-500" />
-                    {appState.activeScorer ? `Petugas: ${appState.activeScorer.name}` : 'Akses Penuh: Penyelenggara'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap md:flex-nowrap gap-2 relative z-10 w-full lg:w-auto">
-                 {!appState.activeScorer && (
-                   <button 
-                     onClick={() => setView('FINANCE')} 
-                     className="flex-1 md:flex-none px-4 py-3 md:px-6 md:py-3.5 bg-white hover:bg-slate-900 text-slate-900 hover:text-white rounded-lg md:rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
-                   >
-                     <DollarSign className="w-3.5 h-3.5" /> KEUANGAN
-                   </button>
-                 )}
-                 <button 
-                   onClick={() => setView('LIVE')} 
-                   className="flex-1 md:flex-none px-4 py-3 md:px-6 md:py-3.5 bg-arcus-red text-white rounded-lg md:rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-xl shadow-arcus-red/20"
-                 >
-                   <Monitor className="w-3.5 h-3.5 animate-pulse" /> LIVE BOARD
-                 </button>
-              </div>
-            </div>
-
-            {/* Console App Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 md:gap-6">
-                {(!appState.activeScorer) && (
-                  <button onClick={() => setView('SETTINGS')} className="group p-5 md:p-8 bg-slate-50/50 rounded-[1.5rem] md:rounded-[2rem] hover:bg-slate-100 transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-slate-900 transition-colors">
-                      <SettingsIcon className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-slate-900 mb-0.5 md:mb-1 leading-none">PENGATURAN</p>
-                    <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Konfigurasi Event</p>
-                  </button>
-                )}
-                
-                {( !appState.activeScorer || appState.activeScorer.permissions.includes('EDIT_ARCHER')) && (
-                  <button onClick={() => setView('ARCHERS')} className="group p-5 md:p-8 bg-slate-50/50 rounded-[1.5rem] md:rounded-[2rem] hover:bg-blue-50 transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-blue-600 transition-colors">
-                      <UsersIcon className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-slate-900 mb-0.5 md:mb-1 leading-none">PESERTA</p>
-                    <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Database Archer</p>
-                  </button>
-                )}
-
-                {!appState.activeScorer && (
-                  <button onClick={() => setView('OFFICIALS')} className="group p-5 md:p-8 bg-slate-50/50 rounded-[1.5rem] md:rounded-[2rem] hover:bg-blue-50 transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-blue-600 transition-colors">
-                      <UsersIcon className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-slate-900 mb-0.5 md:mb-1 leading-none">OFFICIAL</p>
-                    <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Manajer & Pelatih</p>
-                  </button>
-                )}
-
-                {( !appState.activeScorer || appState.activeScorer.permissions.includes('INPUT_SCORE')) && (
-                  <>
-                    <button onClick={() => setView('SCORING')} className="group p-5 md:p-8 bg-slate-50/50 rounded-[1.5rem] md:rounded-[2rem] hover:bg-emerald-50 transition-all text-left relative overflow-hidden active:scale-95">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-emerald-600 transition-colors">
-                        <Target className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                      </div>
-                      <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-slate-900 mb-0.5 md:mb-1 leading-none">SCORING</p>
-                      <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Input Skor</p>
-                    </button>
-                    <button onClick={() => setView('QUICK_SCORING')} className="group p-5 md:p-8 bg-emerald-50 rounded-[1.5rem] md:rounded-[2rem] border border-emerald-100 hover:bg-emerald-100 transition-all text-left relative overflow-hidden active:scale-95">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-emerald-600 transition-colors border border-emerald-100">
-                        <Zap className="w-5 h-5 text-emerald-500 group-hover:text-white transition-all group-hover:scale-110" />
-                      </div>
-                      <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-emerald-900 mb-0.5 md:mb-1 leading-none">INPUT CEPAT</p>
-                      <p className="text-[8px] md:text-[9px] font-black text-emerald-600/60 uppercase tracking-widest">Entry Kilat</p>
-                    </button>
-                  </>
-                )}
-
-                {( !appState.activeScorer || appState.activeScorer.permissions.includes('INPUT_SCORE')) && (
-                  <button onClick={() => setView('OPERATOR_CENTER')} className="group p-5 md:p-8 bg-slate-900 rounded-[1.5rem] md:rounded-[2rem] hover:bg-black transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white/5 rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-arcus-red transition-all border border-white/10">
-                      <Database className="w-5 h-5 text-white/40 group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-white mb-0.5 md:mb-1 leading-none">OPERATOR</p>
-                    <p className="text-[8px] md:text-[9px] font-black text-white/30 uppercase tracking-widest">Kontrol Alur</p>
-                  </button>
-                )}
-
-                {( !appState.activeScorer || appState.activeScorer.permissions.includes('MANAGE_MATCHES')) && (
-                  <button onClick={() => setView('ELIMINATION')} className="group p-5 md:p-8 bg-slate-50/50 rounded-[1.5rem] md:rounded-[2rem] hover:bg-amber-50 transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-amber-500 transition-colors">
-                      <Swords className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-slate-900 mb-0.5 md:mb-1 leading-none">ELIMINASI</p>
-                    <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bracket & Aduan</p>
-                  </button>
-                )}
-                <button onClick={() => setView('RESULTS')} className="group p-5 md:p-8 bg-slate-950 rounded-[1.5rem] md:rounded-[2rem] hover:bg-black transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white/5 rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-arcus-red transition-all border border-white/10">
-                      <FileDown className="w-5 h-5 text-arcus-red group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-white mb-0.5 md:mb-1 leading-none">LAPORAN</p>
-                    <p className="text-[8px] md:text-[9px] font-black text-white/20 uppercase tracking-widest">Ekspor & Data Final</p>
-                </button>
-                <button onClick={() => setView('ID_CARD_EDITOR')} className="group p-5 md:p-8 bg-blue-50 rounded-[1.5rem] md:rounded-[2rem] border border-blue-100 hover:bg-blue-100 transition-all text-left relative overflow-hidden active:scale-95">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl flex items-center justify-center mb-4 md:mb-6 group-hover:bg-blue-600 transition-all border border-blue-100">
-                      <CreditCard className="w-5 h-5 text-blue-500 group-hover:text-white transition-colors" />
-                    </div>
-                    <p className="font-black uppercase font-oswald italic text-lg md:text-xl tracking-tighter text-blue-900 mb-0.5 md:mb-1 leading-none">ID CARD</p>
-                    <p className="text-[8px] md:text-[9px] font-black text-blue-600/40 uppercase tracking-widest">Desain & Cetak</p>
-                </button>
-            </div>
-          </div>
-        )}
-        {view === 'SETTINGS' && activeEvent && (
-          <AdminPanel 
-            eventId={activeEvent.id}
-            settings={activeEvent.settings} 
-            scorerAccess={activeEvent.scorerAccess || []}
-            isSuperAdmin={appState.currentUser?.isSuperAdmin}
-            onSave={(s) => handleUpdateEvent(activeEvent.id, { settings: s })} 
-            onUpdateScorers={(scorers) => handleUpdateEvent(activeEvent.id, { scorerAccess: scorers })}
-            onClear={() => {}} 
-            onDelete={() => handleDeleteEvent(activeEvent.id)} 
-            onBack={() => setView('EVENT_ADMIN')} 
-            onOpenTV={() => {
-              setLiveBoardTVMode(true);
-              setView('LIVE');
-            }}
-          />
-        )}
-        {view === 'ARCHERS' && activeEvent && (
-          <ArcherList 
-            archers={(activeEvent.archers || []).filter(a => a.category !== CategoryType.OFFICIAL)} 
-            archersPerTarget={activeEvent.settings?.archersPerTarget || 4} 
-            totalTargets={activeEvent.settings?.totalTargets || 20} 
-            settings={activeEvent.settings}
-            eventId={activeEvent.id}
-            globalSettings={appState.globalSettings}
-            onAdd={(a) => handleUpdateEvent(activeEvent.id, { archers: [...(activeEvent.archers || []).filter(x => x.category !== CategoryType.OFFICIAL), a] })} 
-            onUpdate={(a) => handleUpdateEvent(activeEvent.id, { archers: (activeEvent.archers || []).map(arc => arc.id === a.id ? a : arc) })} 
-            onRemove={(id) => handleUpdateEvent(activeEvent.id, { 
-              archers: (activeEvent.archers || []).filter(a => a.id !== id),
-              registrations: (activeEvent.registrations || []).filter(r => r.id !== id)
-            })} 
-            onBulkUpdate={(updated) => handleUpdateEvent(activeEvent.id, { archers: [...(activeEvent.archers || []).filter(a => a.category === CategoryType.OFFICIAL), ...updated] })} 
-            onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
-            onRefreshData={() => fetchCloudData(true)}
-            onPushToCloud={() => syncCloudData(true)}
-            isPushing={isSyncing}
-            onBack={() => setView('EVENT_ADMIN')} 
-          />
-        )}
-        {view === 'ID_CARD_EDITOR' && activeEvent && (
-          <IdCardEditor 
-            archers={[...(activeEvent.archers || []), ...(activeEvent.officials || [])] as any[]} 
-            settings={activeEvent.settings} 
-            onBack={() => setView('ARCHERS')} 
-          />
-        )}
-        {view === 'OFFICIALS' && activeEvent && (
-          <OfficialList 
-            officials={[
-              ...(activeEvent.officials || []),
-              ...(activeEvent.archers || []).filter(a => a.category === CategoryType.OFFICIAL)
-            ] as any[]}
-            settings={activeEvent.settings}
-            onUpdate={(o) => {
-              const isNewOfficial = (activeEvent.officials || []).some(x => x.id === o.id);
-              if (isNewOfficial) {
-                handleUpdateEvent(activeEvent.id, {
-                  officials: (activeEvent.officials || []).map(arc => arc.id === o.id ? o : arc),
-                  registrations: (activeEvent.registrations || []).map(reg => reg.id === o.id ? { ...reg, status: o.status } : reg)
-                });
-              } else {
-                handleUpdateEvent(activeEvent.id, { 
-                  archers: (activeEvent.archers || []).map(arc => arc.id === o.id ? o : arc),
-                  registrations: (activeEvent.registrations || []).map(reg => reg.id === o.id ? { ...reg, status: o.status } : reg)
-                });
-              }
-            }}
-            onRemove={(id) => handleUpdateEvent(activeEvent.id, { 
-              archers: (activeEvent.archers || []).filter(a => a.id !== id),
-              officials: (activeEvent.officials || []).filter(a => a.id !== id),
-              registrations: (activeEvent.registrations || []).filter(r => r.id !== id)
-            })}
-            onGoToIdCardEditor={() => setView('ID_CARD_EDITOR')}
-            onBack={() => setView('EVENT_ADMIN')}
-          />
-        )}
-        {view === 'SCORING' && activeEvent && <ScoringPanel state={activeEvent} onSaveScore={onSaveScore} onBack={() => setView('EVENT_ADMIN')} />}
-        {view === 'QUICK_SCORING' && activeEvent && <QuickScoringPanel event={activeEvent} onSaveScore={onSaveScore} onBack={() => setView('EVENT_ADMIN')} />}
-        {view === 'OPERATOR_CENTER' && activeEvent && <OperatorCenter event={activeEvent} onSaveScore={onSaveScore} onBack={() => setView('EVENT_ADMIN')} />}
-        {view === 'ELIMINATION' && activeEvent && <EliminationPanel event={activeEvent} onUpdateMatches={(m) => handleUpdateEvent(activeEvent.id, { matches: m })} onBack={() => setView('EVENT_ADMIN')} />}
-        {view === 'RESULTS' && activeEvent && <ResultsPanel state={activeEvent} onResetScores={onResetScores} onBack={() => setView('EVENT_ADMIN')} />}
-        {view === 'FINANCE' && activeEvent && (
-          <FinancePanel 
-            event={activeEvent} 
-            globalSettings={appState.globalSettings}
-            isSuperAdmin={appState.currentUser?.isSuperAdmin}
-            onApproveRegistration={async (regId) => { 
-          const reg = activeEvent.registrations.find(r => r.id === regId); 
-          if (reg) { 
-            const isOfficial = reg.category === 'OFFICIAL';
-            const existingArcher = activeEvent.archers.find(a => a.id === regId);
-            const existingOfficial = (activeEvent.officials || []).find(o => o.id === regId);
-            
-            let updatePayload: Partial<ArcheryEvent> = {
-              registrations: activeEvent.registrations.map(r => r.id === regId ? { ...r, status: RegistrationStatus.APPROVED } : r)
-            };
-
-            if (isOfficial) {
-              // Add/Update in officials
-              const newOfficial = { ...reg, status: RegistrationStatus.APPROVED };
-              if (existingOfficial) {
-                updatePayload.officials = (activeEvent.officials || []).map(o => o.id === regId ? { ...o, status: RegistrationStatus.APPROVED } : o);
-              } else {
-                updatePayload.officials = [...(activeEvent.officials || []), newOfficial as any];
-              }
-              // Remove from archers if mistaken
-              if (existingArcher) {
-                updatePayload.archers = activeEvent.archers.filter(a => a.id !== regId);
-              }
+    switch(view) {
+      case 'LANDING':
+        return <LandingPage 
+          events={appState.events} 
+          currentUser={appState.currentUser}
+          onViewLive={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            // Logika untuk ke scoreboard (bisa ke PUBLIC_EVENT_INFO dulu atau langsung)
+            setView('PUBLIC_EVENT_INFO');
+          }}
+          onViewParticipants={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('PUBLIC_EVENT_INFO');
+          }}
+          onViewInfo={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('PUBLIC_EVENT_INFO');
+          }}
+          onRegister={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('REGISTER_PARTICIPANT');
+          }}
+          onLogin={() => setView('LOGIN_PANEL')}
+          onScorerLogin={() => setView('SCORER_LOGIN')}
+          onCreateEvent={() => {
+            if (!appState.currentUser) {
+              setView('LOGIN_PANEL');
             } else {
-              // Add/Update in archers
-              if (existingArcher) {
-                updatePayload.archers = activeEvent.archers.map(a => a.id === regId ? { ...a, status: RegistrationStatus.APPROVED } : a);
-              } else {
-                const finalPin = Math.floor(1000 + Math.random() * 9000).toString();
-                const newArcher: Archer = { ...reg, status: RegistrationStatus.APPROVED, targetNo: 0, position: 'A', wave: 1, pin: finalPin }; 
-                updatePayload.archers = [...activeEvent.archers, newArcher];
-              }
-              // Remove from officials if mistaken
-              if (existingOfficial) {
-                updatePayload.officials = (activeEvent.officials || []).filter(o => o.id !== regId);
-              }
+              setView('MEMBER_DASHBOARD');
             }
-
-            handleUpdateEvent(activeEvent.id, updatePayload); 
-
-            // Update submission record in cloud for real-time responsiveness
+          }}
+          onShare={(id) => {
+            const ev = appState.events.find(e => e.id === id);
+            setShareData({
+              isOpen: true,
+              url: window.location.origin + '?event=' + id,
+              name: ev?.settings.tournamentName || 'Turnamen Panahan'
+            });
+          }}
+          onLogout={handleLogout}
+          onRefresh={() => syncCloudData(true)}
+          isSyncing={isSyncing}
+          quotaExceeded={quotaExceeded}
+        />;
+      
+      case 'REGISTER_PARTICIPANT':
+        if (!activeEvent) return null;
+        return <RegistrationPanel 
+          event={activeEvent}
+          globalSettings={appState.globalSettings}
+          onRegister={async (regs) => {
             try {
-              if (db) {
-                const subRef = doc(db, 'events', activeEvent.id, 'submissions', regId);
-                await updateDoc(subRef, { status: RegistrationStatus.APPROVED });
-              }
-            } catch (err) {
-              console.warn("Failed to update cloud submission:", err);
-            }
-
-            // Send Confirmation Email
-            try {
-              const response = await fetch('/api/send-email-otp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  email: reg.email,
-                  subject: `Konfirmasi Pendaftaran: ${activeEvent?.settings?.tournamentName}`,
-                  message: `Halo ${reg.name},\n\nPendaftaran Anda untuk event "${activeEvent?.settings?.tournamentName}" telah DISETUJUI.\n\nDetail Pendaftaran:\n- Kategori: ${reg.category}\n- Klub: ${reg.club}\n\nLihat daftar peserta: ${window.location.origin}?event=${activeEvent?.id}&view=entry-list\n\nLihat Live Score: ${window.location.origin}?event=${activeEvent?.id}&view=live\n\nSelamat bertanding!`
-                })
-              });
-              const result = await response.json();
-              if (response.ok && result.success) {
-                pushNotification("Email Terkirim", `Konfirmasi pendaftaran telah dikirim ke ${reg.email}`, "SUCCESS");
-              } else {
-                pushNotification("Email Gagal", result.message || "Gagal mengirim email konfirmasi.", "WARNING");
-              }
-            } catch (err: any) {
-              console.error("Failed to send confirmation email", err);
-              pushNotification("Email Gagal", err.message, "WARNING");
-            }
-          } 
-        }} onPayPlatformFee={(id) => handleUpdateEvent(id, { settings: { ...activeEvent.settings, platformFeePaidToOwner: true } })} onBack={() => setView('EVENT_ADMIN')} />
-        )}
-        {view === 'LIVE' && activeEvent && (
-          <LiveScoreboard 
-            state={activeEvent} 
-            startInTVMode={liveBoardTVMode}
-            onBack={() => {
-              setLiveBoardTVMode(false);
-              setView('EVENT_ADMIN');
-            }} 
-          />
-        )}
-        {view === 'REGISTER_PARTICIPANT' && (
-          activeEvent ? (
-            <OnlineRegistration event={activeEvent} globalSettings={appState.globalSettings} onRegister={async (registrations: ParticipantRegistration[]) => {
-          const regs = registrations;
-          
-          if (isOnline) {
-            try {
-              // Standardize on using the API for all registrations to bypass client-side security roadblocks
-              const response = await fetch("/api/register-participant", {
+              const res = await fetch("/api/register-participant", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -2217,215 +512,235 @@ export function App() {
                   officials: regs.filter(r => r.regType === 'OFFICIAL')
                 })
               });
-              
-              if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || "Server pendaftaran tidak merespon");
-              }
-
-              // Optimistic UI Update: Update local state immediately
-              const optimisticRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING }));
-              setAppState(prev => {
-                const event = prev.events.find(e => e.id === (activeEvent as any).id);
-                if (!event) return prev;
-                
-                const mergedRegs = Array.from(new Map([...(event.registrations || []), ...optimisticRegs].map(r => [r.id, r])).values());
-                const archers = mergedRegs.filter(r => r.regType !== 'OFFICIAL') as any[];
-                const officials = mergedRegs.filter(r => r.regType === 'OFFICIAL') as any[];
-                
-                return {
-                  ...prev,
-                  events: prev.events.map(e => e.id === event.id ? { 
-                    ...e, 
-                    registrations: mergedRegs,
-                    archers,
-                    officials,
-                    registrationCount: mergedRegs.length,
-                    localUpdatedAt: new Date().toISOString()
-                  } : e)
-                };
-              });
-
-              pushNotification("Berhasil", "Pendaftaran terkirim dan sinkron dengan server.", "SUCCESS");
+              if (!res.ok) throw new Error("Gagal registrasi ke server.");
+              pushNotification("Berhasil", "Pendaftaran terkirim.", "SUCCESS");
+              setView('LANDING');
             } catch (err: any) {
-              console.error("Critical Registration Error:", err);
-              // Fallback to local persistence
-              const pendingRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING, _syncPending: true }));
-              setAppState(prev => {
-                const event = prev.events.find(e => e.id === (activeEvent as any).id);
-                if (!event) return prev;
-                return {
-                  ...prev,
-                  events: prev.events.map(e => e.id === event.id ? { 
-                    ...e, 
-                    registrations: [...(e.registrations || []), ...pendingRegs] 
-                  } : e)
-                };
-              });
-              setHasPendingChanges(true);
-              pushNotification("Data Terparkir", "Jaringan sibuk. Data disimpan lokal.", "WARNING");
+              pushNotification("Gagal", err.message, "WARNING");
             }
-          } else {
-            // Persistence for offline mode
-            const pendingRegs = regs.map(r => ({ ...r, status: RegistrationStatus.PENDING, _syncPending: true }));
-            setAppState(prev => {
-              const event = prev.events.find(e => e.id === (activeEvent as any).id);
-              if (!event) return prev;
-              return {
-                ...prev,
-                events: prev.events.map(e => e.id === event.id ? { 
-                  ...e, 
-                  registrations: [...(e.registrations || []), ...pendingRegs] 
-                } : e)
-              };
+          }}
+          onBack={() => setView('LANDING')}
+          onViewParticipants={() => setView('PUBLIC_EVENT_INFO')}
+        />;
+
+      case 'SCORER_LOGIN':
+        return <ScorerLogin 
+          events={appState.events}
+          onLogin={(event, scorer) => {
+            setAppState(prev => ({ ...prev, activeEventId: event.id, activeScorer: scorer }));
+            setView('SCORER_PANEL');
+            pushNotification("Akses Diterima", `Pencatat Skor: ${scorer.name}`, "SUCCESS");
+          }}
+          onBack={() => setView('LANDING')}
+        />;
+
+      case 'SCORER_PANEL':
+        if (!activeEvent) return null;
+        return <ScoringPanel 
+          state={activeEvent}
+          onSaveScore={async (score) => {
+            const scores = Array.isArray(score) ? score : [score];
+            handleUpdateEvent(activeEvent.id, {
+               scores: [...(activeEvent.scores || []), ...scores]
             });
+          }}
+          onBack={() => setView('LANDING')}
+        />;
+
+      case 'LOGIN_PANEL':
+        return <LoginPanel 
+          onLogin={onLoginSuccess}
+          onRegister={(u) => {}}
+          onUpdateUser={(u) => {}}
+          users={appState.users}
+          onBack={() => setView('LANDING')}
+        />;
+
+      case 'MEMBER_DASHBOARD':
+        return <AdminDashboard 
+          user={appState.currentUser!}
+          events={appState.events.filter(e => e.ownerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.email)}
+          onManageEvent={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('EVENT_ADMIN');
+          }}
+          onCreateEvent={() => {
+            const id = 'evt_' + Date.now();
+            const newEvent: ArcheryEvent = {
+              id,
+              ownerId: appState.currentUser?.id || appState.currentUser?.email || '',
+              status: 'DRAFT',
+              settings: {
+                tournamentName: 'Turnamen Baru',
+                organizerId: appState.currentUser?.id || appState.currentUser?.email || '',
+                eventDate: new Date().toISOString(),
+                location: '',
+                isFreeEvent: false,
+                archersPerTarget: 2,
+                totalTargets: 1,
+                totalArrows: 36,
+                arrowsPerEnd: 6,
+                totalEnds: 6
+              },
+              archers: [],
+              officials: [],
+              registrations: [],
+              scores: [],
+              scoreLogs: [],
+              matches: {} as any
+            };
+            setAppState(prev => ({ ...prev, events: [newEvent, ...prev.events], activeEventId: id }));
+            setView('EVENT_ADMIN');
             setHasPendingChanges(true);
-            pushNotification("Mode Offline", "Data disimpan di memori dan akan disinkronkan saat online.", "INFO");
-          }
-        }} onBack={() => {
-          setView('LANDING');
-        }} onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')} />
-          ) : (
-            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
-              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Menyiapkan Pendaftaran...</p>
-            </div>
-          )
-        )}
-        {view === 'PUBLIC_LIVE' && (
-          activeEvent ? (
-            <LiveScoreboard state={activeEvent} onBack={() => setView('LANDING')} />
-          ) : (
-            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
-              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Menghubungkan Live Score...</p>
-            </div>
-          )
-        )}
-        {view === 'PUBLIC_ENTRY_LIST' && (
-          activeEvent ? (
-            <EntryList 
-              event={activeEvent} 
-              onBack={() => setView('LANDING')} 
-              onRefresh={() => fetchCloudData(true)}
-              isSyncing={isSyncing}
-            />
-          ) : (
-            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
-              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Memuat Daftar Peserta...</p>
-            </div>
-          )
-        )}
-        {view === 'PUBLIC_EVENT_INFO' && (
-          activeEvent ? (
-            <EventInfo 
-              event={activeEvent} 
-              onBack={() => setView('LANDING')} 
-              onRegister={() => setView('REGISTER_PARTICIPANT')} 
-              onShare={() => handleShare(appState.activeEventId!)} 
-              onViewParticipants={() => setView('PUBLIC_ENTRY_LIST')}
-            />
-          ) : (
-            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-              <div className="w-16 h-16 border-4 border-slate-100 border-t-arcus-red rounded-full animate-spin mb-4" />
-              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Memuat Data Turnamen...</p>
-            </div>
-          )
-        )}
-        {(view === 'PRIVACY' || view === 'TERMS' || view === 'DOCUMENTATION') && (
-          <LegalDoc type={view} onBack={() => setView('LANDING')} />
-        )}
-      </main>
+          }}
+        />;
 
-      <footer className="py-12 bg-white border-t border-slate-100 print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-12">
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="flex items-center gap-3">
-                <ArcusLogo className="w-8 h-8" />
-                <div className="flex flex-col">
-                  <h3 className="text-xl font-black font-oswald uppercase italic tracking-tighter leading-none text-slate-900">ARCUS DIGITAL</h3>
-                  <span className="text-[7px] font-black text-arcus-red uppercase tracking-[0.2em]">Tournament OS</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap justify-center md:justify-start gap-8">
-                <button onClick={() => setView('PRIVACY')} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-colors">Kebijakan Privasi</button>
-                <button onClick={() => setView('TERMS')} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-colors">Syarat & Ketentuan</button>
-                <button onClick={() => setView('DOCUMENTATION')} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-arcus-red transition-colors">Dokumentasi</button>
-              </div>
-            </div>
-            <div className="text-center md:text-right flex flex-col gap-4">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Kontak Support</p>
-                <p className="text-xl font-black font-oswald uppercase italic tracking-wider text-slate-900">WA: {appState.globalSettings.contactSupport || '087834193339'}</p>
-              </div>
-              <div className="text-slate-500 max-w-xs ml-auto">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1">Kantor Pengembang</p>
-                <p className="text-[9px] font-bold leading-relaxed uppercase opacity-80">
-                  Jl. Bengawan No. 45 Kutosari, Kebumen, Kebumen - Jawa Tengah 54317
-                </p>
-              </div>
-              <div className="mt-2 pt-6 border-t border-slate-50">
-                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Tournament OS v{APP_VERSION} &copy; 2026</p>
-              </div>
-            </div>
-         </div>
-       </div>
-      </footer>
+      case 'EVENT_ADMIN':
+        if (!activeEvent) return null;
+        return <AdminPanel 
+          eventId={activeEvent.id}
+          settings={activeEvent.settings}
+          scorerAccess={activeEvent.scorerAccess || []}
+          onSave={async (updatedSettings) => {
+            handleUpdateEvent(activeEvent.id, { settings: updatedSettings });
+          }}
+          onUpdateScorers={async (scorers) => {
+            handleUpdateEvent(activeEvent.id, { scorerAccess: scorers });
+          }}
+          onClear={() => {}}
+          onDelete={() => onDeleteEvent(activeEvent.id)}
+          onBack={() => setView('MEMBER_DASHBOARD')}
+        />;
 
-      <AnimatePresence>
-        {showInstallBanner && (
-          <motion.div 
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-8 sm:bottom-12 left-6 right-6 md:left-auto md:right-12 md:max-w-md z-[1000] bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl border border-white/10"
-          >
-            <div className="flex items-start gap-6">
-              <div className="w-16 h-16 bg-arcus-red rounded-[1.5rem] flex items-center justify-center shrink-0 shadow-lg rotate-3">
-                <ArcusLogo className="w-10 h-10 text-white" />
+      case 'SUPER_ADMIN':
+        return <SuperAdminPanel 
+          state={appState}
+          onUpdateSettings={(gs) => {
+            setAppState(prev => ({ ...prev, globalSettings: gs }));
+            setHasPendingChanges(true);
+          }}
+          onResetSystemData={() => onResetSystemData()}
+          onUpdateEvent={handleUpdateEvent}
+          onDeleteEvent={onDeleteEvent}
+          onDeleteUser={(uid) => {}}
+          onUpdateUser={(u) => {}}
+          onSendNotif={(n) => pushNotification(n.title, n.message, n.type as any)}
+          onBack={() => setView('MEMBER_DASHBOARD')}
+        />;
+
+      case 'PUBLIC_EVENT_INFO':
+        if (!activeEvent) return null;
+        return <EventInfo 
+          event={activeEvent}
+          onRegister={() => setView('REGISTER_PARTICIPANT')}
+          onBack={() => setView('LANDING')}
+          onShare={() => {
+             setShareData({
+              isOpen: true,
+              url: window.location.origin + '?event=' + activeEvent.id,
+              name: activeEvent.settings.tournamentName || 'Turnamen Panahan'
+            });
+          }}
+          onViewParticipants={() => setView('PUBLIC_EVENT_INFO')}
+        />;
+
+      default:
+        return <LandingPage 
+          events={appState.events} 
+          currentUser={appState.currentUser}
+          onViewLive={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('PUBLIC_EVENT_INFO');
+          }}
+          onViewParticipants={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('PUBLIC_EVENT_INFO');
+          }}
+          onViewInfo={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('PUBLIC_EVENT_INFO');
+          }}
+          onRegister={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('REGISTER_PARTICIPANT');
+          }}
+          onLogin={() => setView('LOGIN_PANEL')}
+          onScorerLogin={() => setView('SCORER_LOGIN')}
+          onCreateEvent={() => {
+            if (!appState.currentUser) {
+              setView('LOGIN_PANEL');
+            } else {
+              setView('MEMBER_DASHBOARD');
+            }
+          }}
+          onShare={(id) => {
+            const ev = appState.events.find(e => e.id === id);
+            setShareData({
+              isOpen: true,
+              url: window.location.origin + '?event=' + id,
+              name: ev?.settings.tournamentName || 'Turnamen Panahan'
+            });
+          }}
+          onLogout={handleLogout}
+          onRefresh={() => syncCloudData(true)}
+          isSyncing={isSyncing}
+          quotaExceeded={quotaExceeded}
+        />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden font-sans selection:bg-arcus-red/10 selection:text-arcus-red">
+      {isSplashVisible && (
+        <div className="fixed inset-0 z-[9999] bg-white flex items-center justify-center animate-out fade-out duration-700 delay-1000 fill-mode-forwards">
+          <ArcusLogo className="w-48 h-48 animate-pulse text-arcus-red" />
+        </div>
+      )}
+
+      {/* Network Status Bar */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest py-1 flex items-center justify-center gap-2">
+          <CloudOff className="w-3 h-3" /> BEKERJA OFFLINE (SINKRONISASI AKTIF)
+        </div>
+      )}
+
+      <main className="relative z-10">{renderView()}</main>
+
+      {/* Persistent Status Indicators */}
+      <div className="fixed bottom-6 left-6 z-50 flex items-center gap-3">
+        {isSyncing && (
+          <div className="bg-white/80 backdrop-blur-md border px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-in slide-in-from-left">
+            <RefreshCw className="w-3 h-3 animate-spin text-arcus-red" />
+            <span className="text-[10px] font-bold uppercase text-slate-500">Syncing...</span>
+          </div>
+        )}
+        {hasPendingChanges && !isSyncing && (
+          <div className="bg-orange-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+            <Cloud className="w-3 h-3" />
+            <span className="text-[10px] font-bold uppercase">Pending</span>
+          </div>
+        )}
+      </div>
+
+      {notifications.length > 0 && (
+        <div className="fixed top-6 right-6 z-[1000] flex flex-col gap-3 max-w-sm w-full">
+          {notifications.map(n => (
+            <div key={n.id} className={`p-4 rounded-2xl shadow-xl border-l-4 animate-in slide-in-from-right flex gap-3 ${
+              n.type === 'SUCCESS' ? 'bg-white border-green-500' : 
+              n.type === 'WARNING' ? 'bg-white border-orange-500' : 
+              n.type === 'ERROR' ? 'bg-white border-red-500' : 'bg-white border-blue-500'
+            }`}>
+              <div className="flex-1">
+                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">{n.title}</p>
+                <p className="text-sm font-medium text-slate-600">{n.message}</p>
               </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-xl font-black font-oswald uppercase italic tracking-tight">Instal Arcus Archery</h3>
-                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest leading-relaxed">
-                  Akses lebih cepat, offline ready, dan pengalaman aplikasi yang lebih lancar di perangkat Anda.
-                </p>
-              </div>
-              <button 
-                onClick={() => setShowInstallBanner(false)}
-                className="p-2 text-slate-500 hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
+              <button onClick={() => setNotifications(prev => prev.filter(nn => nn.id !== n.id))} className="text-slate-300 hover:text-slate-600">
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="mt-8 flex gap-3">
-              <button 
-                onClick={handleInstallClick}
-                className="flex-1 bg-white text-slate-900 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-arcus-red hover:text-white transition-all active:scale-95 shadow-xl"
-              >
-                Instal Sekarang
-              </button>
-              <button 
-                onClick={() => setShowInstallBanner(false)}
-                className="px-6 py-5 bg-white/5 border border-white/10 text-white/40 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:text-white transition-all"
-              >
-                Nanti
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <ShareModal 
-        isOpen={shareData.isOpen} 
-        onClose={() => setShareData(prev => ({ ...prev, isOpen: false }))} 
-        tournamentName={shareData.name} 
-        url={shareData.url} 
-        registerUrl={shareData.registerUrl}
-      />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
-
-export default App;

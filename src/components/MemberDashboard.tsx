@@ -777,6 +777,7 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
           user={{ id: userId, name: userName || '', email: '', isOrganizer: true, role: userRole }}
           events={events}
           onManageEvent={onManageEvent}
+          onCreateEvent={handleStartCreation}
         />
       ) : (
         <div className="space-y-4">

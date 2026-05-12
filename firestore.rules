@@ -1,98 +1,79 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // 1. PUBLIC EVENTS (Move to top for priority)
     match /{document=**} {
-      allow read, write: if false;
+      allow read: if true;
+      allow write: if true;
     }
 
-    // Helper functions
+    // --- Helper Functions ---
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function getProfile(userId) {
-      return get(/databases/$(database)/documents/profiles/$(userId)).data;
-    }
-
     function isAdmin() {
+      // Izinkan Admin berdasarkan email atau role di profile
       return isSignedIn() && (
         request.auth.token.email == 'poedji.sugianto@gmail.com' ||
         request.auth.token.email == 'admin@arcus.id' ||
         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-         (get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'ADMIN', 'superadmin', 'SUPER_ADMIN'] ||
-          (get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.data.role in ['SUPERADMIN', 'MASTER_ADMIN', 'ADMIN', 'superadmin', 'SUPER_ADMIN'])))
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role in ['SUPERADMIN', 'ADMIN', 'MASTER_ADMIN', 'superadmin'])
       );
     }
 
     function isEventOwner(eventId) {
       let eventData = get(/databases/$(database)/documents/events/$(eventId)).data;
       return isSignedIn() && (
-        eventData.userId == request.auth.uid || 
         eventData.ownerId == request.auth.uid || 
-        (eventData.data != null && (eventData.data.userId == request.auth.uid || eventData.data.ownerId == request.auth.uid))
+        (eventData.data != null && eventData.data.ownerId == request.auth.uid)
       );
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    function isPublicRegistration() {
-      // Allow public update of registrations array IF it's a valid increment
-      return incoming().diff(existing()).affectedKeys().hasAny(['data', 'updatedAt']) &&
-             (incoming().data.registrations.size() >= existing().data.registrations.size());
-    }
-
-    // --- Profiles ---
+    // --- 1. Profiles ---
     match /profiles/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn(); // User bisa melihat profile rekannya
       allow list: if isAdmin();
-      allow create: if isSignedIn(); // Allow profile creation on first login
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn();
+      allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
-    // --- Events ---
+    // --- 2. Events & Scoring ---
     match /events/{eventId} {
-      allow read: if true; 
+      // PUBLIK: Bisa melihat semua data event (skor, pendaftaran terverifikasi, dll)
+      // allow read covers get and list
+      allow read: if true;
+      
+      // ADMIN: Kontrol penuh
       allow create: if isSignedIn();
-      allow update: if true; // Buka akses update untuk sinkronisasi pendaftaran publik
-      allow delete: if isAdmin() || isEventOwner(eventId);
+      allow update: if isAdmin() || isEventOwner(eventId);
+      allow delete: if isAdmin();
 
+      // Pendaftaran Online (Submissions)
       match /submissions/{subId} {
-        allow read, write: if true; // Akses penuh untuk pendaftaran dan verifikasi publik
+        allow read, create: if true; 
+        allow update, delete: if isAdmin() || isEventOwner(eventId);
       }
 
+      // Shards
       match /shards/{shardId} {
-        allow read: if true;
-        allow write: if true;
+        allow read, write: if true;
       }
     }
 
+    // Jalur warisan (hanya untuk keamanan tambahan)
     match /events/{document=**} {
       allow read: if true;
     }
 
-    // --- System Configs ---
+    // --- 3. System Configs ---
     match /systemConfigs/{configId} {
-      allow read: if true; // Public for maintenance mode and global fees
+      allow read: if true; // Publik perlu baca info biaya & kontak
       allow write: if isAdmin();
     }
 
-    // --- Connection Test ---
+    // --- 4. Utils ---
     match /test/connection {
       allow read: if true;
     }

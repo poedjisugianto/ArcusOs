@@ -1,67 +1,42 @@
 {
   "entities": {
+    "ArcheryEvent": {
+      "title": "Archery Event",
+      "description": "Details of an archery competition",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "ACTIVE", "COMPLETED", "DELETED"] },
+        "registrationCount": { "type": "integer" }
+      },
+      "required": ["name", "status"]
+    },
     "Profile": {
       "title": "User Profile",
-      "description": "Stores user profile and role information",
+      "description": "User registration and role data",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "email": { "type": "string" },
-        "name": { "type": "string" },
-        "role": { "type": "string", "enum": ["ADMIN", "ORGANIZER", "JUDGE", "SCORER", "PARTICIPANT", "SUPERADMIN", "MASTER_ADMIN"] },
-        "club": { "type": "string" },
-        "phone": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string" },
+        "displayName": { "type": "string" }
       },
-      "required": ["id", "email", "name"]
-    },
-    "Event": {
-      "title": "Archery Event",
-      "description": "Stores all data related to an archery tournament",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "status": { "type": "string", "enum": ["DRAFT", "ACTIVE", "COMPLETED", "ONGOING", "UPCOMING"] },
-        "settings": { "type": "object" },
-        "archers": { "type": "array" },
-        "registrations": { "type": "array" },
-        "scores": { "type": "array" },
-        "scoreLogs": { "type": "array" },
-        "matches": { "type": "object" },
-        "ownerId": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "settings", "ownerId"]
-    },
-    "SystemConfig": {
-      "title": "System Config",
-      "description": "Global settings for the application",
-      "type": "object",
-      "properties": {
-        "feeAdult": { "type": "number" },
-        "feeKids": { "type": "number" },
-        "maintenanceMode": { "type": "boolean" },
-        "platformFeePercentage": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
+      "required": ["email"]
     }
   },
   "firestore": {
-    "/profiles/{userId}": {
-      "schema": "Profile",
-      "description": "Collection of user profiles"
-    },
-    "/events/{eventId}": {
-      "schema": "Event",
+    "/events": {
+      "schema": "ArcheryEvent",
       "description": "Collection of archery events"
     },
-    "/events/{eventId}/submissions/{subId}": {
-      "schema": "ParticipantRegistration",
-      "description": "Publicly submitted registrations for an event"
+    "/profiles": {
+      "schema": "Profile",
+      "description": "User profile data"
     },
-    "/systemConfigs/{configId}": {
-      "schema": "SystemConfig",
-      "description": "Global system configurations"
+    "/systemConfigs": {
+      "schema": "object",
+      "description": "System-wide configurations"
     }
   }
 }

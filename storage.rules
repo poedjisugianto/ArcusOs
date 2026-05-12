@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper: Cek apakah user adalah Admin
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'poedji.sugianto@gmail.com' ||
+        request.auth.token.email == 'admin@arcus.id'
+      );
+    }
+
+    // Helper: Cek apakah user adalah pemilik file
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // --- Profiles ---
+    match /profiles/{userId}/{allPaths=**} {
+      allow read: if true; // Publik bisa lihat foto profil
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // --- Tournament Assets ---
+    match /tournaments/{tournamentId}/{allPaths=**} {
+      allow read: if true; // Publik bisa lihat logo/banner event
+      allow write: if request.auth != null || isAdmin(); 
+      // Catatan: Anda bisa memperketat ini menjadi isEventOwner jika diperlukan
+    }
+    
+    // --- Default Deny ---
+    match /{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

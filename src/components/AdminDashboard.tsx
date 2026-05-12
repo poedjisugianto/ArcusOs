@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { 
   Users, Trophy, DollarSign, Activity, 
   TrendingUp, Calendar, Target, ArrowUpRight,
-  ArrowDownRight, CheckCircle2, Clock, AlertCircle
+  ArrowDownRight, CheckCircle2, Clock, AlertCircle, Plus
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -16,9 +16,10 @@ interface Props {
   user: User;
   events: ArcheryEvent[];
   onManageEvent: (id: string) => void;
+  onCreateEvent: () => void;
 }
 
-const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent }) => {
+const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent, onCreateEvent }) => {
   const stats = useMemo(() => {
     const safeEvents = Array.isArray(events) ? events : [];
     const totalEvents = safeEvents.length;
@@ -185,8 +186,16 @@ const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent }) =
       {/* Recent Events Table/List */}
       <div className="overflow-hidden">
         <div className="py-8 flex items-center justify-between">
-          <h3 className="text-xl font-black font-oswald uppercase italic">Event Terbaru</h3>
-          <button className="text-[10px] font-black uppercase text-arcus-red hover:underline">Lihat Semua</button>
+          <div>
+            <h3 className="text-xl font-black font-oswald uppercase italic text-slate-900">Event Saya</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mt-1">Daftar turnamen yang Anda kelola</p>
+          </div>
+          <button 
+            onClick={onCreateEvent}
+            className="px-6 py-3 bg-arcus-red text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg active:scale-95 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> BUAT EVENT BARU
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">

@@ -1,6 +1,7 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfigFile from '../firebase-applet-config.json';
 
 // Define the config type
@@ -55,6 +56,7 @@ const app = (() => {
 
 export const db = app ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : null as any;
 export const auth = app ? getAuth(app) : null as any;
+export const storage = app ? getStorage(app) : null as any;
 
 // Enable Offline Persistence to save quota reads
 // Persistence is disabled as it often causes "Internal Assertion Failed" crashes 

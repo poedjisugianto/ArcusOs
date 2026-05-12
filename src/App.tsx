@@ -195,12 +195,14 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  // 2. Authentication Observer
+  // 2. Authentication & Real-time Subscriptions
   useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    if (!auth || !db) return;
+    
+    let unsubEvents: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Build user object from firebase
         const isAdmin = ['poedji.sugianto@gmail.com', 'admin@arcus.id'].includes(firebaseUser.email || '');
         const userData: User = {
           id: firebaseUser.uid,
@@ -212,14 +214,102 @@ export default function App() {
 
         setAppState(prev => ({ ...prev, currentUser: userData }));
         
-        // Re-fetch data for the logged in user using direct profile
+        // Subscribe to user's events in real-time
+        if (unsubEvents) unsubEvents();
+        const q = query(
+          collection(db, 'events'),
+          where('ownerId', 'in', [userData.id, userData.email].filter(Boolean))
+        );
+        
+        unsubEvents = onSnapshot(q, (snapshot) => {
+          const userEvents = snapshot.docs.map(doc => {
+            const d = doc.data();
+            const base = d.data || d;
+            return { 
+              ...base, 
+              ...d,
+              id: doc.id, 
+              status: (d.status || base.status || 'DRAFT').toString().toUpperCase() 
+            } as ArcheryEvent;
+          });
+          
+          setAppState(prev => {
+            // Merge user events with public ones
+            const publicEvents = prev.events.filter(e => e.ownerId !== userData.id && e.ownerId !== userData.email);
+            return { ...prev, events: [...userEvents, ...publicEvents] };
+          });
+        }, (err) => {
+          console.warn("Event subscription error:", err);
+        });
+
         fetchCloudData(userData);
       } else {
+        if (unsubEvents) unsubEvents();
         setAppState(prev => ({ ...prev, currentUser: null }));
       }
     });
-    return () => unsubscribe();
-  }, []);
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubEvents) unsubEvents();
+    };
+  }, [db]);
+
+  // 3. Active Event & Data Subscriptions
+  useEffect(() => {
+    if (!db || !appState.activeEventId) return;
+
+    const eventId = appState.activeEventId;
+    
+    // Subscribe to submissions for the active event
+    const unsubSubmissions = onSnapshot(collection(db, 'events', eventId, 'submissions'), (snapshot) => {
+      const rawSubmissions = snapshot.docs.map(sd => {
+        const d = sd.data();
+        const base = d.archerData || d.officialData || d.participantData || d.data || d;
+        const regType = d.regType || base.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
+        return { ...base, ...d, id: sd.id, regType };
+      });
+      
+      const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL');
+      const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL');
+
+      setAppState(prev => {
+        if (prev.activeEventId !== eventId) return prev;
+        const newEvents = prev.events.map(e => {
+          if (e.id === eventId) {
+            return {
+              ...e,
+              registrations: rawSubmissions,
+              archers: cloudArchers,
+              officials: cloudOfficials,
+              registrationCount: rawSubmissions.length
+            };
+          }
+          return e;
+        });
+        return { ...prev, events: newEvents };
+      });
+    }, (err) => {
+      console.error("Submissions subscription error:", err);
+    });
+
+    return () => unsubSubmissions();
+  }, [db, appState.activeEventId]);
+
+  // 4. SuperAdmin Subscriptions
+  useEffect(() => {
+    if (!db || appState.currentUser?.role !== UserRole.SUPERADMIN) return;
+
+    const unsubProfiles = onSnapshot(collection(db, 'profiles'), (snapshot) => {
+      const users = snapshot.docs.map(d => {
+        const data = d.data();
+        return data.data || data;
+      });
+      setAppState(prev => ({ ...prev, users }));
+    });
+
+    return () => unsubProfiles();
+  }, [db, appState.currentUser?.role]);
 
   const fetchCloudData = async (userOverride?: User) => {
     if (!db || !isOnline || quotaExceeded) return;
@@ -236,111 +326,38 @@ export default function App() {
       const currentUser = userOverride || appStateRef.current.currentUser;
       let cloudEvents: ArcheryEvent[] = [];
       
-      // If user is logged in, fetch their events specifically bypassing cache if needed
-      if (currentUser) {
-        try {
-          const eventsSnap = await getDocs(query(
-            collection(db, 'events'),
-            where('ownerId', 'in', [currentUser.id, currentUser.email].filter(Boolean))
-          ));
-          cloudEvents = eventsSnap.docs.map(doc => {
-            const d = doc.data();
-            const base = d.data || d;
-            return { ...base, id: doc.id, status: (d.status || base.status || 'ACTIVE').toString().toUpperCase() };
-          });
-        } catch (err) {
-          console.warn("User-specific event fetch failed, falling back to public", err);
-        }
-      }
-
-      // Merge with public events
+      // Fetch public events primarily via API (faster)
       try {
         const res = await fetch('/api/public-events');
-        const contentType = res.headers.get("content-type");
-        
-        if (res.ok && contentType && contentType.includes("application/json")) {
+        if (res.ok) {
            const data = await res.json();
-           const publicEvents = data.events || [];
-           // Merge and deduplicate
-           const existingIds = new Set(cloudEvents.map(e => e.id));
-           publicEvents.forEach((pe: any) => {
-             if (!existingIds.has(pe.id)) {
-               cloudEvents.push(pe);
-             }
+           cloudEvents = (data.events || []).map((e: any) => {
+             const base = e.data || e;
+             return { ...base, ...e, status: (e.status || base.status || 'DRAFT').toString().toUpperCase() };
            });
         }
-      } catch (apiErr: any) {
-        // Silent warning - if this fails, we fall back to direct Firestore. 
-        // We only log if it's a real issue that prevents display.
-        
-        // Fallback: Direct Firestore query from client
-        if (db) {
-          try {
-            const eventsSnap = await getDocs(collection(db, 'events'));
-            cloudEvents = eventsSnap.docs.map(doc => {
-              const d = doc.data();
-              const base = d.data || d;
-              return { ...base, id: doc.id, status: (d.status || base.status || 'ACTIVE').toString().toUpperCase() };
-            });
-          } catch (dbErr: any) {
-            console.error("[FETCH-DIRECT] Critical error: All fetch methods failed.", dbErr.message);
-          }
-        }
-      }
-
-      // For Active Event, we might need a more granular fetch including submissions
-      let submissionsSnap: any = null;
-      if (appStateRef.current.activeEventId) {
-        submissionsSnap = await getDocs(query(
-          collection(db, 'events', appStateRef.current.activeEventId, 'submissions'),
-          limit(3000)
-        ));
-      }
-
-      // Fetch profiles if Admin
-      let profilesSnap: any = null;
-      if (appStateRef.current.currentUser?.role === UserRole.SUPERADMIN) {
-        profilesSnap = await getDocs(collection(db, 'profiles'));
-      }
-
-      setAppState(prev => {
-        const activeId = prev.activeEventId;
-        const modifiedEvents = cloudEvents.map(ce => {
-          if (ce.id === activeId && submissionsSnap) {
-            const rawSubmissions = submissionsSnap.docs.map((sd: any) => {
-               const d = sd.data();
-               const base = d.archerData || d.officialData || d.participantData || d.data || d;
-               const regType = d.regType || base.regType || (d.category === 'OFFICIAL' ? 'OFFICIAL' : 'ARCHER');
-               return { ...base, ...d, id: sd.id, regType };
-            });
-            const cloudArchers = rawSubmissions.filter(s => s.regType !== 'OFFICIAL');
-            const cloudOfficials = rawSubmissions.filter(s => s.regType === 'OFFICIAL');
-            return {
-              ...ce,
-              registrations: rawSubmissions,
-              archers: cloudArchers,
-              officials: cloudOfficials,
-              registrationCount: rawSubmissions.length
-            };
-          }
-          return ce;
+      } catch (apiErr) {
+        // Fallback to minimal public fetch
+        const eventsSnap = await getDocs(query(collection(db, 'events'), limit(30)));
+        cloudEvents = eventsSnap.docs.map(doc => {
+          const d = doc.data();
+          const base = d.data || d;
+          return { ...base, ...d, id: doc.id, status: (d.status || base.status || 'DRAFT').toString().toUpperCase() } as ArcheryEvent;
         });
+      }
 
-        return {
-          ...prev,
-          globalSettings: {
-            ...cloudSettings,
-            paymentGatewayProvider: (cloudSettings.paymentGatewayProvider as any) || 'NONE'
-          } as GlobalSettings,
-          events: modifiedEvents,
-          users: profilesSnap ? profilesSnap.docs.map((d: any) => d.data()?.data || d.data()) : prev.users,
-          isDataLoaded: true
-        };
-      });
+      setAppState(prev => ({
+        ...prev,
+        globalSettings: {
+          ...cloudSettings,
+          paymentGatewayProvider: (cloudSettings.paymentGatewayProvider as any) || 'NONE'
+        } as GlobalSettings,
+        events: cloudEvents,
+        isDataLoaded: true
+      }));
 
     } catch (err: any) {
       console.error("Cloud fetch failed:", err.message);
-      throw err;
     }
   };
 
@@ -621,7 +638,7 @@ export default function App() {
              const isScorer = (e as any).scorerAccess?.some((s: any) => s.email === appState.currentUser?.email);
              return isOwner || isScorer;
           })}
-          onCreateEvent={(name) => {
+          onCreateEvent={async (name) => {
              const id = 'evt_' + Date.now();
              const newEvent: ArcheryEvent = {
                id,
@@ -647,10 +664,23 @@ export default function App() {
                scoreLogs: [],
                matches: {} as any
              };
+             
+             // Immediate state update
              setAppState(prev => ({ ...prev, events: [newEvent, ...prev.events], activeEventId: id }));
              setView('EVENT_ADMIN');
-             setHasPendingChanges(true);
-             pushNotification('Draft Event Dibuat', 'Silakan lengkapi konfigurasi turnamen.', 'SUCCESS');
+             
+             // Aggressive sync to cloud
+             if (isOnline && db) {
+               try {
+                 await setDoc(doc(db, 'events', id), newEvent);
+                 pushNotification('Draft Event Dibuat', 'Tersimpan di cloud.', 'SUCCESS');
+               } catch (err: any) {
+                 console.error("Create event sync error:", err);
+                 setHasPendingChanges(true);
+               }
+             } else {
+               setHasPendingChanges(true);
+             }
           }}
           onCreatePractice={() => {}}
           onCreateSelfPractice={() => {}}
@@ -692,34 +722,34 @@ export default function App() {
           onActivate={(code) => {
             const trimmedCode = code.trim();
             const expectedCode = (activationCode || '').trim();
-            console.log("[DEBUG] App: onActivate called with code:", trimmedCode, "Expected:", expectedCode);
             
             if (!activatingEventId) {
-              console.error("[DEBUG] App: No activatingEventId found!");
               pushNotification('Error', 'Sesi aktivasi kadaluarsa.', 'WARNING');
               setView('MEMBER_DASHBOARD');
               return;
             }
 
             if (trimmedCode === expectedCode) {
-              console.log("[DEBUG] App: Code matched! Activating event:", activatingEventId);
-              // Ensure we find the latest event data from state
               const eventToUpdate = appStateRef.current.events.find(e => e.id === activatingEventId);
               if (eventToUpdate) {
+                // Ensure we explicitly pass status to UPCOMING and settings.isActivated to true
                 handleUpdateEvent(activatingEventId, { 
                   status: 'UPCOMING',
-                  settings: { ...eventToUpdate.settings, isActivated: true } 
+                  settings: { 
+                    ...eventToUpdate.settings, 
+                    isActivated: true 
+                  } 
+                }).then(() => {
+                  pushNotification('Aktivasi Berhasil', 'Turnamen Anda telah aktif.', 'SUCCESS');
+                  setView('MEMBER_DASHBOARD');
+                  setActivatingEventId(null);
+                  setActivationCode(null);
                 });
-                pushNotification('Aktivasi Berhasil', 'Turnamen Anda telah aktif.', 'SUCCESS');
-                setView('MEMBER_DASHBOARD');
-                setActivatingEventId(null);
-                setActivationCode(null);
               } else {
                 pushNotification('Error', 'Event tidak ditemukan.', 'WARNING');
                 setView('MEMBER_DASHBOARD');
               }
             } else {
-              console.warn("[DEBUG] App: Code mismatch.");
               pushNotification('Kode Salah', 'Kode aktivasi tidak valid.', 'WARNING');
             }
           }}

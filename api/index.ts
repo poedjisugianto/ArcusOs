@@ -656,13 +656,16 @@ app.get("/api/public-events", async (req, res) => {
   const dbId = targetDatabaseId;
 
   try {
-    const snapshot = await db.collection('events').get();
+    const snapshot = await db.collection('events')
+      .orderBy('createdAt', 'desc')
+      .limit(100)
+      .get();
     const events: any[] = [];
     
     snapshot.forEach((d: any) => {
       const rawData = d.data();
       const eventData = rawData.data || rawData;
-      const status = (rawData.status || eventData.status || 'ACTIVE').toString().toUpperCase();
+      const status = (rawData.status || eventData.status || 'DRAFT').toString().toUpperCase();
       if (status !== 'DELETED') {
          events.push({
            ...eventData,
@@ -674,7 +677,7 @@ app.get("/api/public-events", async (req, res) => {
        }
     });
 
-    return res.json({ success: true, events: events.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), source: 'admin-sdk' });
+    return res.json({ success: true, events, source: 'admin-sdk' });
   } catch (err: any) {
     // 2. Try REST API Fallback
     try {

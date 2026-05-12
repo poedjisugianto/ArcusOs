@@ -317,11 +317,13 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
     }
   }, [billingStep, billingPaymentStatus]);
 
-  const unpaidEvents = (events || []).filter(e => {
-    if (!e) return false;
-    const totalFee = calculateEventFees(e);
-    return !e.settings?.platformFeePaidToOwner && totalFee > 0 && !e.settings?.isPractice;
-  });
+  const unpaidEvents = useMemo(() => {
+    return (events || []).filter(e => {
+      if (!e || e.settings?.isPractice || e.settings?.platformFeePaidToOwner) return false;
+      const totalFee = calculateEventFees(e);
+      return totalFee > 0;
+    });
+  }, [events, globalSettings]);
   const receivedNotifs = notifications.filter(n => n.recipientId === userId || !n.recipientId);
   const sentNotifs = notifications.filter(n => n.senderId === userId);
   const unreadCount = receivedNotifs.filter(n => !n.read).length;
@@ -824,8 +826,17 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                              {event.status === 'DRAFT' && (
                                <span className="bg-amber-50 text-amber-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-amber-100">DRAFT</span>
                              )}
+                             {event.status === 'UPCOMING' && (
+                               <span className="bg-blue-50 text-blue-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-blue-100">MENDATANG</span>
+                             )}
+                             {event.status === 'ONGOING' && (
+                               <span className="bg-orange-50 text-orange-700 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-orange-100 italic animate-pulse">ON GOING</span>
+                             )}
+                             {event.status === 'COMPLETED' && (
+                               <span className="bg-slate-100 text-slate-500 text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest border border-slate-200">SELESAI</span>
+                             )}
                              {event.status === 'ACTIVE' && (
-                               <span className="bg-arcus-red text-white text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest">LIVE NOW</span>
+                               <span className="bg-arcus-red text-white text-[7px] font-black px-2 py-0.5 rounded uppercase tracking-widest italic animate-pulse">REGISTRASI BUKA</span>
                              )}
                           </div>
                         </div>

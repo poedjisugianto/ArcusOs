@@ -201,7 +201,6 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Build user object from firebase
-        // In Arcus, email is the identity. Admin emails are hardcoded for bootstrap.
         const isAdmin = ['poedji.sugianto@gmail.com', 'admin@arcus.id'].includes(firebaseUser.email || '');
         const userData: User = {
           id: firebaseUser.uid,
@@ -211,10 +210,10 @@ export default function App() {
           photoURL: firebaseUser.photoURL || undefined
         };
 
-        setAppState(prev => {
-          // If profile exists in cloud, it will be merged later via fetchCloudData
-          return { ...prev, currentUser: userData };
-        });
+        setAppState(prev => ({ ...prev, currentUser: userData }));
+        
+        // Re-fetch data for the logged in user using direct profile
+        fetchCloudData(userData);
       } else {
         setAppState(prev => ({ ...prev, currentUser: null }));
       }
@@ -222,11 +221,11 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const fetchCloudData = async () => {
+  const fetchCloudData = async (userOverride?: User) => {
     if (!db || !isOnline || quotaExceeded) return;
     
     try {
-      // Fetch global settings
+      // 1. Fetch Global Settings
       const settingsSnap = await getDoc(doc(db, 'systemConfigs', 'global'));
       let cloudSettings = DEFAULT_GLOBAL_SETTINGS;
       if (settingsSnap.exists()) {
@@ -234,27 +233,41 @@ export default function App() {
         cloudSettings = d.data || d;
       }
 
-      // If privileged, fetch all events. If participant, fetch active events.
-      // But for simplicity in this V1, let the backend/security rules handle filtering.
-      // We'll use the API for public discovery to save on read costs.
+      const currentUser = userOverride || appStateRef.current.currentUser;
       let cloudEvents: ArcheryEvent[] = [];
+      
+      // If user is logged in, fetch their events specifically bypassing cache if needed
+      if (currentUser) {
+        try {
+          const eventsSnap = await getDocs(query(
+            collection(db, 'events'),
+            where('ownerId', 'in', [currentUser.id, currentUser.email].filter(Boolean))
+          ));
+          cloudEvents = eventsSnap.docs.map(doc => {
+            const d = doc.data();
+            const base = d.data || d;
+            return { ...base, id: doc.id, status: (d.status || base.status || 'ACTIVE').toString().toUpperCase() };
+          });
+        } catch (err) {
+          console.warn("User-specific event fetch failed, falling back to public", err);
+        }
+      }
+
+      // Merge with public events
       try {
         const res = await fetch('/api/public-events');
         const contentType = res.headers.get("content-type");
         
-        if (!res.ok) {
-          if (contentType && contentType.includes("application/json")) {
-            const errData = await res.json();
-            throw new Error(errData.message || `API Error ${res.status}`);
-          }
-          throw new Error(`API returned ${res.status} (Non-JSON)`);
-        }
-
-        if (contentType && contentType.includes("application/json")) {
+        if (res.ok && contentType && contentType.includes("application/json")) {
            const data = await res.json();
-           cloudEvents = data.events || [];
-        } else {
-           throw new Error("Expected JSON response but got " + contentType);
+           const publicEvents = data.events || [];
+           // Merge and deduplicate
+           const existingIds = new Set(cloudEvents.map(e => e.id));
+           publicEvents.forEach((pe: any) => {
+             if (!existingIds.has(pe.id)) {
+               cloudEvents.push(pe);
+             }
+           });
         }
       } catch (apiErr: any) {
         // Silent warning - if this fails, we fall back to direct Firestore. 
@@ -694,6 +707,7 @@ export default function App() {
               const eventToUpdate = appStateRef.current.events.find(e => e.id === activatingEventId);
               if (eventToUpdate) {
                 handleUpdateEvent(activatingEventId, { 
+                  status: 'UPCOMING',
                   settings: { ...eventToUpdate.settings, isActivated: true } 
                 });
                 pushNotification('Aktivasi Berhasil', 'Turnamen Anda telah aktif.', 'SUCCESS');

@@ -30,13 +30,30 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
     }
   }, [resendTimer]);
 
+  const [isActivating, setIsActivating] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (code.length !== 4) {
-      setError('Kode harus 4 digit');
+    console.log("[DEBUG] ActivateTournament: handleSubmit triggered. Code:", code, "Length:", code.length);
+    
+    if (code.length === 0) {
+      setError('Masukkan kode 4 digit');
       return;
     }
+    
+    if (code.length !== 4) {
+      setError(`Kode harus 4 digit (saat ini ${code.length})`);
+      return;
+    }
+    
+    setIsActivating(true);
+    console.log("[DEBUG] ActivateTournament: Calling onActivate...");
     onActivate(code);
+    
+    // Safety timeout to reset loading if no response
+    setTimeout(() => {
+      setIsActivating(false);
+    }, 3000);
   };
 
   const handleResend = async () => {
@@ -94,9 +111,11 @@ const ActivateTournament: React.FC<ActivateTournamentProps> = ({
 
           <button
             type="submit"
-            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-semibold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+            disabled={isActivating}
+            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-semibold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Aktifkan Turnamen
+            {isActivating && <RefreshCw className="w-5 h-5 animate-spin" />}
+            {isActivating ? 'Memproses...' : 'Aktifkan Turnamen'}
           </button>
         </form>
 

@@ -130,6 +130,12 @@ export default function App() {
     appStateRef.current = appState;
   }, [appState]);
 
+  // Catch-all to hide splash screen if loading hangs
+  useEffect(() => {
+    const timer = setTimeout(() => setIsSplashVisible(false), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const pushNotification = (title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' = 'INFO') => {
     const id = Date.now().toString();
     const newNotif: AppNotification = { 
@@ -671,14 +677,36 @@ export default function App() {
           event={activeEventToActivate}
           userEmail={appState.currentUser?.email || ''}
           onActivate={(code) => {
-            if (code === activationCode) {
-              handleUpdateEvent(activatingEventId, { 
-                settings: { ...activeEventToActivate.settings, isActivated: true } 
-              });
-              pushNotification('Aktivasi Berhasil', 'Turnamen Anda telah aktif.', 'SUCCESS');
+            const trimmedCode = code.trim();
+            const expectedCode = (activationCode || '').trim();
+            console.log("[DEBUG] App: onActivate called with code:", trimmedCode, "Expected:", expectedCode);
+            
+            if (!activatingEventId) {
+              console.error("[DEBUG] App: No activatingEventId found!");
+              pushNotification('Error', 'Sesi aktivasi kadaluarsa.', 'WARNING');
               setView('MEMBER_DASHBOARD');
+              return;
+            }
+
+            if (trimmedCode === expectedCode) {
+              console.log("[DEBUG] App: Code matched! Activating event:", activatingEventId);
+              // Ensure we find the latest event data from state
+              const eventToUpdate = appStateRef.current.events.find(e => e.id === activatingEventId);
+              if (eventToUpdate) {
+                handleUpdateEvent(activatingEventId, { 
+                  settings: { ...eventToUpdate.settings, isActivated: true } 
+                });
+                pushNotification('Aktivasi Berhasil', 'Turnamen Anda telah aktif.', 'SUCCESS');
+                setView('MEMBER_DASHBOARD');
+                setActivatingEventId(null);
+                setActivationCode(null);
+              } else {
+                pushNotification('Error', 'Event tidak ditemukan.', 'WARNING');
+                setView('MEMBER_DASHBOARD');
+              }
             } else {
-              pushNotification('Kode Salah', 'Kode aktivasi tidak valid.', 'ERROR' as any);
+              console.warn("[DEBUG] App: Code mismatch.");
+              pushNotification('Kode Salah', 'Kode aktivasi tidak valid.', 'WARNING');
             }
           }}
           onBack={() => setView('MEMBER_DASHBOARD')}

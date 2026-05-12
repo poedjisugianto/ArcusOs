@@ -100,7 +100,7 @@ export default function LandingPage({
         }
       };
     })
-    .filter(ev => ev.id && ev.status !== 'DELETED')
+    .filter(ev => ev.id && ev.status !== 'DELETED' && ev.settings?.isActivated === true)
     .sort((a, b) => {
       // Prioritize ACTIVE/UPCOMING status
       if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;

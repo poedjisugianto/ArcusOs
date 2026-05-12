@@ -60,6 +60,7 @@ import { STORAGE_KEY, DEFAULT_GLOBAL_SETTINGS } from './constants';
 import LandingPage from './components/LandingPage';
 import RegistrationPanel from './components/OnlineRegistration';
 import AdminDashboard from './components/AdminDashboard';
+import MemberDashboard from './components/MemberDashboard';
 import AdminPanel from './components/AdminPanel';
 import ScoringPanel from './components/ScoringPanel';
 import LiveScoreboard from './components/LiveScoreboard';
@@ -88,6 +89,8 @@ const googleProvider = new GoogleAuthProvider();
 
 export default function App() {
   const [view, setView] = useState<string>('LANDING');
+  // @ts-ignore
+  const dummy: 'ACTIVATE_TOURNAMENT' | 'MEMBER_DASHBOARD' = 'ACTIVATE_TOURNAMENT';
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [appState, setAppState] = useState<AppState>({
     events: [],
@@ -109,6 +112,8 @@ export default function App() {
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [activatingEventId, setActivatingEventId] = useState<string | null>(null);
+  const [activationCode, setActivationCode] = useState<string | null>(null);
   const [shareData, setShareData] = useState<{isOpen: boolean, url: string, name: string, registerUrl?: string}>({
     isOpen: false,
     url: '',
@@ -373,6 +378,31 @@ export default function App() {
     setView('LANDING');
   };
 
+  const handleActivateEvent = (eventId: string) => {
+    const event = appState.events.find(e => e.id === eventId);
+    if (!event) return;
+
+    // Generate 4-digit code
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setActivationCode(code);
+    setActivatingEventId(eventId);
+
+    // Send via email
+    fetch('/api/send-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: appState.currentUser?.email || 'admin@arcus.id',
+        subject: `Kode Aktivasi Turnamen: ${event.settings.tournamentName}`,
+        message: `Halo ${appState.currentUser?.name},\n\nKode aktivasi Anda untuk turnamen "${event.settings.tournamentName}" adalah: ${code}\n\nMasukkan kode ini di aplikasi untuk melakukan aktivasi.`
+      })
+    })
+    .then(() => pushNotification('OTP Dikirim', 'Cek email Anda untuk kode aktivasi.', 'SUCCESS'))
+    .catch(() => pushNotification('Gagal Kirim OTP', 'Cek koneksi atau konfigurasi SMTP.', 'WARNING'));
+
+    setView('ACTIVATE_TOURNAMENT');
+  };
+
   const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
     setAppState(prev => ({
       ...prev,
@@ -557,42 +587,102 @@ export default function App() {
         />;
 
       case 'MEMBER_DASHBOARD':
-        return <AdminDashboard 
-          user={appState.currentUser!}
-          events={appState.events.filter(e => e.ownerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.email)}
+        return <MemberDashboard 
+          userName={appState.currentUser?.name}
+          userId={appState.currentUser?.id || ''}
+          userRole={appState.currentUser?.role}
+          currentUser={appState.currentUser}
+          isSuperAdmin={appState.currentUser?.isSuperAdmin}
+          onGoToSuperAdmin={() => setView('SUPER_ADMIN')}
+          notifications={notifications}
+          onMarkNotifRead={() => setNotifications([])}
+          globalSettings={appState.globalSettings}
+          events={appState.events.filter(e => {
+             const isOwner = e.settings.organizerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.email;
+             const isScorer = (e as any).scorerAccess?.some((s: any) => s.email === appState.currentUser?.email);
+             return isOwner || isScorer;
+          })}
+          onCreateEvent={(name) => {
+             const id = 'evt_' + Date.now();
+             const newEvent: ArcheryEvent = {
+               id,
+               ownerId: appState.currentUser?.id || appState.currentUser?.email || '',
+               status: 'DRAFT',
+               settings: {
+                 tournamentName: name || 'Turnamen Baru',
+                 organizerId: appState.currentUser?.id || appState.currentUser?.email || '',
+                 eventDate: new Date().toISOString(),
+                 location: '',
+                 isFreeEvent: false,
+                 archersPerTarget: 2,
+                 totalTargets: 1,
+                 totalArrows: 36,
+                 arrowsPerEnd: 6,
+                 totalEnds: 6,
+                 isActivated: false
+               },
+               archers: [],
+               officials: [],
+               registrations: [],
+               scores: [],
+               scoreLogs: [],
+               matches: {} as any
+             };
+             setAppState(prev => ({ ...prev, events: [newEvent, ...prev.events], activeEventId: id }));
+             setView('EVENT_ADMIN');
+             setHasPendingChanges(true);
+             pushNotification('Draft Event Dibuat', 'Silakan lengkapi konfigurasi turnamen.', 'SUCCESS');
+          }}
+          onCreatePractice={() => {}}
+          onCreateSelfPractice={() => {}}
           onManageEvent={(id) => {
             setAppState(prev => ({ ...prev, activeEventId: id }));
             setView('EVENT_ADMIN');
           }}
-          onCreateEvent={() => {
-            const id = 'evt_' + Date.now();
-            const newEvent: ArcheryEvent = {
-              id,
-              ownerId: appState.currentUser?.id || appState.currentUser?.email || '',
-              status: 'DRAFT',
-              settings: {
-                tournamentName: 'Turnamen Baru',
-                organizerId: appState.currentUser?.id || appState.currentUser?.email || '',
-                eventDate: new Date().toISOString(),
-                location: '',
-                isFreeEvent: false,
-                archersPerTarget: 2,
-                totalTargets: 1,
-                totalArrows: 36,
-                arrowsPerEnd: 6,
-                totalEnds: 6
-              },
-              archers: [],
-              officials: [],
-              registrations: [],
-              scores: [],
-              scoreLogs: [],
-              matches: {} as any
-            };
-            setAppState(prev => ({ ...prev, events: [newEvent, ...prev.events], activeEventId: id }));
-            setView('EVENT_ADMIN');
-            setHasPendingChanges(true);
+          onViewLive={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('PUBLIC_EVENT_INFO');
           }}
+          onUpdateEvent={handleUpdateEvent}
+          onDeleteEvent={onDeleteEvent}
+          onActivateEvent={handleActivateEvent}
+          onShare={(id, name) => {
+            setShareData({
+              isOpen: true,
+              url: window.location.origin + '?event=' + id,
+              name: name || 'Turnamen Panahan'
+            });
+          }}
+          onLogout={handleLogout}
+          isSyncing={isSyncing}
+        />;
+
+      case 'ACTIVATE_TOURNAMENT':
+        if (!activatingEventId) {
+          setView('MEMBER_DASHBOARD');
+          return null;
+        }
+        const activeEventToActivate = appState.events.find(e => e.id === activatingEventId);
+        if (!activeEventToActivate) {
+          setView('MEMBER_DASHBOARD');
+          return null;
+        }
+        return <ActivateTournament 
+          event={activeEventToActivate}
+          userEmail={appState.currentUser?.email || ''}
+          onActivate={(code) => {
+            if (code === activationCode) {
+              handleUpdateEvent(activatingEventId, { 
+                settings: { ...activeEventToActivate.settings, isActivated: true } 
+              });
+              pushNotification('Aktivasi Berhasil', 'Turnamen Anda telah aktif.', 'SUCCESS');
+              setView('MEMBER_DASHBOARD');
+            } else {
+              pushNotification('Kode Salah', 'Kode aktivasi tidak valid.', 'ERROR' as any);
+            }
+          }}
+          onBack={() => setView('MEMBER_DASHBOARD')}
+          onResend={() => handleActivateEvent(activatingEventId)}
         />;
 
       case 'EVENT_ADMIN':

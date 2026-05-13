@@ -200,39 +200,84 @@ export default function App() {
   useEffect(() => {
     if (!auth || !db) return;
     
-    let unsubEvents: (() => void) | null = null;
+    let unsubUserEvents: (() => void) | null = null;
+    let unsubPublicEvents: (() => void) | null = null;
+
+    // A. Global Public Events Listener (always active)
+    const publicQ = query(
+      collection(db, 'events'),
+      where('settings.isActivated', '==', true)
+    );
+    
+    unsubPublicEvents = onSnapshot(publicQ, (snapshot) => {
+      const publicEvents = snapshot.docs.map(doc => {
+        const d = doc.data();
+        const base = d.data || d;
+        const settings = {
+           ...(base.settings || base || {}),
+           ...(d.settings || {})
+        };
+        return { 
+          ...base, 
+          ...d,
+          id: doc.id, 
+          settings,
+          status: (d.status || base.status || 'DRAFT').toString().toUpperCase() 
+        } as ArcheryEvent;
+      });
+
+      setAppState(prev => {
+        const eventMap = new Map(prev.events.map(e => [e.id, e]));
+        publicEvents.forEach(pe => {
+          const existing = eventMap.get(pe.id);
+          eventMap.set(pe.id, {
+            ...(existing || {}),
+            ...pe,
+            settings: { ...(existing?.settings || {}), ...pe.settings } as any
+          });
+        });
+        return { ...prev, events: Array.from(eventMap.values()) };
+      });
+    });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const isAdmin = ['poedji.sugianto@gmail.com', 'admin@arcus.id'].includes(firebaseUser.email || '');
-        const userData: User = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.displayName || 'User',
-          role: isAdmin ? UserRole.SUPERADMIN : UserRole.PARTICIPANT,
-          photoURL: firebaseUser.photoURL || undefined
-        };
+        const docRef = doc(db, 'profiles', firebaseUser.uid);
+        const docSnap = await getDoc(docRef);
+        let userData: User;
+
+        if (docSnap.exists()) {
+          const d = docSnap.data();
+          userData = { ...(d.data || d), id: firebaseUser.uid };
+        } else {
+          const isAdmin = ['poedji.sugianto@gmail.com', 'admin@arcus.id'].includes(firebaseUser.email || '');
+          userData = {
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: firebaseUser.displayName || 'User',
+            role: isAdmin ? UserRole.SUPERADMIN : UserRole.PARTICIPANT,
+            photoURL: firebaseUser.photoURL || undefined
+          };
+          await setDoc(docRef, userData);
+        }
 
         setAppState(prev => ({ ...prev, currentUser: userData }));
         
-        // Subscribe to user's events in real-time
-        if (unsubEvents) unsubEvents();
-        const q = query(
+        // B. Subscribe to user-owned events
+        if (unsubUserEvents) unsubUserEvents();
+        const userQ = query(
           collection(db, 'events'),
           where('ownerId', 'in', [userData.id, userData.email].filter(Boolean))
         );
         
-        unsubEvents = onSnapshot(q, (snapshot) => {
+        unsubUserEvents = onSnapshot(userQ, (snapshot) => {
           const userEvents = snapshot.docs.map(doc => {
             const d = doc.data();
             const base = d.data || d;
-            
-            // Deep merge settings if they exist in both d and base
             const settings = {
                ...(base.settings || base || {}),
                ...(d.settings || {})
             };
-
             return { 
               ...base, 
               ...d,
@@ -243,30 +288,25 @@ export default function App() {
           });
           
           setAppState(prev => {
-            // Upsert strategy: Replace or add user events, keep others
             const eventMap = new Map(prev.events.map(e => [e.id, e]));
-            
             userEvents.forEach(ue => {
               const existing = eventMap.get(ue.id);
               eventMap.set(ue.id, {
                 ...(existing || {}),
                 ...ue,
-                // Preserve local registration data if missing in ue (onSnapshot for events doesn't include submissions)
+                settings: { ...(existing?.settings || {}), ...ue.settings } as any,
                 registrations: ue.registrations?.length ? ue.registrations : (existing?.registrations || []),
                 archers: ue.archers?.length ? ue.archers : (existing?.archers || []),
                 officials: ue.officials?.length ? ue.officials : (existing?.officials || [])
               });
             });
-
             return { ...prev, events: Array.from(eventMap.values()) };
           });
-        }, (err) => {
-          console.warn("Event subscription error:", err);
         });
 
         fetchCloudData(userData);
       } else {
-        if (unsubEvents) unsubEvents();
+        if (unsubUserEvents) unsubUserEvents();
         setAppState(prev => ({ ...prev, currentUser: null }));
         fetchCloudData();
       }
@@ -274,7 +314,8 @@ export default function App() {
 
     return () => {
       unsubscribeAuth();
-      if (unsubEvents) unsubEvents();
+      if (unsubUserEvents) unsubUserEvents();
+      if (unsubPublicEvents) unsubPublicEvents();
     };
   }, [db]);
 
@@ -388,9 +429,16 @@ export default function App() {
         // Upsert cloud events
         cloudEvents.forEach(ce => {
           const existing = eventMap.get(ce.id);
+          
+          const mergedSettings = {
+            ...(existing?.settings || {}),
+            ...(ce.settings || {})
+          };
+
           eventMap.set(ce.id, {
             ...(existing || {}),
             ...ce,
+            settings: mergedSettings as any,
             registrations: ce.registrations?.length ? ce.registrations : (existing?.registrations || []),
             archers: ce.archers?.length ? ce.archers : (existing?.archers || []),
             officials: ce.officials?.length ? ce.officials : (existing?.officials || []),
@@ -516,36 +564,44 @@ export default function App() {
     });
     
     if (isOnline && db) {
-       try {
-         // Create a flattened update object for Firestore to avoid overwriting nested objects
-         const firestoreUpdate: any = {
-           ...updated,
-           updatedAt: serverTimestamp()
-         };
+      try {
+        // Create a flattened update object for Firestore to avoid overwriting nested objects
+        const firestoreUpdate: any = {
+          ...updated,
+          updatedAt: serverTimestamp()
+        };
 
-         // If settings are provided, flatten them for Firestore merge
-         if (updated.settings) {
-           delete firestoreUpdate.settings;
-           Object.entries(updated.settings).forEach(([key, val]) => {
-             firestoreUpdate[`settings.${key}`] = val;
-           });
-         }
+        // If settings are provided, flatten them for Firestore merge
+        if (updated.settings) {
+          delete firestoreUpdate.settings;
+          Object.entries(updated.settings).forEach(([key, val]) => {
+            firestoreUpdate[`settings.${key}`] = val;
+          });
+        }
 
-         await updateDoc(doc(db, 'events', id), firestoreUpdate);
-         pushNotification("Berhasil", "Perubahan disimpan.", "SUCCESS");
-       } catch (err: any) {
-         console.warn("Update sync failed, falling back to merge setDoc", err);
-         // Fallback if updateDoc fails (e.g. document doesn't exist yet)
-         try {
-           await setDoc(doc(db, 'events', id), {
-             ...updated,
-             updatedAt: serverTimestamp()
-           }, { merge: true });
-         } catch (setErr) {
-           pushNotification("Gagal Sync", err.message, "WARNING");
-           setHasPendingChanges(true);
-         }
-       }
+        await updateDoc(doc(db, 'events', id), firestoreUpdate);
+        pushNotification("Berhasil", "Perubahan disimpan.", "SUCCESS");
+      } catch (err: any) {
+        console.warn("Update sync failed, falling back to merge setDoc", err);
+        
+        // Re-calculate flattened update explicitly for fallback
+        const fallbackUpdate: any = { ...updated, updatedAt: serverTimestamp() };
+        if (updated.settings) {
+          delete fallbackUpdate.settings;
+          Object.entries(updated.settings).forEach(([key, val]) => {
+            fallbackUpdate[`settings.${key}`] = val;
+          });
+        }
+
+        try {
+          await setDoc(doc(db, 'events', id), fallbackUpdate, { merge: true });
+          pushNotification("Berhasil (Sync)", "Perubahan disimpan.", "SUCCESS");
+        } catch (setErr: any) {
+          console.error("Critical Firestore Error:", setErr);
+          pushNotification("Gagal Sync", setErr.message || "Network error", "WARNING");
+          setHasPendingChanges(true);
+        }
+      }
     } else {
       setHasPendingChanges(true);
     }
@@ -863,6 +919,25 @@ export default function App() {
           onClear={() => {}}
           onDelete={() => onDeleteEvent(activeEvent.id)}
           onBack={() => setView('MEMBER_DASHBOARD')}
+        />;
+
+      case 'ADMIN_DASHBOARD':
+        return <AdminDashboard 
+          user={appState.currentUser!}
+          events={appState.events.filter(e => {
+             if (!e) return false;
+             const isOwner = e.ownerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.email;
+             const isSuperAdmin = appState.currentUser?.role === UserRole.SUPERADMIN;
+             return isOwner || isSuperAdmin;
+          })}
+          onManageEvent={(id) => {
+            setAppState(prev => ({ ...prev, activeEventId: id }));
+            setView('EVENT_ADMIN');
+          }}
+          onCreateEvent={() => {
+            setView('MEMBER_DASHBOARD');
+            pushNotification("Info", "Pilih 'Buat Event Baru' di dashboard member.", "INFO");
+          }}
         />;
 
       case 'SUPER_ADMIN':

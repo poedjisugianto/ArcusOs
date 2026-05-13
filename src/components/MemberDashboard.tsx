@@ -365,9 +365,9 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
       return totalFee > 0;
     });
   }, [events, globalSettings]);
-  const receivedNotifs = notifications.filter(n => n.recipientId === userId || !n.recipientId);
-  const sentNotifs = notifications.filter(n => n.senderId === userId);
-  const unreadCount = receivedNotifs.filter(n => !n.read).length;
+  const receivedNotifs = (notifications || []).filter(n => n && (n.recipientId === userId || !n.recipientId));
+  const sentNotifs = (notifications || []).filter(n => n && n.senderId === userId);
+  const unreadCount = receivedNotifs.filter(n => n && !n.read).length;
 
   const resetBilling = () => {
     setSelectedInvoiceEvent(null);

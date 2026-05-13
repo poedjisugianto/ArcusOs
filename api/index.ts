@@ -842,6 +842,8 @@ app.post("/api/register-participant", async (req, res) => {
     });
 
     // 2. Update the main event metadata robustly
+    console.log(`[API/REGISTER] Preparing metadata update for event ${eventId}. hasDataWrapper: ${hasDataWrapper}`);
+    
     const updatePayload: any = {
       "registrationCount": FieldValue.increment(registrations.length),
       "lastRegistrationAt": new Date().toISOString(),
@@ -853,9 +855,27 @@ app.post("/api/register-participant", async (req, res) => {
       updatePayload["data.lastRegistrationAt"] = new Date().toISOString();
     }
 
-    batch.update(eventRef, updatePayload);
+    try {
+      batch.update(eventRef, updatePayload);
+    } catch (updateErr: any) {
+      console.warn(`[API/REGISTER] batch.update failed (likely schema mismatch), attempting batch.set merge...`, updateErr.message);
+      // Fallback: Use set with merge if update fails (e.g. if field dot path doesn't exist)
+      batch.set(eventRef, updatePayload, { merge: true });
+    }
 
-    await batch.commit();
+    console.log(`[API/REGISTER] Committing batch for ${registrations.length} registrations on event ${eventId}...`);
+    try {
+      await batch.commit();
+      console.log(`[API/REGISTER] Batch commit SUCCESS for event ${eventId}`);
+    } catch (commitErr: any) {
+      console.error("[API/REGISTER] Batch commit failed:", commitErr);
+      // Detailed error reporting
+      let detailedError = commitErr.message;
+      if (commitErr.code === 8 || detailedError.includes("RESOURCE_EXHAUSTED")) {
+        detailedError = "Quota Firestore Terlampaui. Silahkan coba lagi besok.";
+      }
+      throw new Error(`Cloud Write Failed: ${detailedError} (Code: ${commitErr.code || 'UNKNOWN'})`);
+    }
 
     if (eventDetailsCache[eventId]) {
       delete eventDetailsCache[eventId];
@@ -871,7 +891,13 @@ app.post("/api/register-participant", async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: error.message,
-      message: "Gagal memproses pendaftaran. Silahkan coba lagi." 
+      debug: {
+        code: error.code,
+        note: "Checking if DB is initialized correctly"
+      },
+      message: error.message.includes("Cloud Write Failed") 
+        ? error.message 
+        : "Gagal memproses pendaftaran. Silahkan coba lagi." 
     });
   }
 });

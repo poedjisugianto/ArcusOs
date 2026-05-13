@@ -1060,30 +1060,32 @@ const AdminPanel: React.FC<Props> = ({ eventId, settings, scorerAccess = [], onS
           )}
 
           {/* DANGER ZONE: DELETE EVENT */}
-          <div className="bg-red-50 rounded-[3rem] p-12 border-2 border-dashed border-red-200 space-y-8">
-             <div className="flex items-center gap-4">
-                <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg">
-                   <Trash2 className="w-6 h-6" />
-                </div>
-                <div>
-                   <h3 className="text-2xl font-black font-oswald uppercase italic text-red-900 leading-none">Danger Zone</h3>
-                   <p className="text-xs font-bold text-red-700 uppercase tracking-widest mt-2">Gunakan dengan sangat hati-hati!</p>
-                </div>
-             </div>
-             
-             <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-                <p className="text-sm font-medium text-red-800 leading-relaxed max-w-2xl italic">
-                   Jika turnamen ini tidak jadi dilaksanakan atau terdapat kesalahan fatal, Anda dapat menghapusnya. <strong>Tindakan ini permanen</strong> dan akan menghapus seluruh database peserta serta skor yang sudah terekam.
-                </p>
-                <button 
-                  type="button" 
-                  onClick={handleDeleteClick}
-                  className="bg-red-600 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all whitespace-nowrap"
-                >
-                   Hapus {isPractice ? 'Latihan' : 'Turnamen'}
-                </button>
-             </div>
-          </div>
+          {isSuperAdmin && (
+            <div className="bg-red-50 rounded-[3rem] p-12 border-2 border-dashed border-red-200 space-y-8">
+               <div className="flex items-center gap-4">
+                  <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg">
+                     <Trash2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                     <h3 className="text-2xl font-black font-oswald uppercase italic text-red-900 leading-none">Danger Zone</h3>
+                     <p className="text-xs font-bold text-red-700 uppercase tracking-widest mt-2">Gunakan dengan sangat hati-hati!</p>
+                  </div>
+               </div>
+               
+               <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                  <p className="text-sm font-medium text-red-800 leading-relaxed max-w-2xl italic">
+                     Jika turnamen ini tidak jadi dilaksanakan atau terdapat kesalahan fatal, Anda dapat menghapusnya. <strong>Tindakan ini permanen</strong> dan akan menghapus seluruh database peserta serta skor yang sudah terekam.
+                  </p>
+                  <button 
+                    type="button" 
+                    onClick={handleDeleteClick}
+                    className="bg-red-600 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all whitespace-nowrap"
+                  >
+                     Hapus {isPractice ? 'Latihan' : 'Turnamen'}
+                  </button>
+               </div>
+            </div>
+          )}
 
           <div className="pt-10 sticky bottom-8 z-40 px-12 pb-12 bg-gradient-to-t from-white via-white/95 to-transparent -mx-12">
             <button type="submit" className={`w-full text-white font-black py-5 rounded-[2rem] shadow-xl transition-all flex items-center justify-center gap-4 text-xl font-oswald uppercase tracking-[0.2em] italic ${isPractice ? 'bg-teal-700' : 'bg-arcus-red shadow-arcus-red/30'}`}>

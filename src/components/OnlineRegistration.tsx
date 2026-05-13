@@ -87,14 +87,45 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error("File terlalu besar (Maks 2MB)");
+      // Relaxed limit since we compress and server now accepts 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("File terlalu besar (Maks 10MB)");
         return;
       }
+
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData({ ...formData, paymentProof: reader.result as string });
-        toast.success("Bukti pembayaran siap diunggah");
+        const img = new Image();
+        img.src = reader.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Max dimension 1200px
+          const maxDim = 1200;
+          if (width > height) {
+            if (width > maxDim) {
+              height *= maxDim / width;
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width *= maxDim / height;
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG with 0.7 quality
+          const compressedData = canvas.toDataURL('image/jpeg', 0.7);
+          setFormData({ ...formData, paymentProof: compressedData });
+          toast.success("Bukti pembayaran siap diunggah");
+        };
       };
       reader.readAsDataURL(file);
     }
@@ -600,7 +631,7 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between px-2">
                         <p className="text-[8px] font-black text-slate-400 uppercase italic">Upload Bukti Transfer</p>
-                        <p className="text-[6px] font-bold text-slate-300 uppercase italic">Maks 2MB</p>
+                        <p className="text-[6px] font-bold text-slate-300 uppercase italic">Otomatis Dikompresi</p>
                       </div>
                       <div className="relative group">
                         <input type="file" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />

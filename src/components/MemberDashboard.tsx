@@ -915,13 +915,16 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
                     
                     <div className="flex flex-wrap sm:flex-nowrap gap-4 w-full md:w-auto relative z-10">
                       <div className="grid grid-cols-2 sm:flex gap-3 w-full">
-                        <button 
-                          onClick={(e) => handleDelete(e, event.id, event.settings?.tournamentName || 'Untitled', event.settings?.isPractice)}
-                          className="p-4 sm:p-5 rounded-2xl bg-slate-50 text-slate-300 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95"
-                          title="Hapus"
-                        >
-                          <Trash2 className="w-6 h-6" />
-                        </button>
+                        {/* Only show delete button for Admin, Super Admin, or Master Admin */}
+                        {(userRole === UserRole.SUPERADMIN || userRole === UserRole.ADMIN || userRole === UserRole.MASTER_ADMIN || isSuperAdmin) && (
+                          <button 
+                            onClick={(e) => handleDelete(e, event.id, event.settings?.tournamentName || 'Untitled', event.settings?.isPractice)}
+                            className="p-4 sm:p-5 rounded-2xl bg-slate-50 text-slate-300 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95"
+                            title="Hapus Event"
+                          >
+                            <Trash2 className="w-6 h-6" />
+                          </button>
+                        )}
                         <button 
                           onClick={() => onShare(event.id, event.settings?.tournamentName || 'Untitled')} 
                           className="flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95"

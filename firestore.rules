@@ -1,10 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. PUBLIC EVENTS (Move to top for priority)
+    // 1. DEFAULT DENY
     match /{document=**} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if false;
     }
 
     // --- Helper Functions ---
@@ -47,8 +46,7 @@ service cloud.firestore {
       
       // ADMIN: Kontrol penuh
       allow create: if isSignedIn();
-      allow update: if isAdmin() || isEventOwner(eventId);
-      allow delete: if isAdmin();
+      allow update, delete: if isAdmin() || isEventOwner(eventId);
 
       // Pendaftaran Online (Submissions)
       match /submissions/{subId} {

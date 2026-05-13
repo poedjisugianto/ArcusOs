@@ -608,16 +608,46 @@ export default function App() {
   };
 
   const onDeleteEvent = async (id: string) => {
-    if (!confirm("Hapus turnamen ini permanen?")) return;
+    // Note: Confirmation is already handled by MemberDashboard or AdminPanel modals
     try {
-      if (db) await deleteDoc(doc(db, 'events', id));
+      // 1. Update local state immediately to provide feedback
       setAppState(prev => ({
         ...prev,
         events: prev.events.filter(e => e.id !== id)
       }));
-      pushNotification("Dihapus", "Turnamen berhasil dihapus.", "SUCCESS");
+
+      // 2. Backend deletion (recursive)
+      const res = await fetch(`/api/delete-event/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          authEmail: appState.currentUser?.email,
+          authUid: appState.currentUser?.id 
+        })
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Gagal menghapus dari server.");
+      }
+
+      // 3. Client fallback deletion (for local firestore cache if permissions allow)
+      if (db) {
+        try {
+          await deleteDoc(doc(db, 'events', id));
+        } catch (ruleErr) {
+          // If rules block it, it's fine since the API handled it
+          console.debug("Firestore rules prevented local delete, but API succeeded.");
+        }
+      }
+
+      pushNotification("Dihapus", "Turnamen berhasil dihapus total.", "SUCCESS");
     } catch (err: any) {
-      pushNotification("Error", err.message, "WARNING");
+      console.error("Delete event failed:", err);
+      // If we failed, the real-time snapshot should bring back the event automatically,
+      // but let's refresh just in case
+      fetchCloudData();
+      pushNotification("Gagal Menghapus", err.message, "WARNING");
     }
   };
 
@@ -927,6 +957,7 @@ export default function App() {
           onClear={() => {}}
           onDelete={() => onDeleteEvent(activeEvent.id)}
           onBack={() => setView('MEMBER_DASHBOARD')}
+          isSuperAdmin={appState.currentUser?.role === UserRole.SUPERADMIN || appState.currentUser?.role === UserRole.ADMIN || appState.currentUser?.role === UserRole.MASTER_ADMIN}
         />;
 
       case 'ADMIN_DASHBOARD':

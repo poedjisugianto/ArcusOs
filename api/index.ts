@@ -14,7 +14,8 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Load Firebase Config safely
 const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
@@ -516,6 +517,86 @@ app.get("/api/smtp-diagnostic", (req, res) => {
       passLooksLikeAppPassword: host.includes("gmail.com") ? pass.length === 16 : null
     }
   });
+});
+
+app.post("/api/delete-event/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const { authEmail, authUid } = req.body;
+
+  if (!db) return res.status(500).json({ error: "DB not ready" });
+  
+  try {
+    const eventRef = db.collection('events').doc(eventId);
+    const snap = await eventRef.get();
+    
+    if (!snap.exists) return res.status(404).json({ error: "Event tidak ditemukan" });
+    
+    const data = snap.data() || {};
+    const ownerId = data.ownerId || (data.data?.ownerId);
+    
+    // Authorization check
+    let isAuthorized = false;
+    
+    // 1. Hardcoded Super Admins
+    const isHardcodedAdmin = authEmail === 'poedji.sugianto@gmail.com' || authEmail === 'admin@arcus.id';
+    if (isHardcodedAdmin) isAuthorized = true;
+    
+    // 2. Owner check
+    if (!isAuthorized) {
+      const isOwner = (authEmail && (authEmail === ownerId || authEmail.includes(ownerId))) || 
+                      (authUid && (authUid === ownerId));
+      if (isOwner) isAuthorized = true;
+    }
+    
+    // 3. Database Role check (if not authorized yet and we have UID)
+    if (!isAuthorized && authUid) {
+      const profileSnap = await db.collection('profiles').doc(authUid).get();
+      if (profileSnap.exists) {
+        const profileData = profileSnap.data() || {};
+        const role = profileData.role || (profileData.data?.role);
+        if (role === 'SUPERADMIN' || role === 'ADMIN' || role === 'MASTER_ADMIN') {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      console.warn(`Unauthorized delete attempt on ${eventId} by Email:${authEmail} / UID:${authUid}. Owner was: ${ownerId}`);
+      return res.status(403).json({ error: "Akses ditolak. Hanya Admin atau Pemilik Event yang bisa menghapus." });
+    }
+
+    console.log(`[API/DELETE] Starting full deletion for event ${eventId} (Initiated by: ${authEmail || authUid})`);
+
+    // 1. Delete all submissions (subcollection)
+    const submissionsSnap = await eventRef.collection('submissions').get();
+    const batchSize = 500;
+    const subDocs = submissionsSnap.docs;
+    for (let i = 0; i < subDocs.length; i += batchSize) {
+      const batch = db.batch();
+      subDocs.slice(i, i + batchSize).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    
+    // 2. Delete all shards (subcollection)
+    const shardsSnap = await eventRef.collection('shards').get();
+    const shardDocs = shardsSnap.docs;
+    for (let i = 0; i < shardDocs.length; i += batchSize) {
+      const batch = db.batch();
+      shardDocs.slice(i, i + batchSize).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    
+    // 3. Delete main document
+    await eventRef.delete();
+    
+    if (eventDetailsCache[eventId]) delete eventDetailsCache[eventId];
+
+    console.log(`[API/DELETE] Successfully deleted event ${eventId}`);
+    res.json({ success: true, message: "Turnamen berhasil dihapus total." });
+  } catch (err: any) {
+    console.error("Delete error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/reset-event/:eventId", async (req, res) => {

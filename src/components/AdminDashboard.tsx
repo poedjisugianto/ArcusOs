@@ -21,50 +21,96 @@ interface Props {
 
 const AdminDashboard: React.FC<Props> = ({ user, events = [], onManageEvent, onCreateEvent }) => {
   const stats = useMemo(() => {
-    const safeEvents = Array.isArray(events) ? events : [];
-    const totalEvents = safeEvents.length;
-    const totalArchers = safeEvents.reduce((acc, e) => 
-      acc + Math.max((e?.archers || []).filter(a => a && a.category !== CategoryType.OFFICIAL).length, (e as any).registrationCount || 0), 0
-    );
-    const totalOfficials = safeEvents.reduce((acc, e) => {
-      const fromArchers = (e?.archers || []).filter(a => a && a.category === CategoryType.OFFICIAL).length;
-      const fromOfficials = (e?.officials || []).length;
-      return acc + Math.max(fromArchers + fromOfficials, (e as any).officialCount || 0);
-    }, 0);
-    const totalPeople = totalArchers + totalOfficials;
+    try {
+      const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+      const totalEvents = safeEvents.length;
+      
+      const totalArchers = safeEvents.reduce((acc, e) => {
+        try {
+          const archers = Array.isArray(e?.archers) ? e.archers : [];
+          const count = archers.filter(a => a && a.category !== CategoryType.OFFICIAL).length;
+          return acc + Math.max(count, Number((e as any)?.registrationCount) || 0);
+        } catch (err) {
+          console.warn("Error calculating archers for event", e?.id, err);
+          return acc;
+        }
+      }, 0);
 
-    const totalRevenue = safeEvents.reduce((acc, e) => {
-      const archerRevenue = (e?.archers || []).reduce((a, arc) => a + (arc?.totalPaid || 0), 0);
-      const officialRevenue = (e?.officials || []).reduce((a, off) => a + (off?.totalPaid || 0), 0);
-      return acc + archerRevenue + officialRevenue;
-    }, 0);
-    const activeEvents = safeEvents.filter(e => e?.status === 'ONGOING').length;
-    const upcomingEvents = safeEvents.filter(e => e?.status === 'UPCOMING').length;
-    const completedEvents = safeEvents.filter(e => e?.status === 'COMPLETED').length;
+      const totalOfficials = safeEvents.reduce((acc, e) => {
+        try {
+          const archers = Array.isArray(e?.archers) ? e.archers : [];
+          const officials = Array.isArray(e?.officials) ? e.officials : [];
+          const fromArchers = archers.filter(a => a && a.category === CategoryType.OFFICIAL).length;
+          const fromOfficials = officials.length;
+          return acc + Math.max(fromArchers + fromOfficials, Number((e as any)?.officialCount) || 0);
+        } catch (err) {
+          console.warn("Error calculating officials for event", e?.id, err);
+          return acc;
+        }
+      }, 0);
 
-    // Chart data: Archers per event
-    const archerData = safeEvents.slice(0, 5).map(e => ({
-      name: (e?.settings?.tournamentName || 'UNNAMED').length > 15 
-        ? (e?.settings?.tournamentName || 'UNNAMED').substring(0, 12) + '...' 
-        : (e?.settings?.tournamentName || 'UNNAMED'),
-      archers: Math.max((e?.archers || []).length, (e as any).registrationCount || 0),
-      id: e?.id
-    }));
+      const totalPeople = totalArchers + totalOfficials;
 
-    // Status distribution
-    const statusData = [
-      { name: 'Ongoing', value: activeEvents, color: '#10b981' },
-      { name: 'Upcoming', value: upcomingEvents, color: '#3b82f6' },
-      { name: 'Completed', value: completedEvents, color: '#64748b' },
-      { name: 'Draft', value: safeEvents.filter(e => e?.status === 'DRAFT').length, color: '#f59e0b' }
-    ].filter(s => s.value > 0);
+      const totalRevenue = safeEvents.reduce((acc, e) => {
+        try {
+          const archers = Array.isArray(e?.archers) ? e.archers : [];
+          const officials = Array.isArray(e?.officials) ? e.officials : [];
+          const archerRevenue = archers.reduce((a, arc) => a + (Number(arc?.totalPaid) || 0), 0);
+          const officialRevenue = officials.reduce((a, off) => a + (Number(off?.totalPaid) || 0), 0);
+          return acc + archerRevenue + officialRevenue;
+        } catch (err) {
+          console.warn("Error calculating revenue for event", e?.id, err);
+          return acc;
+        }
+      }, 0);
 
-    return { 
-      totalEvents, totalArchers, totalRevenue, totalPeople, totalOfficials,
-      activeEvents, upcomingEvents, completedEvents,
-      archerData, statusData
-    };
+      const activeEvents = safeEvents.filter(e => e?.status === 'ONGOING').length;
+      const upcomingEvents = safeEvents.filter(e => e?.status === 'UPCOMING').length;
+      const completedEvents = safeEvents.filter(e => e?.status === 'COMPLETED').length;
+
+      // Chart data: Archers per event
+      const archerData = safeEvents.slice(0, 5).map(e => {
+        const name = e?.settings?.tournamentName || 'UNNAMED';
+        const archersCount = Array.isArray(e?.archers) ? e.archers.length : 0;
+        return {
+          name: name.length > 15 ? name.substring(0, 12) + '...' : name,
+          archers: Math.max(archersCount, Number((e as any)?.registrationCount) || 0),
+          id: e?.id
+        };
+      });
+
+      // Status distribution
+      const statusData = [
+        { name: 'Ongoing', value: activeEvents, color: '#10b981' },
+        { name: 'Upcoming', value: upcomingEvents, color: '#3b82f6' },
+        { name: 'Completed', value: completedEvents, color: '#64748b' },
+        { name: 'Draft', value: safeEvents.filter(e => e?.status === 'DRAFT').length, color: '#f59e0b' }
+      ].filter(s => s.value > 0);
+
+      return { 
+        totalEvents, totalArchers, totalRevenue, totalPeople, totalOfficials,
+        activeEvents, upcomingEvents, completedEvents,
+        archerData, statusData
+      };
+    } catch (criticalErr) {
+      console.error("Critical error in AdminDashboard stats memo", criticalErr);
+      return {
+        totalEvents: 0, totalArchers: 0, totalRevenue: 0, totalPeople: 0, totalOfficials: 0,
+        activeEvents: 0, upcomingEvents: 0, completedEvents: 0,
+        archerData: [], statusData: []
+      };
+    }
   }, [events]);
+
+  if (!user) {
+    return (
+      <div className="p-12 text-center bg-red-50 rounded-3xl border border-red-100 space-y-4">
+        <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+        <h3 className="text-xl font-black font-oswald uppercase text-red-900">Sesi Bermasalah</h3>
+        <p className="text-sm font-medium text-red-600">Mohon login ulang untuk mengakses dashboard admin.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">

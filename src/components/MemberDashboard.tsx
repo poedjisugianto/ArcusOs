@@ -79,32 +79,61 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'NAME_ASC'>('NEWEST');
 
   const filteredEvents = useMemo(() => {
-    const safeEvents = Array.isArray(events) ? events : [];
-    let result = safeEvents.filter(e => {
-      const matchesSearch = (e?.settings?.tournamentName || '').toLowerCase().includes((eventSearch || '').toLowerCase()) ||
-        (e?.settings?.location || '').toLowerCase().includes((eventSearch || '').toLowerCase());
-      
-      const matchesStatus = statusFilter === 'ALL' || e?.status === statusFilter;
-      
-      const isPractice = e?.settings?.isPractice;
-      const matchesType = typeFilter === 'ALL' || 
-        (typeFilter === 'PRACTICE' && isPractice) || 
-        (typeFilter === 'TOURNAMENT' && !isPractice);
+    try {
+      const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+      let result = safeEvents.filter(e => {
+        try {
+          const tournamentName = e?.settings?.tournamentName || '';
+          const location = e?.settings?.location || '';
+          const searchTerm = (eventSearch || '').toLowerCase();
+          
+          const matchesSearch = tournamentName.toLowerCase().includes(searchTerm) ||
+            location.toLowerCase().includes(searchTerm);
+          
+          const matchesStatus = statusFilter === 'ALL' || e?.status === statusFilter;
+          
+          const isPractice = !!e?.settings?.isPractice;
+          const matchesType = typeFilter === 'ALL' || 
+            (typeFilter === 'PRACTICE' && isPractice) || 
+            (typeFilter === 'TOURNAMENT' && !isPractice);
 
-      const matchesPayment = paymentStatusFilter === 'ALL' || 
-        (paymentStatusFilter === 'PAID' && e?.settings?.platformFeePaidToOwner) || 
-        (paymentStatusFilter === 'UNPAID' && !e?.settings?.platformFeePaidToOwner && !e?.settings?.isPractice);
-        
-      return matchesSearch && matchesStatus && matchesType && matchesPayment;
-    });
+          const matchesPayment = paymentStatusFilter === 'ALL' || 
+            (paymentStatusFilter === 'PAID' && !!e?.settings?.platformFeePaidToOwner) || 
+            (paymentStatusFilter === 'UNPAID' && !e?.settings?.platformFeePaidToOwner && !isPractice);
+            
+          return matchesSearch && matchesStatus && matchesType && matchesPayment;
+        } catch (err) {
+          console.warn("Error filtering event", e?.id, err);
+          return false;
+        }
+      });
 
-    // Sorting
-    return result.sort((a, b) => {
-      if (sortBy === 'NEWEST') return (b?.settings?.createdAt || 0) - (a?.settings?.createdAt || 0);
-      if (sortBy === 'OLDEST') return (a?.settings?.createdAt || 0) - (b?.settings?.createdAt || 0);
-      if (sortBy === 'NAME_ASC') return (a?.settings?.tournamentName || '').localeCompare(b?.settings?.tournamentName || '');
-      return 0;
-    });
+      // Sorting
+      return result.sort((a, b) => {
+        try {
+          const getTimestamp = (ev: ArcheryEvent) => {
+            const val = ev?.settings?.createdAt;
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') return new Date(val).getTime();
+            return 0;
+          };
+
+          if (sortBy === 'NEWEST') return getTimestamp(b) - getTimestamp(a);
+          if (sortBy === 'OLDEST') return getTimestamp(a) - getTimestamp(b);
+          if (sortBy === 'NAME_ASC') {
+            const nameA = a?.settings?.tournamentName || '';
+            const nameB = b?.settings?.tournamentName || '';
+            return nameA.localeCompare(nameB);
+          }
+          return 0;
+        } catch (sortErr) {
+          return 0;
+        }
+      });
+    } catch (criticalErr) {
+      console.error("Critical error in MemberDashboard filteredEvents", criticalErr);
+      return [];
+    }
   }, [events, eventSearch, statusFilter, typeFilter, sortBy, paymentStatusFilter]);
 
   const isKidsCategory = (cat: string) => {
@@ -116,25 +145,37 @@ const MemberDashboard: React.FC<Props> = ({ userName, userId, userRole, currentU
   };
 
   const calculateEventFees = (event: ArcheryEvent) => {
-    if (event.settings?.isFreeEvent || event.settings?.isPractice) return 0;
-    const participants = Array.from(
-      new Map([...(event.registrations || []), ...(event.archers || []), ...(event.officials || [])].filter(Boolean).map(p => [p.id, p])).values()
-    );
-    // If the arrays are empty but registrationCount is high, use registrationCount for estimation
-    const countToBill = Math.max(participants.length, (event as any).registrationCount || 0);
-    
-    if (participants.length === 0 && countToBill > 0) {
-      // Estimate based on adult fee if no data yet
-      return countToBill * (globalSettings?.feeAdult || 0);
-    }
+    try {
+      if (!event || event.settings?.isFreeEvent || event.settings?.isPractice) return 0;
+      
+      const registrations = Array.isArray(event.registrations) ? event.registrations : [];
+      const archers = Array.isArray(event.archers) ? event.archers : [];
+      const officials = Array.isArray(event.officials) ? event.officials : [];
 
-    return participants.reduce((acc, curr) => {
-      if (!curr) return acc;
-      const fee = curr.platformFee && curr.platformFee > 0 
-        ? curr.platformFee 
-        : (isKidsCategory(curr.category || '') ? (globalSettings?.feeKids || 0) : (globalSettings?.feeAdult || 0));
-      return acc + (Number(fee) || 0);
-    }, 0);
+      const participants = Array.from(
+        new Map([...registrations, ...archers, ...officials].filter(p => p && p.id).map(p => [p.id, p])).values()
+      );
+      
+      // If the arrays are empty but registrationCount is high, use registrationCount for estimation
+      const regCount = Number((event as any).registrationCount) || 0;
+      const countToBill = Math.max(participants.length, regCount);
+      
+      if (participants.length === 0 && countToBill > 0) {
+        // Estimate based on adult fee if no data yet
+        return countToBill * (Number(globalSettings?.feeAdult) || 0);
+      }
+
+      return participants.reduce((acc, curr) => {
+        if (!curr) return acc;
+        const fee = Number(curr.platformFee) && Number(curr.platformFee) > 0 
+          ? Number(curr.platformFee) 
+          : (isKidsCategory(curr.category || '') ? (Number(globalSettings?.feeKids) || 0) : (Number(globalSettings?.feeAdult) || 0));
+        return acc + (Number(fee) || 0);
+      }, 0);
+    } catch (err) {
+      console.error("Error calculating tournament fees", event?.id, err);
+      return 0;
+    }
   };
 
   const handleStartCreation = () => {

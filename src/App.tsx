@@ -724,9 +724,10 @@ export default function App() {
           onMarkNotifRead={() => setNotifications([])}
           globalSettings={appState.globalSettings}
           events={appState.events.filter(e => {
-             const isOwner = e.settings.organizerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.email;
-             const isScorer = (e as any).scorerAccess?.some((s: any) => s.email === appState.currentUser?.email);
-             return isOwner || isScorer;
+             if (!e) return false;
+             const isOwner = e.settings?.organizerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.id || e.ownerId === appState.currentUser?.email;
+             const isScorer = (e as any).scorerAccess?.some((s: any) => s && s.email === appState.currentUser?.email);
+             return !!(isOwner || isScorer);
           })}
           onCreateEvent={async (name) => {
              const id = 'evt_' + Date.now();

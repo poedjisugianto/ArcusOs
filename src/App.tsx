@@ -20,6 +20,7 @@ import {
   getDoc, 
   getDocs, 
   deleteDoc, 
+  updateDoc,
   onSnapshot, 
   query, 
   where, 
@@ -225,18 +226,39 @@ export default function App() {
           const userEvents = snapshot.docs.map(doc => {
             const d = doc.data();
             const base = d.data || d;
+            
+            // Deep merge settings if they exist in both d and base
+            const settings = {
+               ...(base.settings || base || {}),
+               ...(d.settings || {})
+            };
+
             return { 
               ...base, 
               ...d,
               id: doc.id, 
+              settings,
               status: (d.status || base.status || 'DRAFT').toString().toUpperCase() 
             } as ArcheryEvent;
           });
           
           setAppState(prev => {
-            // Merge user events with public ones
-            const publicEvents = prev.events.filter(e => e.ownerId !== userData.id && e.ownerId !== userData.email);
-            return { ...prev, events: [...userEvents, ...publicEvents] };
+            // Upsert strategy: Replace or add user events, keep others
+            const eventMap = new Map(prev.events.map(e => [e.id, e]));
+            
+            userEvents.forEach(ue => {
+              const existing = eventMap.get(ue.id);
+              eventMap.set(ue.id, {
+                ...(existing || {}),
+                ...ue,
+                // Preserve local registration data if missing in ue (onSnapshot for events doesn't include submissions)
+                registrations: ue.registrations?.length ? ue.registrations : (existing?.registrations || []),
+                archers: ue.archers?.length ? ue.archers : (existing?.archers || []),
+                officials: ue.officials?.length ? ue.officials : (existing?.officials || [])
+              });
+            });
+
+            return { ...prev, events: Array.from(eventMap.values()) };
           });
         }, (err) => {
           console.warn("Event subscription error:", err);
@@ -246,6 +268,7 @@ export default function App() {
       } else {
         if (unsubEvents) unsubEvents();
         setAppState(prev => ({ ...prev, currentUser: null }));
+        fetchCloudData();
       }
     });
 
@@ -333,7 +356,16 @@ export default function App() {
            const data = await res.json();
            cloudEvents = (data.events || []).map((e: any) => {
              const base = e.data || e;
-             return { ...base, ...e, status: (e.status || base.status || 'DRAFT').toString().toUpperCase() };
+             const settings = {
+                ...(base.settings || base || {}),
+                ...(e.settings || {})
+             };
+             return { 
+               ...base, 
+               ...e, 
+               settings,
+               status: (e.status || base.status || 'DRAFT').toString().toUpperCase() 
+             };
            });
         }
       } catch (apiErr) {
@@ -342,19 +374,40 @@ export default function App() {
         cloudEvents = eventsSnap.docs.map(doc => {
           const d = doc.data();
           const base = d.data || d;
-          return { ...base, ...d, id: doc.id, status: (d.status || base.status || 'DRAFT').toString().toUpperCase() } as ArcheryEvent;
+          const settings = {
+             ...(base.settings || base || {}),
+             ...(d.settings || {})
+          };
+          return { ...base, ...d, id: doc.id, settings, status: (d.status || base.status || 'DRAFT').toString().toUpperCase() } as ArcheryEvent;
         });
       }
+      
+      setAppState(prev => {
+        const eventMap = new Map(prev.events.map(e => [e.id, e]));
 
-      setAppState(prev => ({
-        ...prev,
-        globalSettings: {
-          ...cloudSettings,
-          paymentGatewayProvider: (cloudSettings.paymentGatewayProvider as any) || 'NONE'
-        } as GlobalSettings,
-        events: cloudEvents,
-        isDataLoaded: true
-      }));
+        // Upsert cloud events
+        cloudEvents.forEach(ce => {
+          const existing = eventMap.get(ce.id);
+          eventMap.set(ce.id, {
+            ...(existing || {}),
+            ...ce,
+            registrations: ce.registrations?.length ? ce.registrations : (existing?.registrations || []),
+            archers: ce.archers?.length ? ce.archers : (existing?.archers || []),
+            officials: ce.officials?.length ? ce.officials : (existing?.officials || []),
+            status: (ce.status || existing?.status || 'DRAFT').toUpperCase() as ArcheryEvent['status']
+          });
+        });
+
+        return {
+          ...prev,
+          globalSettings: {
+            ...cloudSettings,
+            paymentGatewayProvider: (cloudSettings.paymentGatewayProvider as any) || 'NONE'
+          } as GlobalSettings,
+          events: Array.from(eventMap.values()),
+          isDataLoaded: true
+        };
+      });
 
     } catch (err: any) {
       console.error("Cloud fetch failed:", err.message);
@@ -440,21 +493,58 @@ export default function App() {
   };
 
   const handleUpdateEvent = async (id: string, updated: Partial<ArcheryEvent>) => {
-    setAppState(prev => ({
-      ...prev,
-      events: prev.events.map(e => e.id === id ? { ...e, ...updated, updatedAt: new Date().toISOString() } : e)
-    }));
+    setAppState(prev => {
+      const existingEvent = prev.events.find(e => e.id === id);
+      if (!existingEvent) return prev;
+
+      // Deep-ish merge for settings
+      const newSettings = updated.settings 
+        ? { ...existingEvent.settings, ...updated.settings }
+        : existingEvent.settings;
+
+      const newEvent = { 
+        ...existingEvent, 
+        ...updated, 
+        settings: newSettings,
+        updatedAt: new Date().toISOString() 
+      };
+
+      return {
+        ...prev,
+        events: prev.events.map(e => e.id === id ? newEvent : e)
+      };
+    });
     
     if (isOnline && db) {
        try {
-         await setDoc(doc(db, 'events', id), {
+         // Create a flattened update object for Firestore to avoid overwriting nested objects
+         const firestoreUpdate: any = {
            ...updated,
            updatedAt: serverTimestamp()
-         }, { merge: true });
+         };
+
+         // If settings are provided, flatten them for Firestore merge
+         if (updated.settings) {
+           delete firestoreUpdate.settings;
+           Object.entries(updated.settings).forEach(([key, val]) => {
+             firestoreUpdate[`settings.${key}`] = val;
+           });
+         }
+
+         await updateDoc(doc(db, 'events', id), firestoreUpdate);
          pushNotification("Berhasil", "Perubahan disimpan.", "SUCCESS");
        } catch (err: any) {
-         pushNotification("Gagal Sync", err.message, "WARNING");
-         setHasPendingChanges(true);
+         console.warn("Update sync failed, falling back to merge setDoc", err);
+         // Fallback if updateDoc fails (e.g. document doesn't exist yet)
+         try {
+           await setDoc(doc(db, 'events', id), {
+             ...updated,
+             updatedAt: serverTimestamp()
+           }, { merge: true });
+         } catch (setErr) {
+           pushNotification("Gagal Sync", err.message, "WARNING");
+           setHasPendingChanges(true);
+         }
        }
     } else {
       setHasPendingChanges(true);

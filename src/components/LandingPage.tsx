@@ -65,56 +65,58 @@ export default function LandingPage({
     });
   }, [events]);
 
-  const activeEvents = (events || [])
-    .map(e => {
-      const raw = e as any;
-      const baseData = (typeof raw.data === 'function') ? raw.data() : (raw.data || raw);
-      const id = raw.id || baseData.id;
-      
-      const statusStrRaw = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
-      let statusStr = statusStrRaw;
-      
-      if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING', 'A', '1'].includes(statusStrRaw)) {
-        statusStr = 'ACTIVE';
-      }
-
-      const settings = baseData.settings || raw.settings || baseData || {};
-      const tournamentName = raw.tournamentName || settings.tournamentName || baseData.tournamentName || baseData.name || "Tournament";
-      const location = settings.location || baseData.location || "Lokasi Belum Diatur";
-      const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
-      
-      const createdAt = raw.createdAt || baseData.createdAt || settings.createdAt || 0;
-
-      return {
-        ...baseData,
-        ...settings,
-        id,
-        status: statusStr,
-        createdAt,
-        settings: {
-          ...settings,
-          tournamentName,
-          location,
-          eventDate,
-          status: statusStr
+  const activeEvents = React.useMemo(() => {
+    return (events || [])
+      .map(e => {
+        const raw = e as any;
+        const baseData = (typeof raw.data === 'function') ? raw.data() : (raw.data || raw);
+        const id = raw.id || baseData.id;
+        
+        const statusStrRaw = (raw.status || baseData.status || (baseData.settings?.status) || 'ACTIVE').toString().trim().toUpperCase();
+        let statusStr = statusStrRaw;
+        
+        if (['PUBLISHED', 'READY', 'OPEN', 'ONGOING', 'STARTED', 'ACTIVE', 'UPCOMING', 'A', '1'].includes(statusStrRaw)) {
+          statusStr = 'ACTIVE';
         }
-      };
-    })
-    .filter(ev => ev.id && ev.status !== 'DELETED' && ev.settings?.isActivated === true)
-    .sort((a, b) => {
-      // Prioritize ACTIVE/UPCOMING status
-      if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
-      if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
-      
-      // Secondary: Sort by creation date descending (newest first)
-      const timeA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt).getTime() || 0;
-      const timeB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt).getTime() || 0;
-      
-      if (timeA !== timeB) return timeB - timeA;
-      
-      // Tertiary: Alphabetical
-      return (a.settings?.tournamentName || "").localeCompare(b.settings?.tournamentName || "");
-    });
+
+        const settings = baseData.settings || raw.settings || baseData || {};
+        const tournamentName = raw.tournamentName || settings.tournamentName || baseData.tournamentName || baseData.name || "Tournament";
+        const location = settings.location || baseData.location || "Lokasi Belum Diatur";
+        const eventDate = settings.eventDate || baseData.eventDate || "Jadwal Menyusul";
+        
+        const createdAt = raw.createdAt || baseData.createdAt || settings.createdAt || 0;
+
+        return {
+          ...baseData,
+          ...settings,
+          id,
+          status: statusStr,
+          createdAt,
+          settings: {
+            ...settings,
+            tournamentName,
+            location,
+            eventDate,
+            status: statusStr
+          }
+        };
+      })
+      .filter(ev => ev.id && ev.status !== 'DELETED' && ev.settings?.isActivated === true)
+      .sort((a, b) => {
+        // Prioritize ACTIVE/UPCOMING status
+        if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+        if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
+        
+        // Secondary: Sort by creation date descending (newest first)
+        const timeA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt).getTime() || 0;
+        const timeB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt).getTime() || 0;
+        
+        if (timeA !== timeB) return timeB - timeA;
+        
+        // Tertiary: Alphabetical
+        return (a.settings?.tournamentName || "").localeCompare(b.settings?.tournamentName || "");
+      });
+  }, [events]);
 
   return (
     <div className="min-h-screen bg-[#FBFBFD] font-sans selection:bg-arcus-red selection:text-white overflow-x-hidden">

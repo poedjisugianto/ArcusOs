@@ -665,12 +665,21 @@ app.get("/api/public-events", async (req, res) => {
     snapshot.forEach((d: any) => {
       const rawData = d.data();
       const eventData = rawData.data || rawData;
+      
       const status = (rawData.status || eventData.status || 'DRAFT').toString().toUpperCase();
+      
+      // Deep merge settings from both sources
+      const settings = {
+        ...(eventData.settings || eventData || {}),
+        ...(rawData.settings || {})
+      };
+
       if (status !== 'DELETED') {
          events.push({
            ...eventData,
            id: d.id,
            status,
+           settings,
            registrationCount: rawData.registrationCount || 0,
            createdAt: rawData.createdAt || eventData.createdAt || new Date().toISOString()
          });

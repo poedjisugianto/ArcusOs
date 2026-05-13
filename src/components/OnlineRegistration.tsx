@@ -334,20 +334,30 @@ export default function OnlineRegistration({ event, globalSettings, onRegister, 
         setIsSubmitting(false);
       }
     } else {
-    setIsSubmitting(true);
-    try {
-      // Refresh event context before registering to ensure data is absolute live
-      const freshRes = await fetch(`/api/event-details/${event.id}`);
-      const freshData = await freshRes.json();
-      if (!freshData.success) throw new Error("Gagal verifikasi data cloud.");
+      setIsSubmitting(true);
+      console.log("Manual registration started", registrations.length, "regs");
+      try {
+        // Refresh event context before registering to ensure data is absolute live
+        // We add a try-catch specifically for this pre-check so it doesn't block registration if it fails
+        try {
+          const freshRes = await fetch(`/api/event-details/${event.id}`);
+          if (freshRes.ok) {
+            const freshData = await freshRes.json();
+            console.log("Cloud verify success", !!freshData.success);
+          }
+        } catch (fetchErr) {
+          console.warn("Cloud pre-verify failed (non-critical):", fetchErr);
+        }
 
-      await onRegister(registrations);
-      setStep(3);
-    } catch (err) {
-      toast.error("Gagal sinkron cloud. Silakan coba lagi.");
-    } finally {
-      setIsSubmitting(false);
-    }
+        await onRegister(registrations);
+        console.log("onRegister success, switching to step 3");
+        setStep(3);
+      } catch (err: any) {
+        console.error("Manual registration error:", err);
+        toast.error(err.message || "Gagal sinkron cloud. Silakan coba lagi.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 

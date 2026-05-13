@@ -713,6 +713,7 @@ export default function App() {
           event={activeEvent}
           globalSettings={appState.globalSettings}
           onRegister={async (regs) => {
+            console.log("App: onRegister called with", regs.length, "registrations");
             try {
               const res = await fetch("/api/register-participant", {
                 method: "POST",
@@ -724,11 +725,18 @@ export default function App() {
                   officials: regs.filter(r => r.regType === 'OFFICIAL')
                 })
               });
-              if (!res.ok) throw new Error("Gagal registrasi ke server.");
+              
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.message || "Gagal registrasi ke server.");
+              }
+              
               pushNotification("Berhasil", "Pendaftaran terkirim.", "SUCCESS");
-              setView('LANDING');
+              // We do NOT call setView('LANDING') here to allow OnlineRegistration to show its success screen (Step 3)
             } catch (err: any) {
+              console.error("App: registration error", err);
               pushNotification("Gagal", err.message, "WARNING");
+              throw err; // Re-throw so OnlineRegistration can catch it
             }
           }}
           onBack={() => setView('LANDING')}

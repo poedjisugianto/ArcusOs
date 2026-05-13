@@ -732,6 +732,15 @@ app.post("/api/register-participant", async (req, res) => {
 
   try {
     const eventRef = db.collection('events').doc(eventId);
+    const eventSnap = await eventRef.get();
+    
+    if (!eventSnap.exists) {
+       return res.status(404).json({ success: false, message: "Turnamen tidak ditemukan" });
+    }
+    
+    const eventData = eventSnap.data() || {};
+    const hasDataWrapper = typeof eventData.data === 'object' && eventData.data !== null;
+
     const batch = db.batch();
     
     // 1. Write each registration and participant to the subcollection
@@ -751,14 +760,19 @@ app.post("/api/register-participant", async (req, res) => {
       }, { merge: true });
     });
 
-    // 2. Update the main event metadata
-    batch.update(eventRef, {
+    // 2. Update the main event metadata robustly
+    const updatePayload: any = {
       "registrationCount": FieldValue.increment(registrations.length),
-      "data.registrationCount": FieldValue.increment(registrations.length),
-      "data.lastRegistrationAt": new Date().toISOString(),
       "lastRegistrationAt": new Date().toISOString(),
       "updatedAt": FieldValue.serverTimestamp()
-    });
+    };
+
+    if (hasDataWrapper) {
+      updatePayload["data.registrationCount"] = FieldValue.increment(registrations.length);
+      updatePayload["data.lastRegistrationAt"] = new Date().toISOString();
+    }
+
+    batch.update(eventRef, updatePayload);
 
     await batch.commit();
 
